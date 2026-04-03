@@ -1,3 +1,4 @@
+import { $ } from "bun";
 import { TmuxPty } from "./tmux-pty";
 import { ScreenBridge } from "./screen-bridge";
 import { Renderer } from "./renderer";
@@ -34,6 +35,7 @@ const control = new TmuxControl();
 let currentSessionId: string | null = null;
 let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
+const lastViewedTimestamps = new Map<string, number>();
 
 // --- Session data helpers ---
 
@@ -54,8 +56,20 @@ async function fetchSessions(): Promise<void> {
           attention: false,
         };
       });
+
+    // Mark sessions with activity since last viewed
+    for (const session of sessions) {
+      const lastViewed = lastViewedTimestamps.get(session.id) ?? 0;
+      if (session.activity > lastViewed && session.id !== currentSessionId) {
+        sidebar.setActivity(session.id, true);
+      }
+    }
+
     sidebar.updateSessions(sessions);
     renderFrame();
+
+    // Fire-and-forget git branch lookup (async, updates sidebar when done)
+    lookupGitBranches(sessions);
   } catch {
     // tmux server may be shutting down
   }
@@ -87,10 +101,20 @@ async function switchSession(sessionId: string): Promise<void> {
     await control.sendCommand(
       `switch-client -c ${ptyClientName} -t '${sessionId}'`,
     );
+    lastViewedTimestamps.set(sessionId, Math.floor(Date.now() / 1000));
     sidebar.setActivity(sessionId, false);
     currentSessionId = sessionId;
     sidebar.setActiveSession(sessionId);
     renderFrame();
+
+    // Clear attention flag if set
+    try {
+      await control.sendCommand(
+        `set-option -t '${sessionId}' -u @jmux-attention`,
+      );
+    } catch {
+      // Option may not be set
+    }
   } catch {
     // Session may have been killed
   }
@@ -182,8 +206,45 @@ control.onEvent((event: ControlEvent) => {
       sidebar.setActiveSession(event.args);
       renderFrame();
       break;
+    case "subscription-changed":
+      if (event.name === "attention") {
+        const pairs = event.value.trim().split(/\s+/);
+        for (const pair of pairs) {
+          const eqIdx = pair.indexOf("=");
+          if (eqIdx === -1) continue;
+          const id = pair.slice(0, eqIdx);
+          const val = pair.slice(eqIdx + 1);
+          if (val === "1") {
+            sidebar.setActivity(id, false);
+          }
+        }
+        fetchSessions();
+      }
+      break;
   }
 });
+
+// --- Git branch lookup ---
+
+async function lookupGitBranches(sessions: SessionInfo[]): Promise<void> {
+  for (const session of sessions) {
+    try {
+      const result =
+        await $`tmux display-message -t ${session.id} -p '#{pane_current_path}'`
+          .text();
+      const cwd = result.trim();
+      if (!cwd) continue;
+      const branch = await $`git -C ${cwd} branch --show-current`
+        .text()
+        .catch(() => "");
+      session.gitBranch = branch.trim() || undefined;
+    } catch {
+      // Session may not exist or no git repo
+    }
+  }
+  sidebar.updateSessions(sessions);
+  renderFrame();
+}
 
 // --- Startup sequence ---
 
@@ -226,6 +287,13 @@ async function start(): Promise<void> {
 
   // Fetch initial sessions
   await fetchSessions();
+
+  // Subscribe to @jmux-attention across all sessions
+  await control.registerSubscription(
+    "attention",
+    1,
+    "#{S:#{session_id}=#{@jmux-attention} }",
+  );
 }
 
 // --- Cleanup ---
