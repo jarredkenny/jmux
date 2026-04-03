@@ -15,11 +15,13 @@ export type ControlEvent =
   | {
       type: "response";
       commandNumber: number;
+      flags: number;
       lines: string[];
     }
   | {
       type: "error";
       commandNumber: number;
+      flags: number;
       lines: string[];
     };
 
@@ -30,6 +32,7 @@ export class ControlParser {
   private listeners: EventListener[] = [];
   private inBlock = false;
   private blockCommandNumber = 0;
+  private blockFlags = 0;
   private blockLines: string[] = [];
 
   onEvent(listener: EventListener): void {
@@ -50,12 +53,11 @@ export class ControlParser {
     if (this.inBlock) {
       if (line.startsWith("%end ") || line.startsWith("%error ")) {
         const isError = line.startsWith("%error ");
-        const parts = line.split(" ");
-        const cmdNum = parseInt(parts[2], 10);
         this.inBlock = false;
         this.emit({
           type: isError ? "error" : "response",
-          commandNumber: cmdNum,
+          commandNumber: this.blockCommandNumber,
+          flags: this.blockFlags,
           lines: this.blockLines,
         });
         this.blockLines = [];
@@ -68,6 +70,7 @@ export class ControlParser {
     if (line.startsWith("%begin ")) {
       const parts = line.split(" ");
       this.blockCommandNumber = parseInt(parts[2], 10);
+      this.blockFlags = parseInt(parts[3], 10) || 0;
       this.inBlock = true;
       this.blockLines = [];
       return;
@@ -107,6 +110,7 @@ export class ControlParser {
         });
       }
     }
+    // Ignore unknown % lines (e.g. %output if not suppressed)
   }
 
   private emit(event: ControlEvent): void {
@@ -121,22 +125,23 @@ export class ControlParser {
 export class TmuxControl {
   private proc: Subprocess | null = null;
   private parser = new ControlParser();
-  private commandCounter = 0;
-  private pendingCommands = new Map<
-    number,
-    {
-      resolve: (lines: string[]) => void;
-      reject: (err: Error) => void;
-    }
-  >();
+  // FIFO queue — tmux command numbers are global server counters,
+  // not sequential from 0. We match responses in order instead.
+  private pendingQueue: Array<{
+    resolve: (lines: string[]) => void;
+    reject: (err: Error) => void;
+  }> = [];
   private writer: WritableStreamDefaultWriter | null = null;
 
   constructor() {
     this.parser.onEvent((event) => {
       if (event.type === "response" || event.type === "error") {
-        const pending = this.pendingCommands.get(event.commandNumber);
+        // flags=1 means this response is for a command sent by THIS client.
+        // flags=0 means it's from the initial attach or another client — skip it.
+        if (event.flags !== 1) return;
+
+        const pending = this.pendingQueue.shift();
         if (pending) {
-          this.pendingCommands.delete(event.commandNumber);
           if (event.type === "error") {
             pending.reject(new Error(event.lines.join("\n")));
           } else {
@@ -184,9 +189,8 @@ export class TmuxControl {
 
   async sendCommand(cmd: string): Promise<string[]> {
     if (!this.writer) throw new Error("TmuxControl not started");
-    const cmdNum = this.commandCounter++;
     const promise = new Promise<string[]>((resolve, reject) => {
-      this.pendingCommands.set(cmdNum, { resolve, reject });
+      this.pendingQueue.push({ resolve, reject });
     });
     const encoded = new TextEncoder().encode(cmd + "\n");
     await this.writer.write(encoded);
