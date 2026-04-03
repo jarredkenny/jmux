@@ -1,0 +1,37 @@
+export const enum ColorMode {
+  Default = 0,
+  Palette = 1,
+  RGB = 2,
+}
+
+export interface Cell {
+  char: string;
+  fg: number;
+  bg: number;
+  fgMode: ColorMode;
+  bgMode: ColorMode;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  dim: boolean;
+}
+
+export interface CellGrid {
+  cols: number;
+  rows: number;
+  cells: Cell[][];
+}
+
+export interface CursorPosition {
+  x: number;
+  y: number;
+}
+
+export interface SessionInfo {
+  id: string;
+  name: string;
+  attached: boolean;
+  activity: number;
+  gitBranch?: string;
+  attention: boolean;
+}
