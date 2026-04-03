@@ -6,13 +6,6 @@ import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo } from "./types";
-import { appendFileSync } from "fs";
-
-const DEBUG_LOG = "/tmp/jmux-debug.log";
-function dbg(msg: string): void {
-  appendFileSync(DEBUG_LOG, `[${Date.now()}] ${msg}\n`);
-}
-
 const SIDEBAR_WIDTH = 24;
 const BORDER_WIDTH = 1;
 const SIDEBAR_TOTAL = SIDEBAR_WIDTH + BORDER_WIDTH;
@@ -32,9 +25,11 @@ const rows = process.stdout.rows || 24;
 const sidebarVisible = cols >= 80;
 const mainCols = sidebarVisible ? cols - SIDEBAR_TOTAL : cols;
 
-// Enter alternate screen, raw mode
+// Enter alternate screen, raw mode, enable mouse tracking
 process.stdout.write("\x1b[?1049h");
 process.stdout.write("\x1b[?25l");
+process.stdout.write("\x1b[?1000h"); // mouse button tracking
+process.stdout.write("\x1b[?1006h"); // SGR extended mouse mode
 if (process.stdin.setRawMode) {
   process.stdin.setRawMode(true);
 }
@@ -51,27 +46,41 @@ let currentSessionId: string | null = null;
 let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
 let overlayMode = false;
+let currentSessions: SessionInfo[] = [];
 const lastViewedTimestamps = new Map<string, number>();
+
+function switchByOffset(offset: number): void {
+  if (currentSessions.length === 0) return;
+  const currentIdx = currentSessions.findIndex(
+    (s) => s.id === currentSessionId,
+  );
+  const base = currentIdx >= 0 ? currentIdx : 0;
+  const newIdx =
+    (base + offset + currentSessions.length) % currentSessions.length;
+  switchSession(currentSessions[newIdx].id);
+}
 
 // --- Session data helpers ---
 
 async function fetchSessions(): Promise<void> {
   try {
     const lines = await control.sendCommand(
-      "list-sessions -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}'",
+      "list-sessions -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}'",
     );
     const sessions: SessionInfo[] = lines
       .filter((l) => l.length > 0)
       .map((line) => {
-        const [id, name, activity, attached] = line.split(":");
+        const [id, name, activity, attached, windows] = line.split(":");
         return {
           id,
           name,
           activity: parseInt(activity, 10) || 0,
           attached: attached === "1",
           attention: false,
+          windowCount: parseInt(windows, 10) || 1,
         };
       });
+    currentSessions = sessions;
 
     // Mark sessions with activity since last viewed
     for (const session of sessions) {
@@ -85,7 +94,7 @@ async function fetchSessions(): Promise<void> {
     renderFrame();
 
     // Fire-and-forget git branch lookup (async, updates sidebar when done)
-    lookupGitBranches(sessions);
+    lookupSessionDetails(sessions);
   } catch {
     // tmux server may be shutting down
   }
@@ -193,6 +202,16 @@ const inputRouter = new InputRouter(
       if (session) switchSession(session.id);
     },
     onSidebarExit: () => exitOverlay(),
+    onSessionPrev: () => switchByOffset(-1),
+    onSessionNext: () => switchByOffset(1),
+    onNewSession: () => {
+      if (!ptyClientName) return;
+      control
+        .sendCommand(
+          `display-popup -c ${ptyClientName} -E -w 40% -h 3 -b heavy -S 'fg=#4f565d' "printf 'Session name: '; read name && tmux new-session -d -s \\"\\$name\\""`,
+        )
+        .catch(() => {});
+    },
   },
   sidebarShown,
 );
@@ -278,7 +297,8 @@ control.onEvent((event: ControlEvent) => {
 
 // --- Git branch lookup ---
 
-async function lookupGitBranches(sessions: SessionInfo[]): Promise<void> {
+async function lookupSessionDetails(sessions: SessionInfo[]): Promise<void> {
+  const home = process.env.HOME || "";
   for (const session of sessions) {
     try {
       const result =
@@ -286,6 +306,10 @@ async function lookupGitBranches(sessions: SessionInfo[]): Promise<void> {
           .text();
       const cwd = result.trim();
       if (!cwd) continue;
+      // Directory with ~ substitution
+      session.directory = cwd.startsWith(home)
+        ? "~" + cwd.slice(home.length)
+        : cwd;
       const branch = await $`git -C ${cwd} branch --show-current`
         .text()
         .catch(() => "");
@@ -301,7 +325,6 @@ async function lookupGitBranches(sessions: SessionInfo[]): Promise<void> {
 // --- Startup sequence ---
 
 async function start(): Promise<void> {
-  dbg("start: waiting for first PTY data");
   // Wait for first PTY data (tmux is ready) using a one-shot flag
   await new Promise<void>((resolve) => {
     let resolved = false;
@@ -313,20 +336,15 @@ async function start(): Promise<void> {
     });
   });
 
-  dbg("start: PTY data received, starting control mode");
   // Start control mode
   await control.start(socketName);
 
-  dbg("start: control mode started, resolving client name");
   // Resolve PTY client name
   await resolveClientName();
-  dbg(`start: client name resolved: ${ptyClientName}`);
 
   // Query tmux prefix key
   try {
-    dbg("start: querying prefix");
     const lines = await control.sendCommand("show-options -g prefix");
-    dbg(`start: prefix response: ${JSON.stringify(lines)}`);
     if (lines.length > 0) {
       const match = lines[0].match(/prefix\s+(.*)/);
       if (match) {
@@ -340,28 +358,25 @@ async function start(): Promise<void> {
       }
     }
   } catch (e) {
-    dbg(`start: prefix query failed: ${e}`);
   }
 
-  dbg("start: fetching sessions");
   // Fetch initial sessions
   await fetchSessions();
 
-  dbg("start: registering attention subscription");
   // Subscribe to @jmux-attention across all sessions
   await control.registerSubscription(
     "attention",
     1,
     "#{S:#{session_id}=#{@jmux-attention} }",
   );
-  dbg("start: fully started");
 }
 
 // --- Cleanup ---
 
-function cleanup(reason: string): void {
-  dbg(`cleanup called: ${reason}`);
+function cleanup(): void {
   control.close().catch(() => {});
+  process.stdout.write("\x1b[?1000l"); // disable mouse button tracking
+  process.stdout.write("\x1b[?1006l"); // disable SGR mouse mode
   process.stdout.write("\x1b[?25h");
   process.stdout.write("\x1b[?1049l");
   if (process.stdin.setRawMode) {
@@ -370,17 +385,10 @@ function cleanup(reason: string): void {
   process.exit(0);
 }
 
-pty.onExit((code) => {
-  dbg(`pty exited with code ${code}`);
-  cleanup("pty-exit");
-});
-process.on("SIGINT", () => cleanup("sigint"));
-process.on("SIGTERM", () => cleanup("sigterm"));
+pty.onExit(() => cleanup());
+process.on("SIGINT", () => cleanup());
+process.on("SIGTERM", () => cleanup());
 
 // --- Go ---
 
-dbg("=== jmux starting ===");
-start().catch((err) => {
-  dbg(`start() threw: ${err?.stack || err}`);
-  cleanup("start-error");
-});
+start().catch(() => cleanup());
