@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { translateMouseX, parseSgrMouse } from "../input-router";
+import { translateMouseX, parseSgrMouse, InputRouter } from "../input-router";
 
 describe("parseSgrMouse", () => {
   test("parses SGR mouse button press", () => {
@@ -45,5 +45,84 @@ describe("translateMouseX", () => {
   test("returns null if translated x would be <= 0", () => {
     const result = translateMouseX("\x1b[<0;10;5M", 25);
     expect(result).toBeNull();
+  });
+});
+
+describe("Ctrl-Shift arrow detection", () => {
+  test("calls onSessionPrev for Ctrl-Shift-Up", () => {
+    let prevCalled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        tmuxPrefix: "\x01",
+        prefixTimeout: 50,
+        onPtyData: () => {},
+        onSidebarEnter: () => {},
+        onSidebarClick: () => {},
+        onSessionPrev: () => { prevCalled = true; },
+      },
+      true,
+    );
+    router.handleInput("\x1b[1;6A");
+    expect(prevCalled).toBe(true);
+  });
+
+  test("calls onSessionNext for Ctrl-Shift-Down", () => {
+    let nextCalled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        tmuxPrefix: "\x01",
+        prefixTimeout: 50,
+        onPtyData: () => {},
+        onSidebarEnter: () => {},
+        onSidebarClick: () => {},
+        onSessionNext: () => { nextCalled = true; },
+      },
+      true,
+    );
+    router.handleInput("\x1b[1;6B");
+    expect(nextCalled).toBe(true);
+  });
+
+  test("Ctrl-Shift arrows are not forwarded to PTY", () => {
+    let ptyData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        tmuxPrefix: "\x01",
+        prefixTimeout: 50,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarEnter: () => {},
+        onSidebarClick: () => {},
+        onSessionPrev: () => {},
+        onSessionNext: () => {},
+      },
+      true,
+    );
+    router.handleInput("\x1b[1;6A");
+    router.handleInput("\x1b[1;6B");
+    expect(ptyData).toBe("");
+  });
+});
+
+describe("prefix + n for new session", () => {
+  test("calls onNewSession after prefix + n", () => {
+    let newCalled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        tmuxPrefix: "\x01",
+        prefixTimeout: 50,
+        onPtyData: () => {},
+        onSidebarEnter: () => {},
+        onSidebarClick: () => {},
+        onNewSession: () => { newCalled = true; },
+      },
+      true,
+    );
+    router.handleInput("\x01");
+    router.handleInput("n");
+    expect(newCalled).toBe(true);
   });
 });

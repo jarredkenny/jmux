@@ -39,6 +39,9 @@ export interface InputRouterOptions {
   onSidebarEnter: () => void;
   onSidebarClick: (row: number) => void;
   onSidebarExit?: () => void;
+  onSessionPrev?: () => void;
+  onSessionNext?: () => void;
+  onNewSession?: () => void;
 }
 
 export class InputRouter {
@@ -66,6 +69,16 @@ export class InputRouter {
     // If in sidebar mode, route to sidebar handler
     if (this.sidebarMode) {
       this.handleSidebarModeInput(data);
+      return;
+    }
+
+    // Always-active hotkeys: Ctrl-Shift-Up/Down for session switching
+    if (data === "\x1b[1;6A") {
+      this.opts.onSessionPrev?.();
+      return;
+    }
+    if (data === "\x1b[1;6B") {
+      this.opts.onSessionNext?.();
       return;
     }
 
@@ -112,7 +125,12 @@ export class InputRouter {
         this.opts.onSidebarEnter();
         return;
       }
-      // Not 'j' — forward prefix + this key to PTY
+      if (data === "n") {
+        // Create new session
+        this.opts.onNewSession?.();
+        return;
+      }
+      // Not 'j' or 'n' — forward prefix + this key to PTY
       this.opts.onPtyData(this.opts.tmuxPrefix + data);
       return;
     }
