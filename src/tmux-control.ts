@@ -131,7 +131,6 @@ export class TmuxControl {
     resolve: (lines: string[]) => void;
     reject: (err: Error) => void;
   }> = [];
-  private writer: WritableStreamDefaultWriter | null = null;
 
   constructor() {
     this.parser.onEvent((event) => {
@@ -163,8 +162,6 @@ export class TmuxControl {
       stderr: "ignore",
     });
 
-    this.writer = this.proc.stdin!.getWriter();
-
     // Read stdout in background
     this.readOutput();
 
@@ -188,12 +185,13 @@ export class TmuxControl {
   }
 
   async sendCommand(cmd: string): Promise<string[]> {
-    if (!this.writer) throw new Error("TmuxControl not started");
+    if (!this.proc?.stdin) throw new Error("TmuxControl not started");
     const promise = new Promise<string[]>((resolve, reject) => {
       this.pendingQueue.push({ resolve, reject });
     });
-    const encoded = new TextEncoder().encode(cmd + "\n");
-    await this.writer.write(encoded);
+    // Bun.spawn with stdin:"pipe" gives a FileSink, not a WritableStream
+    this.proc.stdin.write(cmd + "\n");
+    this.proc.stdin.flush();
     return promise;
   }
 
@@ -208,9 +206,9 @@ export class TmuxControl {
   }
 
   async close(): Promise<void> {
-    if (this.writer) {
+    if (this.proc?.stdin) {
       try {
-        await this.writer.close();
+        this.proc.stdin.end();
       } catch {
         // Already closed
       }
