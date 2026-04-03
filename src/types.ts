@@ -34,4 +34,6 @@ export interface SessionInfo {
   activity: number;
   gitBranch?: string;
   attention: boolean;
+  windowCount: number;
+  directory?: string;
 }
