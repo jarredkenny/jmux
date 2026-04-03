@@ -1,0 +1,21 @@
+{
+  "name": "jmux",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "jmux": "./bin/jmux"
+  },
+  "scripts": {
+    "dev": "bun run src/main.ts",
+    "test": "bun test",
+    "typecheck": "bun run tsc --noEmit"
+  },
+  "dependencies": {
+    "@xterm/headless": "^6.0.0",
+    "bun-pty": "^0.4.8"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}
