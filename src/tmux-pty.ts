@@ -2,6 +2,7 @@ import { Terminal } from "bun-pty";
 
 export interface TmuxPtyOptions {
   sessionName?: string;
+  socketName?: string;
   cols: number;
   rows: number;
 }
@@ -13,7 +14,11 @@ export class TmuxPty {
   private exitListeners: Array<(code: number) => void> = [];
 
   constructor(options: TmuxPtyOptions) {
-    const args = ["new-session", "-A"];
+    const args: string[] = [];
+    if (options.socketName) {
+      args.push("-L", options.socketName);
+    }
+    args.push("new-session", "-A");
     if (options.sessionName) {
       args.push("-s", options.sessionName);
     }

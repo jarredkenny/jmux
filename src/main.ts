@@ -6,12 +6,27 @@ import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo } from "./types";
+import { appendFileSync } from "fs";
+
+const DEBUG_LOG = "/tmp/jmux-debug.log";
+function dbg(msg: string): void {
+  appendFileSync(DEBUG_LOG, `[${Date.now()}] ${msg}\n`);
+}
 
 const SIDEBAR_WIDTH = 24;
 const BORDER_WIDTH = 1;
 const SIDEBAR_TOTAL = SIDEBAR_WIDTH + BORDER_WIDTH;
 
-const sessionName = process.argv[2] || undefined;
+// Parse args: jmux [session] [--socket name]
+let sessionName: string | undefined;
+let socketName: string | undefined;
+for (let i = 2; i < process.argv.length; i++) {
+  if (process.argv[i] === "--socket" || process.argv[i] === "-L") {
+    socketName = process.argv[++i];
+  } else if (!sessionName) {
+    sessionName = process.argv[i];
+  }
+}
 const cols = process.stdout.columns || 80;
 const rows = process.stdout.rows || 24;
 const sidebarVisible = cols >= 80;
@@ -26,7 +41,7 @@ if (process.stdin.setRawMode) {
 process.stdin.resume();
 
 // Core components
-const pty = new TmuxPty({ sessionName, cols: mainCols, rows });
+const pty = new TmuxPty({ sessionName, socketName, cols: mainCols, rows });
 const bridge = new ScreenBridge(mainCols, rows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(SIDEBAR_WIDTH, rows);
@@ -133,10 +148,28 @@ function exitOverlay(): void {
 
 // --- Rendering ---
 
+let renderTimer: ReturnType<typeof setTimeout> | null = null;
+
 function renderFrame(): void {
   const grid = bridge.getGrid();
   const cursor = bridge.getCursor();
   renderer.render(grid, cursor, sidebarShown ? sidebar.getGrid() : null);
+}
+
+function scheduleRender(): void {
+  if (renderTimer !== null) return;
+  renderTimer = setTimeout(() => {
+    renderTimer = null;
+    renderFrame();
+  }, 16); // ~60fps cap
+}
+
+function renderNow(): void {
+  if (renderTimer !== null) {
+    clearTimeout(renderTimer);
+    renderTimer = null;
+  }
+  renderFrame();
 }
 
 // --- Input Router ---
@@ -187,7 +220,7 @@ inputRouter.setSidebarKeyHandler((key) => {
 
 pty.onData((data: string) => {
   bridge.write(data).then(() => {
-    renderFrame();
+    scheduleRender();
   });
 });
 
@@ -268,6 +301,7 @@ async function lookupGitBranches(sessions: SessionInfo[]): Promise<void> {
 // --- Startup sequence ---
 
 async function start(): Promise<void> {
+  dbg("start: waiting for first PTY data");
   // Wait for first PTY data (tmux is ready) using a one-shot flag
   await new Promise<void>((resolve) => {
     let resolved = false;
@@ -279,15 +313,20 @@ async function start(): Promise<void> {
     });
   });
 
+  dbg("start: PTY data received, starting control mode");
   // Start control mode
-  await control.start();
+  await control.start(socketName);
 
+  dbg("start: control mode started, resolving client name");
   // Resolve PTY client name
   await resolveClientName();
+  dbg(`start: client name resolved: ${ptyClientName}`);
 
   // Query tmux prefix key
   try {
+    dbg("start: querying prefix");
     const lines = await control.sendCommand("show-options -g prefix");
+    dbg(`start: prefix response: ${JSON.stringify(lines)}`);
     if (lines.length > 0) {
       const match = lines[0].match(/prefix\s+(.*)/);
       if (match) {
@@ -300,24 +339,28 @@ async function start(): Promise<void> {
         }
       }
     }
-  } catch {
-    // Default prefix stays
+  } catch (e) {
+    dbg(`start: prefix query failed: ${e}`);
   }
 
+  dbg("start: fetching sessions");
   // Fetch initial sessions
   await fetchSessions();
 
+  dbg("start: registering attention subscription");
   // Subscribe to @jmux-attention across all sessions
   await control.registerSubscription(
     "attention",
     1,
     "#{S:#{session_id}=#{@jmux-attention} }",
   );
+  dbg("start: fully started");
 }
 
 // --- Cleanup ---
 
-function cleanup(): void {
+function cleanup(reason: string): void {
+  dbg(`cleanup called: ${reason}`);
   control.close().catch(() => {});
   process.stdout.write("\x1b[?25h");
   process.stdout.write("\x1b[?1049l");
@@ -327,13 +370,17 @@ function cleanup(): void {
   process.exit(0);
 }
 
-pty.onExit(() => cleanup());
-process.on("SIGINT", cleanup);
-process.on("SIGTERM", cleanup);
+pty.onExit((code) => {
+  dbg(`pty exited with code ${code}`);
+  cleanup("pty-exit");
+});
+process.on("SIGINT", () => cleanup("sigint"));
+process.on("SIGTERM", () => cleanup("sigterm"));
 
 // --- Go ---
 
+dbg("=== jmux starting ===");
 start().catch((err) => {
-  process.stderr.write(`jmux startup error: ${err}\n`);
-  cleanup();
+  dbg(`start() threw: ${err?.stack || err}`);
+  cleanup("start-error");
 });

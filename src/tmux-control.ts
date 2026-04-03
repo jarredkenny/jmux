@@ -155,8 +155,11 @@ export class TmuxControl {
     this.parser.onEvent(listener);
   }
 
-  async start(): Promise<void> {
-    this.proc = Bun.spawn(["tmux", "-C", "attach"], {
+  async start(socketName?: string): Promise<void> {
+    const args = ["tmux"];
+    if (socketName) args.push("-L", socketName);
+    args.push("-C", "attach");
+    this.proc = Bun.spawn(args, {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "ignore",
