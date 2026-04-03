@@ -35,6 +35,7 @@ const control = new TmuxControl();
 let currentSessionId: string | null = null;
 let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
+let overlayMode = false;
 const lastViewedTimestamps = new Map<string, number>();
 
 // --- Session data helpers ---
@@ -120,6 +121,16 @@ async function switchSession(sessionId: string): Promise<void> {
   }
 }
 
+// --- Overlay helpers ---
+
+function exitOverlay(): void {
+  if (overlayMode) {
+    overlayMode = false;
+    sidebarShown = false;
+    renderFrame();
+  }
+}
+
 // --- Rendering ---
 
 function renderFrame(): void {
@@ -137,12 +148,18 @@ const inputRouter = new InputRouter(
     prefixTimeout: 50,
     onPtyData: (data) => pty.write(data),
     onSidebarEnter: () => {
-      renderFrame(); // re-render with highlight visible
+      if (!sidebarShown) {
+        // Narrow terminal — show sidebar as overlay
+        overlayMode = true;
+        sidebarShown = true;
+      }
+      renderFrame();
     },
     onSidebarClick: (row) => {
       const session = sidebar.getSessionByRow(row);
       if (session) switchSession(session.id);
     },
+    onSidebarExit: () => exitOverlay(),
   },
   sidebarShown,
 );
@@ -162,6 +179,7 @@ inputRouter.setSidebarKeyHandler((key) => {
     const targetId = sidebar.getHighlightedSessionId();
     if (targetId) switchSession(targetId);
     inputRouter.exitSidebarMode();
+    exitOverlay();
   }
 });
 
@@ -188,6 +206,7 @@ process.on("SIGWINCH", () => {
   const newMainCols = newSidebarVisible ? newCols - SIDEBAR_TOTAL : newCols;
 
   sidebarShown = newSidebarVisible;
+  overlayMode = false;
   inputRouter.setSidebarVisible(newSidebarVisible);
   pty.resize(newMainCols, newRows);
   bridge.resize(newMainCols, newRows);

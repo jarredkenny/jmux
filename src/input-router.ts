@@ -38,6 +38,7 @@ export interface InputRouterOptions {
   onPtyData: (data: string) => void;
   onSidebarEnter: () => void;
   onSidebarClick: (row: number) => void;
+  onSidebarExit?: () => void;
 }
 
 export class InputRouter {
@@ -132,6 +133,7 @@ export class InputRouter {
     if (data === "\x1b") {
       // Escape — exit sidebar mode
       this.sidebarMode = false;
+      this.opts.onSidebarExit?.();
       return;
     }
     if (this.onSidebarKey) {
