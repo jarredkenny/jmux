@@ -130,8 +130,13 @@ The session is created in the selected directory and the sidebar updates immedia
 | Key | Action |
 |-----|--------|
 | `Ctrl-a c` | New window (opens in `~`) |
+| `Ctrl-a j` | fzf window picker |
 | `Ctrl-Right` / `Ctrl-Left` | Next / previous window |
 | `Ctrl-Shift-Right` / `Ctrl-Shift-Left` | Reorder windows |
+
+`Ctrl-a j` opens a full-height fzf popup on the left side of the screen with all windows in the current session. Type to fuzzy search, Enter to switch.
+
+![fzf window picker popup](docs/screenshots/window-picker.png)
 
 ### Panes
 
