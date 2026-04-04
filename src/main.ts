@@ -76,8 +76,9 @@ const SIDEBAR_WIDTH = 24;
 const BORDER_WIDTH = 1;
 const SIDEBAR_TOTAL = SIDEBAR_WIDTH + BORDER_WIDTH;
 
-// Resolve bundled config path relative to source
-const configFile = resolve(dirname(import.meta.dir), "config", "tmux.conf");
+// Resolve paths relative to source
+const jmuxDir = resolve(dirname(import.meta.dir));
+const configFile = resolve(jmuxDir, "config", "tmux.conf");
 
 // Parse args: jmux [session] [--socket name]
 let sessionName: string | undefined;
@@ -104,7 +105,7 @@ if (process.stdin.setRawMode) {
 process.stdin.resume();
 
 // Core components
-const pty = new TmuxPty({ sessionName, socketName, configFile, cols: mainCols, rows });
+const pty = new TmuxPty({ sessionName, socketName, configFile, jmuxDir, cols: mainCols, rows });
 const bridge = new ScreenBridge(mainCols, rows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(SIDEBAR_WIDTH, rows);
@@ -277,15 +278,6 @@ const inputRouter = new InputRouter(
     },
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),
-    onNewSession: () => {
-      if (!ptyClientName) return;
-      const scriptPath = resolve(dirname(import.meta.dir), "config", "new-session.sh");
-      control
-        .sendCommand(
-          `display-popup -c ${ptyClientName} -E -w 60% -h 70% -b heavy -S 'fg=#4f565d' "${scriptPath}"`,
-        )
-        .catch(() => {});
-    },
   },
   sidebarShown,
 );

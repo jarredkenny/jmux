@@ -39,7 +39,6 @@ export interface InputRouterOptions {
   onSidebarExit?: () => void;
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
-  onNewSession?: () => void;
 }
 
 export class InputRouter {
@@ -148,10 +147,6 @@ export class InputRouter {
     if (key === "j") {
       this.sidebarMode = true;
       this.opts.onSidebarEnter();
-      return true;
-    }
-    if (key === "n") {
-      this.opts.onNewSession?.();
       return true;
     }
     return false;

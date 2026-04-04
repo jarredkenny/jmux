@@ -4,6 +4,7 @@ export interface TmuxPtyOptions {
   sessionName?: string;
   socketName?: string;
   configFile?: string;
+  jmuxDir?: string;
   cols: number;
   rows: number;
 }
@@ -34,6 +35,7 @@ export class TmuxPty {
       env: {
         ...process.env,
         TERM: "xterm-256color",
+        JMUX_DIR: options.jmuxDir || "",
       },
     });
 

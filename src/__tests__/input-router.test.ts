@@ -106,23 +106,22 @@ describe("Ctrl-Shift arrow detection", () => {
   });
 });
 
-describe("prefix + n for new session", () => {
-  test("calls onNewSession after prefix + n", () => {
-    let newCalled = false;
+describe("prefix + n passthrough", () => {
+  test("forwards prefix + n to PTY (tmux handles it natively)", () => {
+    let ptyData = "";
     const router = new InputRouter(
       {
         sidebarCols: 24,
         tmuxPrefix: "\x01",
         prefixTimeout: 50,
-        onPtyData: () => {},
+        onPtyData: (d) => { ptyData += d; },
         onSidebarEnter: () => {},
         onSidebarClick: () => {},
-        onNewSession: () => { newCalled = true; },
       },
       true,
     );
     router.handleInput("\x01");
     router.handleInput("n");
-    expect(newCalled).toBe(true);
+    expect(ptyData).toBe("\x01n");
   });
 });
