@@ -3,18 +3,18 @@
 jmux loads tmux config in three layers:
 
 ```
-~/.tmux.conf              ← your config (sourced first)
-config/defaults.conf      ← jmux defaults
+config/defaults.conf      ← jmux defaults (baseline)
+~/.tmux.conf              ← your config (overrides defaults)
 config/core.conf          ← jmux requirements (sourced last, always wins)
 ```
 
-Your existing `~/.tmux.conf` is loaded first — plugins, theme, prefix key, custom bindings all carry over. jmux's defaults fill in anything you haven't set. Core settings are applied last and cannot be overridden.
+jmux defaults are applied first as a baseline. Your `~/.tmux.conf` is sourced next — anything you set there overrides jmux's defaults. Core settings are applied last and cannot be overridden.
 
 Restart jmux to pick up changes. There's no hot-reload.
 
 ## Customizing in ~/.tmux.conf
 
-Since your `~/.tmux.conf` is sourced first, just add or change settings there like you normally would. jmux's defaults will fill in anything you don't set, and core will override the few things it needs.
+jmux's defaults are sourced first, then your `~/.tmux.conf` overrides them. Anything you set in `~/.tmux.conf` wins over jmux's defaults. Only core settings (listed below) cannot be overridden.
 
 ```bash
 # Edit your tmux config as usual

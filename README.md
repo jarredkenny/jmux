@@ -190,12 +190,12 @@ jmux shows an orange `!` indicator. When you switch to that session, the flag cl
 jmux loads config in three layers:
 
 ```
-~/.tmux.conf              ← your config (plugins, theme, bindings)
-config/defaults.conf      ← jmux defaults (can be overridden)
+config/defaults.conf      ← jmux defaults (baseline)
+~/.tmux.conf              ← your config (overrides defaults)
 config/core.conf          ← jmux requirements (always wins)
 ```
 
-Your `~/.tmux.conf` is sourced first. Your plugins, colors, prefix key, and custom bindings all carry over. jmux then applies its defaults (keybindings, status bar, window behavior) and finally the core settings the sidebar depends on.
+jmux defaults are applied first as a baseline. Your `~/.tmux.conf` is sourced next — anything you set overrides the defaults. Finally, the core settings the sidebar depends on are applied last and cannot be overridden.
 
 **Core settings** (cannot be overridden):
 - `detach-on-destroy off` — switch to next session on kill, don't exit jmux
