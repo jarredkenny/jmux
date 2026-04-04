@@ -6,9 +6,14 @@ import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo } from "./types";
+import { resolve, dirname } from "path";
+
 const SIDEBAR_WIDTH = 24;
 const BORDER_WIDTH = 1;
 const SIDEBAR_TOTAL = SIDEBAR_WIDTH + BORDER_WIDTH;
+
+// Resolve bundled config path relative to source
+const configFile = resolve(dirname(import.meta.dir), "config", "tmux.conf");
 
 // Parse args: jmux [session] [--socket name]
 let sessionName: string | undefined;
@@ -35,7 +40,7 @@ if (process.stdin.setRawMode) {
 process.stdin.resume();
 
 // Core components
-const pty = new TmuxPty({ sessionName, socketName, cols: mainCols, rows });
+const pty = new TmuxPty({ sessionName, socketName, configFile, cols: mainCols, rows });
 const bridge = new ScreenBridge(mainCols, rows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(SIDEBAR_WIDTH, rows);
@@ -356,24 +361,9 @@ async function start(): Promise<void> {
   });
 
   // Start control mode
-  await control.start(socketName);
+  await control.start({ socketName, configFile });
 
-  // Query tmux prefix key
-  try {
-    const lines = await control.sendCommand("show-options -g prefix");
-    if (lines.length > 0) {
-      const match = lines[0].match(/prefix\s+(.*)/);
-      if (match) {
-        const prefixName = match[1].trim();
-        if (prefixName === "C-a") {
-          (inputRouter as any).opts.tmuxPrefix = "\x01";
-        } else if (prefixName === "C-b") {
-          (inputRouter as any).opts.tmuxPrefix = "\x02";
-        }
-      }
-    }
-  } catch (e) {
-  }
+  // Prefix is C-a — hardcoded since we ship our own tmux.conf
 
   // Fetch initial sessions, then resolve client name (needs sessions list)
   await fetchSessions();

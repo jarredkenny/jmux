@@ -3,6 +3,7 @@ import { Terminal } from "bun-pty";
 export interface TmuxPtyOptions {
   sessionName?: string;
   socketName?: string;
+  configFile?: string;
   cols: number;
   rows: number;
 }
@@ -15,6 +16,9 @@ export class TmuxPty {
 
   constructor(options: TmuxPtyOptions) {
     const args: string[] = [];
+    if (options.configFile) {
+      args.push("-f", options.configFile);
+    }
     if (options.socketName) {
       args.push("-L", options.socketName);
     }
