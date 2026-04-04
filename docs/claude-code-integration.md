@@ -2,6 +2,14 @@
 
 jmux supports attention flags that any tool can set on a tmux session. When a session has an attention flag, jmux shows an orange `!` indicator in the sidebar. This is designed for agentic workflows where you have multiple Claude Code instances running across sessions and need to know when one needs your input.
 
+## Quick Setup
+
+```bash
+jmux --install-agent-hooks
+```
+
+This adds a hook to `~/.claude/settings.json` that sets the attention flag whenever Claude Code finishes a response. Done — the orange `!` will appear in your sidebar when Claude needs your attention.
+
 ## The Attention Flag
 
 Set the `@jmux-attention` option on any tmux session:
@@ -14,55 +22,37 @@ jmux picks this up in real time via a tmux subscription. The orange `!` appears 
 
 When you switch to the session, jmux automatically clears the flag — no manual cleanup needed.
 
-## Claude Code Hooks
+## How the Hook Works
 
-Claude Code supports hooks that run shell commands in response to events. You can use these to set the attention flag when Claude needs your attention.
-
-### Notify When a Task Completes
-
-Add this to your Claude Code settings (`.claude/settings.json` or project-level):
+The `--install-agent-hooks` command adds a `Stop` hook to your Claude Code settings:
 
 ```json
 {
   "hooks": {
-    "stop": [
+    "Stop": [
       {
-        "command": "tmux set-option @jmux-attention 1",
-        "description": "Flag session in jmux when Claude stops"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tmux set-option @jmux-attention 1 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
       }
     ]
   }
 }
 ```
 
-The `stop` hook fires whenever Claude finishes responding. If you're in a different session, you'll see the `!` appear and know Claude is done.
-
-### Notify on Specific Events
-
-You can be more selective about when to set the flag:
-
-```json
-{
-  "hooks": {
-    "stop": [
-      {
-        "command": "tmux set-option @jmux-attention 1",
-        "description": "Flag session when Claude stops"
-      }
-    ]
-  }
-}
-```
-
-Or trigger it from a script that checks whether the stop reason indicates the task is complete vs. needs input.
+The `Stop` event fires whenever Claude finishes responding. The command sets the attention flag on the current session. The `2>/dev/null || true` ensures it's silent when run outside tmux.
 
 ## Multi-Session Workflow
 
 The typical workflow with jmux and Claude Code:
 
-1. **Start jmux** with a separate server for your AI work:
+1. **Start jmux:**
    ```bash
-   bun run bin/jmux -L work
+   jmux
    ```
 
 2. **Create sessions** for each project (`Ctrl-a n`):
@@ -99,10 +89,9 @@ bun test && tmux set-option @jmux-attention 1
 
 ## Using with a Separate Socket
 
-If you're running jmux with `-L` for an isolated server, your hooks and scripts need to target the same socket:
+If you're running jmux with `-L` for an isolated server, your scripts need to target the same socket:
 
 ```bash
-# Set attention on the jmux server specifically
 tmux -L work set-option -t my-session @jmux-attention 1
 ```
 

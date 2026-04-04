@@ -31,7 +31,7 @@ jmux wraps tmux with a persistent sidebar that shows all your sessions, all the 
 
 jmux owns the terminal. It spawns tmux in a PTY, feeds the output through a headless terminal emulator ([xterm.js](https://xtermjs.org/)), and composites a 24-column sidebar alongside the tmux rendering. A separate tmux control mode connection provides real-time session metadata via push notifications.
 
-jmux sources your `~/.tmux.conf` first, then layers its own defaults and the few settings the sidebar requires. Your existing setup carries over — jmux just adds the sidebar.
+jmux applies its defaults first, then sources your `~/.tmux.conf` so your settings override them. A small set of core settings the sidebar requires are applied last. Your existing setup carries over — jmux just adds the sidebar.
 
 ```
 ┌─ jmux sidebar ──┬─ your normal tmux ──────────────────────┐
@@ -79,7 +79,7 @@ jmux
 
 - [Bun](https://bun.sh) 1.2+
 - [tmux](https://github.com/tmux/tmux) 3.2+
-- [fzf](https://github.com/junegunn/fzf) (for new session modal)
+- [fzf](https://github.com/junegunn/fzf) (for session/window modals)
 - [git](https://git-scm.com/) (optional, for branch display)
 
 ### Usage
@@ -123,6 +123,8 @@ The session is created in the selected directory and the sidebar updates immedia
 | `Ctrl-Shift-Up` | Switch to previous session |
 | `Ctrl-Shift-Down` | Switch to next session |
 | `Ctrl-a n` | New session (directory picker + name) |
+| `Ctrl-a r` | Rename current session |
+| `Ctrl-a m` | Move current window to another session |
 | Click sidebar | Switch to that session |
 
 ### Windows
