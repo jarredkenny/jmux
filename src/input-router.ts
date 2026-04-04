@@ -99,37 +99,36 @@ export class InputRouter {
     }
 
     // Check for prefix key
-    if (data === this.opts.tmuxPrefix && !this.prefixPending) {
-      this.prefixPending = true;
-      this.prefixTimer = setTimeout(() => {
-        // Timeout: forward prefix to PTY
-        this.prefixPending = false;
-        this.prefixTimer = null;
-        this.opts.onPtyData(this.opts.tmuxPrefix);
-      }, this.opts.prefixTimeout);
+    const prefix = this.opts.tmuxPrefix;
+    if (data.startsWith(prefix) && !this.prefixPending) {
+      const rest = data.slice(prefix.length);
+      if (rest.length === 0) {
+        // Just the prefix byte alone — wait for follow-up
+        this.prefixPending = true;
+        this.prefixTimer = setTimeout(() => {
+          this.prefixPending = false;
+          this.prefixTimer = null;
+          this.opts.onPtyData(prefix);
+        }, this.opts.prefixTimeout);
+        return;
+      }
+      // Prefix + follow-up arrived in same chunk
+      if (this.handlePrefixFollowUp(rest)) return;
+      // Not intercepted — forward entire chunk to PTY
+      this.opts.onPtyData(data);
       return;
     }
 
-    // If prefix is pending, check for 'j'
+    // If prefix is pending, check follow-up key
     if (this.prefixPending) {
       this.prefixPending = false;
       if (this.prefixTimer) {
         clearTimeout(this.prefixTimer);
         this.prefixTimer = null;
       }
-      if (data === "j") {
-        // Enter sidebar mode
-        this.sidebarMode = true;
-        this.opts.onSidebarEnter();
-        return;
-      }
-      if (data === "n") {
-        // Create new session
-        this.opts.onNewSession?.();
-        return;
-      }
-      // Not 'j' or 'n' — forward prefix + this key to PTY
-      this.opts.onPtyData(this.opts.tmuxPrefix + data);
+      if (this.handlePrefixFollowUp(data)) return;
+      // Not intercepted — forward prefix + this key to PTY
+      this.opts.onPtyData(prefix + data);
       return;
     }
 
@@ -143,6 +142,19 @@ export class InputRouter {
 
   isInSidebarMode(): boolean {
     return this.sidebarMode;
+  }
+
+  private handlePrefixFollowUp(key: string): boolean {
+    if (key === "j") {
+      this.sidebarMode = true;
+      this.opts.onSidebarEnter();
+      return true;
+    }
+    if (key === "n") {
+      this.opts.onNewSession?.();
+      return true;
+    }
+    return false;
   }
 
   private handleSidebarModeInput(data: string): void {
