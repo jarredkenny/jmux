@@ -162,7 +162,7 @@ jmux is built for agentic workflows. When you have Claude Code running in multip
 ### One-Command Setup
 
 ```bash
-bun run bin/jmux --install-agent-hooks
+jmux --install-agent-hooks
 ```
 
 This adds a hook to `~/.claude/settings.json` that sets the attention flag whenever Claude Code finishes a response. The orange `!` appears in your sidebar so you know which session to check.
