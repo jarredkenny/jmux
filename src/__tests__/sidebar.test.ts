@@ -64,10 +64,10 @@ describe("Sidebar", () => {
       (_, i) => grid.cells[2][i].char,
     ).join("");
     expect(headerRow).toContain("Code/work");
-    // Row 3: first session in group "api"
+    // Row 3: spacer, Row 4: first session in group "api"
     const apiRow = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[3][i].char,
+      (_, i) => grid.cells[4][i].char,
     ).join("");
     expect(apiRow).toContain("api");
   });
@@ -90,7 +90,7 @@ describe("Sidebar", () => {
     expect(row2).toContain("only-one");
   });
 
-  test("grouped sessions show branch but not directory on detail line", () => {
+  test("grouped sessions show branch on detail line", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(
       makeSessions([
@@ -107,11 +107,10 @@ describe("Sidebar", () => {
       ]),
     );
     const grid = sidebar.getGrid();
-    // Find the detail row for "api" (row after "api" name row)
-    // Row 2: group header, Row 3: api name, Row 4: api detail
+    // Row 2: group header, Row 3: spacer, Row 4: api name, Row 5: api detail
     const detailRow = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[4][i].char,
+      (_, i) => grid.cells[5][i].char,
     ).join("");
     expect(detailRow).toContain("main");
     expect(detailRow).not.toContain("Code/work");
@@ -209,10 +208,12 @@ describe("Sidebar", () => {
 
     // Row 2: group header → null
     expect(sidebar.getSessionByRow(2)).toBeNull();
-    // Row 3: first session name row → api
-    expect(sidebar.getSessionByRow(3)?.name).toBe("api");
-    // Row 4: first session detail row → api
+    // Row 3: spacer → null
+    expect(sidebar.getSessionByRow(3)).toBeNull();
+    // Row 4: first session name row → api
     expect(sidebar.getSessionByRow(4)?.name).toBe("api");
+    // Row 5: first session detail row → api
+    expect(sidebar.getSessionByRow(5)?.name).toBe("api");
   });
 
   test("shows window count", () => {

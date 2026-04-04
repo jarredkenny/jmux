@@ -60,9 +60,23 @@ function getGroupLabel(dir: string): string | null {
   return segments[0] + "/" + segments[1];
 }
 
+function getSubdirectory(dir: string, groupLabel: string): string | null {
+  // dir: "~/Code/personal/jmux", groupLabel: "Code/personal" → "jmux"
+  // dir: "~/Code/personal/jmux/sub", groupLabel: "Code/personal" → "jmux/sub"
+  const idx = dir.indexOf(groupLabel);
+  if (idx < 0) return null;
+  const rest = dir.slice(idx + groupLabel.length);
+  // rest is e.g. "/jmux" or "/jmux/sub/deep"
+  const trimmed = rest.replace(/^\/+/, "");
+  if (!trimmed) return null;
+  // For nested paths, just show the last directory name
+  const lastSlash = trimmed.lastIndexOf("/");
+  return lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed;
+}
+
 type RenderItem =
   | { type: "group-header"; label: string }
-  | { type: "session"; sessionIndex: number; grouped: boolean }
+  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string }
   | { type: "spacer" };
 
 function buildRenderPlan(sessions: SessionInfo[]): {
@@ -114,8 +128,9 @@ function buildRenderPlan(sessions: SessionInfo[]): {
 
   for (const group of sortedGroups) {
     items.push({ type: "group-header", label: group.label });
+    items.push({ type: "spacer" });
     for (const idx of group.sessionIndices) {
-      items.push({ type: "session", sessionIndex: idx, grouped: true });
+      items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: group.label });
       displayOrder.push(idx);
       items.push({ type: "spacer" });
     }
@@ -215,64 +230,104 @@ export class Sidebar {
       if (!session) continue;
 
       const nameRow = row;
-      const detailRow = row + 1;
       const isActive = session.id === this.activeSessionId;
       const hasActivity = this.activitySet.has(session.id);
 
-      // Map rows to session for click handling
-      this.rowToSessionIndex.set(nameRow, sessionIdx);
-      if (detailRow < this.height) {
-        this.rowToSessionIndex.set(detailRow, sessionIdx);
-      }
+      if (item.grouped) {
+        // Grouped: two rows — name + window count, then subdirectory + branch
+        const detailRow = row + 1;
 
-      // Active marker
-      if (isActive) {
-        writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+        this.rowToSessionIndex.set(nameRow, sessionIdx);
         if (detailRow < this.height) {
-          writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+          this.rowToSessionIndex.set(detailRow, sessionIdx);
         }
-      }
 
-      // Indicator
-      if (session.attention) {
-        writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
-      } else if (hasActivity) {
-        writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
-      }
-
-      // Window count right-aligned
-      const windowCountStr = `${session.windowCount}w`;
-      const windowCountCol = this.width - windowCountStr.length - 1;
-
-      // Session name
-      const nameStart = 3;
-      const nameMaxLen = windowCountCol - 1 - nameStart;
-      let displayName = session.name;
-      if (displayName.length > nameMaxLen) {
-        displayName = displayName.slice(0, nameMaxLen - 1) + "\u2026";
-      }
-
-      const nameAttrs: CellAttrs = isActive
-        ? { ...ACTIVE_NAME_ATTRS }
-        : { ...INACTIVE_NAME_ATTRS };
-      writeString(grid, nameRow, nameStart, displayName, nameAttrs);
-
-      if (windowCountCol > nameStart) {
-        writeString(grid, nameRow, windowCountCol, windowCountStr, DIM_ATTRS);
-      }
-
-      // Detail line
-      if (detailRow < this.height) {
-        const detailStart = 3;
-
-        if (item.grouped) {
-          if (session.gitBranch) {
-            const branchCol = this.width - session.gitBranch.length - 1;
-            if (branchCol > detailStart) {
-              writeString(grid, detailRow, branchCol, session.gitBranch, DIM_ATTRS);
-            }
+        if (isActive) {
+          writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+          if (detailRow < this.height) {
+            writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
           }
-        } else {
+        }
+
+        if (session.attention) {
+          writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
+        } else if (hasActivity) {
+          writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
+        }
+
+        const windowCountStr = `${session.windowCount}w`;
+        const windowCountCol = this.width - windowCountStr.length - 1;
+        const nameStart = 3;
+        const nameMaxLen = windowCountCol - 1 - nameStart;
+        let displayName = session.name;
+        if (displayName.length > nameMaxLen) {
+          displayName = displayName.slice(0, nameMaxLen - 1) + "\u2026";
+        }
+
+        const nameAttrs: CellAttrs = isActive
+          ? { ...ACTIVE_NAME_ATTRS }
+          : { ...INACTIVE_NAME_ATTRS };
+        writeString(grid, nameRow, nameStart, displayName, nameAttrs);
+
+        if (windowCountCol > nameStart) {
+          writeString(grid, nameRow, windowCountCol, windowCountStr, DIM_ATTRS);
+        }
+
+        // Detail line: branch name
+        if (detailRow < this.height && session.gitBranch) {
+          const detailStart = 3;
+          const maxLen = this.width - detailStart - 1;
+          let branch = session.gitBranch;
+          if (branch.length > maxLen) {
+            branch = branch.slice(0, maxLen - 1) + "\u2026";
+          }
+          writeString(grid, detailRow, detailStart, branch, DIM_ATTRS);
+        }
+
+        row += 2;
+      } else {
+        // Ungrouped: two rows (name + detail)
+        const detailRow = row + 1;
+
+        this.rowToSessionIndex.set(nameRow, sessionIdx);
+        if (detailRow < this.height) {
+          this.rowToSessionIndex.set(detailRow, sessionIdx);
+        }
+
+        if (isActive) {
+          writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+          if (detailRow < this.height) {
+            writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+          }
+        }
+
+        if (session.attention) {
+          writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
+        } else if (hasActivity) {
+          writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
+        }
+
+        const windowCountStr = `${session.windowCount}w`;
+        const windowCountCol = this.width - windowCountStr.length - 1;
+        const nameStart = 3;
+        const nameMaxLen = windowCountCol - 1 - nameStart;
+        let displayName = session.name;
+        if (displayName.length > nameMaxLen) {
+          displayName = displayName.slice(0, nameMaxLen - 1) + "\u2026";
+        }
+
+        const nameAttrs: CellAttrs = isActive
+          ? { ...ACTIVE_NAME_ATTRS }
+          : { ...INACTIVE_NAME_ATTRS };
+        writeString(grid, nameRow, nameStart, displayName, nameAttrs);
+
+        if (windowCountCol > nameStart) {
+          writeString(grid, nameRow, windowCountCol, windowCountStr, DIM_ATTRS);
+        }
+
+        // Detail line
+        if (detailRow < this.height) {
+          const detailStart = 3;
           let branchCols = 0;
           if (session.gitBranch) {
             const branchCol = this.width - session.gitBranch.length - 1;
@@ -290,9 +345,9 @@ export class Sidebar {
             writeString(grid, detailRow, detailStart, displayDir, DIM_ATTRS);
           }
         }
-      }
 
-      row += 2;
+        row += 2;
+      }
     }
 
     return grid;
