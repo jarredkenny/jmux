@@ -2,7 +2,7 @@
 
 A persistent session sidebar for tmux. See every project at a glance, switch instantly, never lose context.
 
-![jmux with Claude Code, process monitor, and sidebar showing all sessions](docs/screenshots/jmux.png)
+![jmux sidebar with grouped sessions alongside vim and server logs](docs/screenshots/hero.png)
 
 ---
 
