@@ -369,6 +369,8 @@ async function start(): Promise<void> {
 
   // Re-apply our config to the running server — handles the case where
   // we attached to an existing server that loaded ~/.tmux.conf
+  // Set JMUX_DIR in tmux's global environment so config bindings can reference it
+  await control.sendCommand(`set-environment -g JMUX_DIR ${jmuxDir}`);
   await control.sendCommand(`source-file ${configFile}`);
 
   // Fetch initial sessions, then resolve client name (needs sessions list)
