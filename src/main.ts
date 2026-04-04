@@ -350,6 +350,10 @@ control.onEvent((event: ControlEvent) => {
       sidebar.setActiveSession(event.args);
       renderFrame();
       break;
+    case "client-session-changed":
+      // A client (possibly our PTY client) switched sessions — re-resolve
+      resolveClientName().then(() => renderFrame());
+      break;
     case "subscription-changed":
       if (event.name === "attention") {
         const pairs = event.value.trim().split(/\s+/);
