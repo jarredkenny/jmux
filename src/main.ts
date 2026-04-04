@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.3.3";
+const VERSION = "0.3.4";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -255,6 +255,7 @@ async function switchSession(sessionId: string): Promise<void> {
     sidebar.setActivity(sessionId, false);
     currentSessionId = sessionId;
     sidebar.setActiveSession(sessionId);
+    sidebar.scrollToActive();
     renderFrame();
 
     // Clear attention flag if set
@@ -297,6 +298,10 @@ const inputRouter = new InputRouter(
     onSidebarClick: (row) => {
       const session = sidebar.getSessionByRow(row);
       if (session) switchSession(session.id);
+    },
+    onSidebarScroll: (delta) => {
+      sidebar.scrollBy(delta);
+      scheduleRender();
     },
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),

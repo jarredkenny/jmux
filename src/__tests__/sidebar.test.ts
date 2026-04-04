@@ -235,4 +235,125 @@ describe("Sidebar", () => {
     }
     expect(found).toBe(true);
   });
+
+  test("scrolls to show active session when it overflows", () => {
+    // Height 10 = 2 header rows + 8 viewport rows
+    // Each session = 2 rows + 1 spacer = 3 rows, so 8 rows fits ~2.6 sessions
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "a" },
+        { name: "b" },
+        { name: "c" },
+        { name: "d" },
+      ]),
+    );
+    // Activate last session and scroll to it
+    sidebar.setActiveSession("$3");
+    sidebar.scrollToActive();
+    const grid = sidebar.getGrid();
+    // "d" should be visible somewhere in the grid
+    let found = false;
+    for (let r = 2; r < 10; r++) {
+      const text = Array.from(
+        { length: SIDEBAR_WIDTH },
+        (_, i) => grid.cells[r][i].char,
+      ).join("");
+      if (text.includes("d")) {
+        found = true;
+        break;
+      }
+    }
+    expect(found).toBe(true);
+  });
+
+  test("scrollBy moves viewport and clamps to bounds", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "a" },
+        { name: "b" },
+        { name: "c" },
+        { name: "d" },
+      ]),
+    );
+    // First session visible at start
+    let grid = sidebar.getGrid();
+    const row2 = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[2][i].char,
+    ).join("");
+    expect(row2).toContain("a");
+
+    // Scroll down
+    sidebar.scrollBy(3);
+    grid = sidebar.getGrid();
+    // "a" should no longer be on row 2
+    const row2After = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[2][i].char,
+    ).join("");
+    expect(row2After).not.toContain("a");
+
+    // Scroll way past the top — should clamp to 0
+    sidebar.scrollBy(-100);
+    grid = sidebar.getGrid();
+    const row2Reset = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[2][i].char,
+    ).join("");
+    expect(row2Reset).toContain("a");
+  });
+
+  test("shows scroll indicators when content overflows", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "a" },
+        { name: "b" },
+        { name: "c" },
+        { name: "d" },
+      ]),
+    );
+    // At top: should show down indicator but not up
+    let grid = sidebar.getGrid();
+    expect(grid.cells[2][SIDEBAR_WIDTH - 1].char).not.toBe("\u25b2");
+    expect(grid.cells[9][SIDEBAR_WIDTH - 1].char).toBe("\u25bc");
+
+    // Scroll to middle: should show both
+    sidebar.scrollBy(3);
+    grid = sidebar.getGrid();
+    expect(grid.cells[2][SIDEBAR_WIDTH - 1].char).toBe("\u25b2");
+  });
+
+  test("scrollToActive snaps back after manual scroll", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "a" },
+        { name: "b" },
+        { name: "c" },
+        { name: "d" },
+      ]),
+    );
+    sidebar.setActiveSession("$0"); // "a" is active
+    // Scroll away from active session
+    sidebar.scrollBy(6);
+    // Snap back
+    sidebar.scrollToActive();
+    const grid = sidebar.getGrid();
+    // "a" should be visible
+    let found = false;
+    for (let r = 2; r < 10; r++) {
+      const text = Array.from(
+        { length: SIDEBAR_WIDTH },
+        (_, i) => grid.cells[r][i].char,
+      ).join("");
+      if (text.includes("a")) {
+        found = true;
+        break;
+      }
+    }
+    expect(found).toBe(true);
+  });
 });

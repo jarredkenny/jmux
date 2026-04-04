@@ -145,6 +145,10 @@ function buildRenderPlan(sessions: SessionInfo[]): {
   return { items, displayOrder };
 }
 
+function itemHeight(item: RenderItem): number {
+  return item.type === "session" ? 2 : 1;
+}
+
 // --- Sidebar class ---
 
 export class Sidebar {
@@ -152,9 +156,11 @@ export class Sidebar {
   private height: number;
   private sessions: SessionInfo[] = [];
   private activeSessionId: string | null = null;
+  private items: RenderItem[] = [];
   private displayOrder: number[] = [];
   private rowToSessionIndex = new Map<number, number>();
   private activitySet = new Set<string>();
+  private scrollOffset = 0;
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -163,8 +169,10 @@ export class Sidebar {
 
   updateSessions(sessions: SessionInfo[]): void {
     this.sessions = sessions;
-    const { displayOrder } = buildRenderPlan(sessions);
+    const { items, displayOrder } = buildRenderPlan(sessions);
+    this.items = items;
     this.displayOrder = displayOrder;
+    this.clampScroll();
   }
 
   setActiveSession(id: string): void {
@@ -194,6 +202,41 @@ export class Sidebar {
   resize(width: number, height: number): void {
     this.width = width;
     this.height = height;
+    this.clampScroll();
+  }
+
+  scrollBy(delta: number): void {
+    this.scrollOffset += delta;
+    this.clampScroll();
+  }
+
+  scrollToActive(): void {
+    if (!this.activeSessionId) return;
+    const viewportHeight = this.height - HEADER_ROWS;
+    let vRow = 0;
+    for (const item of this.items) {
+      const h = itemHeight(item);
+      if (item.type === "session") {
+        const session = this.sessions[item.sessionIndex];
+        if (session?.id === this.activeSessionId) {
+          if (vRow < this.scrollOffset) {
+            this.scrollOffset = vRow;
+          } else if (vRow + h > this.scrollOffset + viewportHeight) {
+            this.scrollOffset = vRow + h - viewportHeight;
+          }
+          this.clampScroll();
+          return;
+        }
+      }
+      vRow += h;
+    }
+  }
+
+  private clampScroll(): void {
+    const totalRows = this.items.reduce((sum, item) => sum + itemHeight(item), 0);
+    const viewportHeight = this.height - HEADER_ROWS;
+    const maxOffset = Math.max(0, totalRows - viewportHeight);
+    this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset));
   }
 
   getGrid(): CellGrid {
@@ -204,152 +247,134 @@ export class Sidebar {
     writeString(grid, 0, 1, "jmux", { ...ACCENT_ATTRS, bold: true });
     writeString(grid, 1, 0, "\u2500".repeat(this.width), DIM_ATTRS);
 
-    const { items } = buildRenderPlan(this.sessions);
-    let row = HEADER_ROWS;
+    const viewportHeight = this.height - HEADER_ROWS;
+    let vRow = 0;
+    let totalRows = 0;
 
-    for (const item of items) {
-      if (row >= this.height) break;
+    for (const item of this.items) {
+      const h = itemHeight(item);
+      const screenRow = HEADER_ROWS + vRow - this.scrollOffset;
+
+      // Skip items entirely above viewport
+      if (screenRow + h <= HEADER_ROWS) {
+        vRow += h;
+        totalRows += h;
+        continue;
+      }
+      // Track total rows even after viewport
+      if (screenRow >= this.height) {
+        vRow += h;
+        totalRows += h;
+        continue;
+      }
 
       if (item.type === "group-header") {
         let label = item.label;
         if (label.length > this.width - 2) {
           label = label.slice(0, this.width - 3) + "\u2026";
         }
-        writeString(grid, row, 1, label, GROUP_HEADER_ATTRS);
-        row++;
-        continue;
-      }
-
-      if (item.type === "spacer") {
-        row++;
-        continue;
-      }
-
-      const sessionIdx = item.sessionIndex;
-      const session = this.sessions[sessionIdx];
-      if (!session) continue;
-
-      const nameRow = row;
-      const isActive = session.id === this.activeSessionId;
-      const hasActivity = this.activitySet.has(session.id);
-
-      if (item.grouped) {
-        // Grouped: two rows — name + window count, then subdirectory + branch
-        const detailRow = row + 1;
-
-        this.rowToSessionIndex.set(nameRow, sessionIdx);
-        if (detailRow < this.height) {
-          this.rowToSessionIndex.set(detailRow, sessionIdx);
-        }
-
-        if (isActive) {
-          writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
-          if (detailRow < this.height) {
-            writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
-          }
-        }
-
-        if (session.attention) {
-          writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
-        } else if (hasActivity) {
-          writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
-        }
-
-        const windowCountStr = `${session.windowCount}w`;
-        const windowCountCol = this.width - windowCountStr.length - 1;
-        const nameStart = 3;
-        const nameMaxLen = windowCountCol - 1 - nameStart;
-        let displayName = session.name;
-        if (displayName.length > nameMaxLen) {
-          displayName = displayName.slice(0, nameMaxLen - 1) + "\u2026";
-        }
-
-        const nameAttrs: CellAttrs = isActive
-          ? { ...ACTIVE_NAME_ATTRS }
-          : { ...INACTIVE_NAME_ATTRS };
-        writeString(grid, nameRow, nameStart, displayName, nameAttrs);
-
-        if (windowCountCol > nameStart) {
-          writeString(grid, nameRow, windowCountCol, windowCountStr, DIM_ATTRS);
-        }
-
-        // Detail line: branch name
-        if (detailRow < this.height && session.gitBranch) {
-          const detailStart = 3;
-          const maxLen = this.width - detailStart - 1;
-          let branch = session.gitBranch;
-          if (branch.length > maxLen) {
-            branch = branch.slice(0, maxLen - 1) + "\u2026";
-          }
-          writeString(grid, detailRow, detailStart, branch, DIM_ATTRS);
-        }
-
-        row += 2;
+        writeString(grid, screenRow, 1, label, GROUP_HEADER_ATTRS);
+      } else if (item.type === "spacer") {
+        // nothing to render
       } else {
-        // Ungrouped: two rows (name + detail)
-        const detailRow = row + 1;
-
-        this.rowToSessionIndex.set(nameRow, sessionIdx);
-        if (detailRow < this.height) {
-          this.rowToSessionIndex.set(detailRow, sessionIdx);
-        }
-
-        if (isActive) {
-          writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
-          if (detailRow < this.height) {
-            writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
-          }
-        }
-
-        if (session.attention) {
-          writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
-        } else if (hasActivity) {
-          writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
-        }
-
-        const windowCountStr = `${session.windowCount}w`;
-        const windowCountCol = this.width - windowCountStr.length - 1;
-        const nameStart = 3;
-        const nameMaxLen = windowCountCol - 1 - nameStart;
-        let displayName = session.name;
-        if (displayName.length > nameMaxLen) {
-          displayName = displayName.slice(0, nameMaxLen - 1) + "\u2026";
-        }
-
-        const nameAttrs: CellAttrs = isActive
-          ? { ...ACTIVE_NAME_ATTRS }
-          : { ...INACTIVE_NAME_ATTRS };
-        writeString(grid, nameRow, nameStart, displayName, nameAttrs);
-
-        if (windowCountCol > nameStart) {
-          writeString(grid, nameRow, windowCountCol, windowCountStr, DIM_ATTRS);
-        }
-
-        // Detail line
-        if (detailRow < this.height) {
-          const detailStart = 3;
-          let branchCols = 0;
-          if (session.gitBranch) {
-            const branchCol = this.width - session.gitBranch.length - 1;
-            if (branchCol > detailStart + 1) {
-              writeString(grid, detailRow, branchCol, session.gitBranch, DIM_ATTRS);
-              branchCols = session.gitBranch.length + 2;
-            }
-          }
-          if (session.directory !== undefined) {
-            const dirMaxLen = this.width - detailStart - branchCols - 1;
-            let displayDir = session.directory;
-            if (displayDir.length > dirMaxLen) {
-              displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
-            }
-            writeString(grid, detailRow, detailStart, displayDir, DIM_ATTRS);
-          }
-        }
-
-        row += 2;
+        this.renderSession(grid, screenRow, item);
       }
+
+      vRow += h;
+      totalRows += h;
+    }
+
+    // Scroll indicators
+    if (this.scrollOffset > 0) {
+      writeString(grid, HEADER_ROWS, this.width - 1, "\u25b2", DIM_ATTRS);
+    }
+    if (this.scrollOffset + viewportHeight < totalRows) {
+      writeString(grid, this.height - 1, this.width - 1, "\u25bc", DIM_ATTRS);
     }
 
     return grid;
+  }
+
+  private renderSession(
+    grid: CellGrid,
+    nameRow: number,
+    item: Extract<RenderItem, { type: "session" }>,
+  ): void {
+    const sessionIdx = item.sessionIndex;
+    const session = this.sessions[sessionIdx];
+    if (!session) return;
+
+    const detailRow = nameRow + 1;
+    const isActive = session.id === this.activeSessionId;
+    const hasActivity = this.activitySet.has(session.id);
+
+    // Map rows to session for click handling
+    this.rowToSessionIndex.set(nameRow, sessionIdx);
+    if (detailRow < this.height) {
+      this.rowToSessionIndex.set(detailRow, sessionIdx);
+    }
+
+    // Active marker
+    if (isActive) {
+      writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+      writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+    }
+
+    // Indicator
+    if (session.attention) {
+      writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
+    } else if (hasActivity) {
+      writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
+    }
+
+    // Name row: name + window count
+    const windowCountStr = `${session.windowCount}w`;
+    const windowCountCol = this.width - windowCountStr.length - 1;
+    const nameStart = 3;
+    const nameMaxLen = windowCountCol - 1 - nameStart;
+    let displayName = session.name;
+    if (displayName.length > nameMaxLen) {
+      displayName = displayName.slice(0, nameMaxLen - 1) + "\u2026";
+    }
+
+    const nameAttrs: CellAttrs = isActive
+      ? { ...ACTIVE_NAME_ATTRS }
+      : { ...INACTIVE_NAME_ATTRS };
+    writeString(grid, nameRow, nameStart, displayName, nameAttrs);
+
+    if (windowCountCol > nameStart) {
+      writeString(grid, nameRow, windowCountCol, windowCountStr, DIM_ATTRS);
+    }
+
+    // Detail line
+    if (item.grouped) {
+      if (session.gitBranch) {
+        const detailStart = 3;
+        const maxLen = this.width - detailStart - 1;
+        let branch = session.gitBranch;
+        if (branch.length > maxLen) {
+          branch = branch.slice(0, maxLen - 1) + "\u2026";
+        }
+        writeString(grid, detailRow, detailStart, branch, DIM_ATTRS);
+      }
+    } else {
+      const detailStart = 3;
+      let branchCols = 0;
+      if (session.gitBranch) {
+        const branchCol = this.width - session.gitBranch.length - 1;
+        if (branchCol > detailStart + 1) {
+          writeString(grid, detailRow, branchCol, session.gitBranch, DIM_ATTRS);
+          branchCols = session.gitBranch.length + 2;
+        }
+      }
+      if (session.directory !== undefined) {
+        const dirMaxLen = this.width - detailStart - branchCols - 1;
+        let displayDir = session.directory;
+        if (displayDir.length > dirMaxLen) {
+          displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
+        }
+        writeString(grid, detailRow, detailStart, displayDir, DIM_ATTRS);
+      }
+    }
   }
 }
