@@ -161,6 +161,7 @@ let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
 let currentSessions: SessionInfo[] = [];
 const lastViewedTimestamps = new Map<string, number>();
+const sessionDetailsCache = new Map<string, { directory?: string; gitBranch?: string }>();
 
 function switchByOffset(offset: number): void {
   const ids = sidebar.getDisplayOrderIds();
@@ -178,16 +179,11 @@ async function fetchSessions(): Promise<void> {
     const lines = await control.sendCommand(
       "list-sessions -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}'",
     );
-    // Build a map of existing session data to preserve directory/branch
-    const existingData = new Map(
-      currentSessions.map((s) => [s.id, { directory: s.directory, gitBranch: s.gitBranch }]),
-    );
-
     const sessions: SessionInfo[] = lines
       .filter((l) => l.length > 0)
       .map((line) => {
         const [id, name, activity, attached, windows] = line.split(":");
-        const prev = existingData.get(id);
+        const cached = sessionDetailsCache.get(id);
         return {
           id,
           name,
@@ -195,8 +191,8 @@ async function fetchSessions(): Promise<void> {
           attached: attached === "1",
           attention: false,
           windowCount: parseInt(windows, 10) || 1,
-          directory: prev?.directory,
-          gitBranch: prev?.gitBranch,
+          directory: cached?.directory,
+          gitBranch: cached?.gitBranch,
         };
       });
     currentSessions = sessions;
@@ -388,19 +384,28 @@ async function lookupSessionDetails(sessions: SessionInfo[]): Promise<void> {
       );
       const cwd = (lines[0] || "").trim();
       if (!cwd) continue;
-      session.directory = cwd.startsWith(home)
+      const directory = cwd.startsWith(home)
         ? "~" + cwd.slice(home.length)
         : cwd;
       const branch = await $`git -C ${cwd} branch --show-current`
         .text()
         .catch(() => "");
-      session.gitBranch = branch.trim() || undefined;
+      const gitBranch = branch.trim() || undefined;
+
+      // Write to persistent cache
+      sessionDetailsCache.set(session.id, { directory, gitBranch });
+      session.directory = directory;
+      session.gitBranch = gitBranch;
     } catch {
       // Session may not exist or no git repo
     }
   }
-  currentSessions = sessions;
-  sidebar.updateSessions(sessions);
+  // Rebuild currentSessions with cached data
+  currentSessions = currentSessions.map((s) => {
+    const cached = sessionDetailsCache.get(s.id);
+    return cached ? { ...s, ...cached } : s;
+  });
+  sidebar.updateSessions(currentSessions);
   renderFrame();
 }
 
