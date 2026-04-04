@@ -64,43 +64,44 @@ Your tmux is unmodified. Sessions, windows, panes, keybindings — all unchanged
 - Green `▎` left marker — active session
 - Green `●` dot — new output since you last viewed that session
 - Orange `!` flag — attention needed (set programmatically)
-- Blue highlight — sidebar navigation mode (prefix + j)
 
 ## Installation
+
+```bash
+# Install globally
+bun install -g @jx0/jmux
+
+# Run
+jmux
+```
 
 ### Requirements
 
 - [Bun](https://bun.sh) 1.2+
 - [tmux](https://github.com/tmux/tmux) 3.2+
-- [fzf](https://github.com/junegunn/fzf) (for new session modal and window picker)
+- [fzf](https://github.com/junegunn/fzf) (for new session modal)
 - [git](https://git-scm.com/) (optional, for branch display)
 
-### Install
+### Usage
+
+```bash
+# Start jmux (creates or attaches to default session)
+jmux
+
+# Start with a named session
+jmux my-project
+
+# Use a separate tmux server (won't touch your existing sessions)
+jmux -L work
+```
+
+### From Source
 
 ```bash
 git clone https://github.com/jarredkenny/jmux.git
 cd jmux
 bun install
-```
-
-### Run
-
-```bash
 bun run bin/jmux
-```
-
-Or with a named session:
-
-```bash
-bun run bin/jmux my-project
-```
-
-### Isolated Server
-
-To run jmux on a separate tmux server (keeps your existing tmux sessions untouched):
-
-```bash
-bun run bin/jmux -L jmux
 ```
 
 ## New Session Modal
