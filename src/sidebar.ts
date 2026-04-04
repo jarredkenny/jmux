@@ -191,6 +191,10 @@ export class Sidebar {
     return this.sessions[sessionIdx]?.id ?? null;
   }
 
+  getDisplayOrderIds(): string[] {
+    return this.displayOrder.map((idx) => this.sessions[idx]?.id).filter(Boolean) as string[];
+  }
+
   getSessionByRow(row: number): SessionInfo | null {
     const sessionIdx = this.rowToSessionIndex.get(row);
     if (sessionIdx === undefined) return null;

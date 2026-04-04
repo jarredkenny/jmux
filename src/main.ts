@@ -119,14 +119,12 @@ let currentSessions: SessionInfo[] = [];
 const lastViewedTimestamps = new Map<string, number>();
 
 function switchByOffset(offset: number): void {
-  if (currentSessions.length === 0) return;
-  const currentIdx = currentSessions.findIndex(
-    (s) => s.id === currentSessionId,
-  );
+  const ids = sidebar.getDisplayOrderIds();
+  if (ids.length === 0) return;
+  const currentIdx = ids.indexOf(currentSessionId ?? "");
   const base = currentIdx >= 0 ? currentIdx : 0;
-  const newIdx =
-    (base + offset + currentSessions.length) % currentSessions.length;
-  switchSession(currentSessions[newIdx].id);
+  const newIdx = (base + offset + ids.length) % ids.length;
+  switchSession(ids[newIdx]);
 }
 
 // --- Session data helpers ---
