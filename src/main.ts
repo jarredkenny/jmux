@@ -179,9 +179,9 @@ async function resolveClientName(): Promise<void> {
       if (parts[1] === pid) {
         ptyClientName = parts[0];
         // Set the initial active session
-        const sessionName = parts[2];
-        if (sessionName) {
-          const match = currentSessions.find((s) => s.name === sessionName);
+        const clientSessionName = parts[2];
+        if (clientSessionName) {
+          const match = currentSessions.find((s) => s.name === clientSessionName);
           if (match) {
             currentSessionId = match.id;
             sidebar.setActiveSession(match.id);
@@ -248,14 +248,6 @@ function scheduleRender(): void {
     renderTimer = null;
     renderFrame();
   }, 16); // ~60fps cap
-}
-
-function renderNow(): void {
-  if (renderTimer !== null) {
-    clearTimeout(renderTimer);
-    renderTimer = null;
-  }
-  renderFrame();
 }
 
 // --- Input Router ---

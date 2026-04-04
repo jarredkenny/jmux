@@ -37,10 +37,6 @@ const INACTIVE_NAME_ATTRS: CellAttrs = {
   fg: 7,
   fgMode: ColorMode.Palette,
 }; // light gray — readable but recedes
-const INDEX_ATTRS: CellAttrs = {
-  dim: true,
-}; // session index number
-
 export class Sidebar {
   private width: number;
   private height: number;

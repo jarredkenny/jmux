@@ -29,8 +29,6 @@ export function translateMouseX(
   return `\x1b[<${match[1]};${newX};${match[3]}${match[4]}`;
 }
 
-export type InputTarget = "pty" | "sidebar";
-
 export interface InputRouterOptions {
   sidebarCols: number;
   tmuxPrefix: string; // raw byte(s) for tmux prefix key, e.g. "\x01"

@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-04-04T12:00:00Z",
+  "commit": "24f2e05",
+  "branch": "feat/implementation",
+  "issues": [
+    {"id": "dead-renderNow", "file": "src/main.ts", "line": 253, "category": "smell", "title": "Dead code: renderNow()", "description": "Defined but never called"},
+    {"id": "dead-INDEX_ATTRS", "file": "src/sidebar.ts", "line": 40, "category": "smell", "title": "Unused constant INDEX_ATTRS", "description": "Defined but never used"},
+    {"id": "dead-InputTarget", "file": "src/input-router.ts", "line": 32, "category": "smell", "title": "Unused type export InputTarget", "description": "Exported but never imported"},
+    {"id": "shadow-sessionName", "file": "src/main.ts", "line": 182, "category": "major", "title": "Variable shadowing: sessionName", "description": "Shadows module-level sessionName"},
+    {"id": "no-sendCommand-timeout", "file": "src/tmux-control.ts", "line": 191, "category": "edge_case", "title": "No timeout on sendCommand promises", "description": "Promise hangs forever if tmux dies"}
+  ]
+}
