@@ -5,6 +5,7 @@ import type { Subprocess } from "bun";
 export type ControlEvent =
   | { type: "sessions-changed" }
   | { type: "session-changed"; args: string }
+  | { type: "session-renamed"; args: string }
   | { type: "window-renamed"; args: string }
   | { type: "client-session-changed"; args: string }
   | {
@@ -82,6 +83,11 @@ export class ControlParser {
       this.emit({
         type: "session-changed",
         args: line.slice("%session-changed ".length),
+      });
+    } else if (line.startsWith("%session-renamed ")) {
+      this.emit({
+        type: "session-renamed",
+        args: line.slice("%session-renamed ".length),
       });
     } else if (line.startsWith("%window-renamed ")) {
       this.emit({

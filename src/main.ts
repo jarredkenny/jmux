@@ -339,6 +339,7 @@ process.on("SIGWINCH", () => {
 control.onEvent((event: ControlEvent) => {
   switch (event.type) {
     case "sessions-changed":
+    case "session-renamed":
       fetchSessions();
       break;
     case "session-changed":
