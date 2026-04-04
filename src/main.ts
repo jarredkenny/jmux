@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.3.4";
+const VERSION = "0.3.5";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -313,17 +313,51 @@ const inputRouter = new InputRouter(
 
 let writesPending = 0;
 
-// OSC 52 clipboard: \x1b]52;...;...\x07 or \x1b]52;...;...\x1b\\
-const OSC52_RE = /\x1b\]52;[^;]*;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+// OSC 52 clipboard passthrough — buffers across split chunks
+const OSC52_START = "\x1b]52;";
+let osc52Pending = "";
 
-pty.onData((data: string) => {
-  // Pass OSC 52 clipboard sequences directly to the outer terminal
-  const osc52Matches = data.match(OSC52_RE);
-  if (osc52Matches) {
-    for (const seq of osc52Matches) {
-      process.stdout.write(seq);
+function forwardOsc52(data: string): void {
+  let search = osc52Pending ? osc52Pending + data : data;
+  osc52Pending = "";
+
+  let pos = 0;
+  while (pos < search.length) {
+    const start = search.indexOf(OSC52_START, pos);
+    if (start < 0) break;
+
+    // Find terminator: BEL (\x07) or ST (\x1b\\)
+    let end = -1;
+    let endLen = 0;
+    for (let i = start + OSC52_START.length; i < search.length; i++) {
+      if (search[i] === "\x07") {
+        end = i;
+        endLen = 1;
+        break;
+      }
+      if (search[i] === "\x1b" && i + 1 < search.length && search[i + 1] === "\\") {
+        end = i;
+        endLen = 2;
+        break;
+      }
+    }
+
+    if (end >= 0) {
+      process.stdout.write(search.slice(start, end + endLen));
+      pos = end + endLen;
+    } else {
+      // Incomplete — buffer for next chunk (cap at 512KB to avoid leaks)
+      const remainder = search.slice(start);
+      if (remainder.length < 512 * 1024) {
+        osc52Pending = remainder;
+      }
+      return;
     }
   }
+}
+
+pty.onData((data: string) => {
+  forwardOsc52(data);
 
   writesPending++;
   bridge.write(data).then(() => {
