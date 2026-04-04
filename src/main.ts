@@ -120,10 +120,19 @@ const configFile = resolve(jmuxDir, "config", "tmux.conf");
 let sessionName: string | undefined;
 let socketName: string | undefined;
 for (let i = 2; i < process.argv.length; i++) {
-  if (process.argv[i] === "--socket" || process.argv[i] === "-L") {
+  const arg = process.argv[i];
+  if (arg === "--socket" || arg === "-L") {
     socketName = process.argv[++i];
-  } else if (!sessionName && !process.argv[i].startsWith("-")) {
-    sessionName = process.argv[i];
+  } else if (arg.startsWith("-")) {
+    console.error(`Unknown option: ${arg}`);
+    console.error("Run 'jmux --help' for usage.");
+    process.exit(1);
+  } else if (!sessionName) {
+    sessionName = arg;
+  } else {
+    console.error(`Unexpected argument: ${arg}`);
+    console.error("Run 'jmux --help' for usage.");
+    process.exit(1);
   }
 }
 const cols = process.stdout.columns || 80;
