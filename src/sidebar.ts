@@ -9,10 +9,14 @@ const ACCENT_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
 };
+// #1e2a35 as packed RGB for subtle active row background
+const ACTIVE_BG = (0x1e << 16) | (0x2a << 8) | 0x35;
 const ACTIVE_MARKER_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
   bold: true,
+  bg: ACTIVE_BG,
+  bgMode: ColorMode.RGB,
 };
 const ACTIVITY_ATTRS: CellAttrs = {
   fg: 2,
@@ -24,9 +28,16 @@ const ATTENTION_ATTRS: CellAttrs = {
   bold: true,
 };
 const ACTIVE_NAME_ATTRS: CellAttrs = {
-  fg: 15,
+  fg: 2,
   fgMode: ColorMode.Palette,
   bold: true,
+  bg: ACTIVE_BG,
+  bgMode: ColorMode.RGB,
+};
+const ACTIVE_DETAIL_ATTRS: CellAttrs = {
+  dim: true,
+  bg: ACTIVE_BG,
+  bgMode: ColorMode.RGB,
 };
 const INACTIVE_NAME_ATTRS: CellAttrs = {
   fg: 7,
@@ -314,6 +325,14 @@ export class Sidebar {
       this.rowToSessionIndex.set(detailRow, sessionIdx);
     }
 
+    // Paint active background across both rows
+    if (isActive) {
+      const bgFill = " ".repeat(this.width);
+      const bgAttrs: CellAttrs = { bg: ACTIVE_BG, bgMode: ColorMode.RGB };
+      writeString(grid, nameRow, 0, bgFill, bgAttrs);
+      writeString(grid, detailRow, 0, bgFill, bgAttrs);
+    }
+
     // Active marker
     if (isActive) {
       writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
@@ -342,11 +361,15 @@ export class Sidebar {
       : { ...INACTIVE_NAME_ATTRS };
     writeString(grid, nameRow, nameStart, displayName, nameAttrs);
 
+    const wcAttrs: CellAttrs = isActive
+      ? { ...DIM_ATTRS, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
+      : DIM_ATTRS;
     if (windowCountCol > nameStart) {
-      writeString(grid, nameRow, windowCountCol, windowCountStr, DIM_ATTRS);
+      writeString(grid, nameRow, windowCountCol, windowCountStr, wcAttrs);
     }
 
     // Detail line
+    const detailAttrs: CellAttrs = isActive ? ACTIVE_DETAIL_ATTRS : DIM_ATTRS;
     if (item.grouped) {
       if (session.gitBranch) {
         const detailStart = 3;
@@ -355,7 +378,7 @@ export class Sidebar {
         if (branch.length > maxLen) {
           branch = branch.slice(0, maxLen - 1) + "\u2026";
         }
-        writeString(grid, detailRow, detailStart, branch, DIM_ATTRS);
+        writeString(grid, detailRow, detailStart, branch, detailAttrs);
       }
     } else {
       const detailStart = 3;
@@ -363,7 +386,7 @@ export class Sidebar {
       if (session.gitBranch) {
         const branchCol = this.width - session.gitBranch.length - 1;
         if (branchCol > detailStart + 1) {
-          writeString(grid, detailRow, branchCol, session.gitBranch, DIM_ATTRS);
+          writeString(grid, detailRow, branchCol, session.gitBranch, detailAttrs);
           branchCols = session.gitBranch.length + 2;
         }
       }
@@ -373,7 +396,7 @@ export class Sidebar {
         if (displayDir.length > dirMaxLen) {
           displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
         }
-        writeString(grid, detailRow, detailStart, displayDir, DIM_ATTRS);
+        writeString(grid, detailRow, detailStart, displayDir, detailAttrs);
       }
     }
   }

@@ -67,7 +67,8 @@ export function compositeGrids(
     grid.cells[y][borderCol] = {
       ...DEFAULT_CELL,
       char: BORDER_CHAR,
-      dim: true,
+      fg: 8,
+      fgMode: ColorMode.Palette,
     };
     // Copy main cells
     for (let x = 0; x < main.cols; x++) {
