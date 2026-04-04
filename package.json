@@ -1,6 +1,6 @@
 {
   "name": "@jx0/jmux",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A persistent session sidebar for tmux",
   "type": "module",
   "bin": {
