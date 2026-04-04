@@ -7,6 +7,70 @@ import { Sidebar } from "./sidebar";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo } from "./types";
 import { resolve, dirname } from "path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { homedir } from "os";
+
+// --- CLI commands (run and exit before TUI) ---
+
+if (process.argv.includes("--install-agent-hooks")) {
+  installAgentHooks();
+  process.exit(0);
+}
+
+function installAgentHooks(): void {
+  const claudeDir = resolve(homedir(), ".claude");
+  const settingsPath = resolve(claudeDir, "settings.json");
+
+  // Ensure .claude directory exists
+  if (!existsSync(claudeDir)) {
+    mkdirSync(claudeDir, { recursive: true });
+  }
+
+  // Read existing settings or start fresh
+  let settings: Record<string, any> = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    } catch {
+      console.error("Error: could not parse ~/.claude/settings.json");
+      process.exit(1);
+    }
+  }
+
+  // Check if hook already exists
+  const stopHooks = settings.hooks?.Stop;
+  if (stopHooks) {
+    const alreadyInstalled = stopHooks.some((entry: any) =>
+      entry.hooks?.some((h: any) => h.command?.includes("@jmux-attention")),
+    );
+    if (alreadyInstalled) {
+      console.log("jmux agent hooks are already installed.");
+      return;
+    }
+  }
+
+  // Add the hook
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.Stop) settings.hooks.Stop = [];
+
+  settings.hooks.Stop.push({
+    hooks: [
+      {
+        type: "command",
+        command: "tmux set-option @jmux-attention 1 2>/dev/null || true",
+        timeout: 5,
+      },
+    ],
+  });
+
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  console.log("Installed jmux agent hooks in ~/.claude/settings.json");
+  console.log("");
+  console.log("When Claude Code finishes a response, your jmux sidebar");
+  console.log("will show an orange ! on that session.");
+}
+
+// --- TUI startup ---
 
 const SIDEBAR_WIDTH = 24;
 const BORDER_WIDTH = 1;
@@ -21,7 +85,7 @@ let socketName: string | undefined;
 for (let i = 2; i < process.argv.length; i++) {
   if (process.argv[i] === "--socket" || process.argv[i] === "-L") {
     socketName = process.argv[++i];
-  } else if (!sessionName) {
+  } else if (!sessionName && !process.argv[i].startsWith("-")) {
     sessionName = process.argv[i];
   }
 }
