@@ -1,7 +1,7 @@
 {
   "name": "@jx0/jmux",
   "version": "0.3.1",
-  "description": "Run a fleet of coding agents from your terminal",
+  "description": "The terminal workspace for agentic development",
   "type": "module",
   "bin": {
     "jmux": "./bin/jmux"

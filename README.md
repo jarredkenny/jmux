@@ -2,9 +2,9 @@
 
 # jmux
 
-**Run a fleet of coding agents from your terminal.**
+**The terminal workspace for agentic development.**
 
-Orchestrate parallel Claude Code sessions with a persistent sidebar. See what's running, what's finished, and what needs you — without leaving tmux.
+A tmux environment built for running coding agents in parallel — with a persistent sidebar that shows every session, what's running, and what needs your attention.
 
 [![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
 [![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)
