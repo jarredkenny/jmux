@@ -114,7 +114,6 @@ const control = new TmuxControl();
 let currentSessionId: string | null = null;
 let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
-let overlayMode = false;
 let currentSessions: SessionInfo[] = [];
 const lastViewedTimestamps = new Map<string, number>();
 
@@ -221,16 +220,6 @@ async function switchSession(sessionId: string): Promise<void> {
   }
 }
 
-// --- Overlay helpers ---
-
-function exitOverlay(): void {
-  if (overlayMode) {
-    overlayMode = false;
-    sidebarShown = false;
-    renderFrame();
-  }
-}
-
 // --- Rendering ---
 
 let renderTimer: ReturnType<typeof setTimeout> | null = null;
@@ -254,51 +243,16 @@ function scheduleRender(): void {
 const inputRouter = new InputRouter(
   {
     sidebarCols: SIDEBAR_WIDTH,
-    tmuxPrefix: "\x01", // default, overridden below
-    prefixTimeout: 50,
     onPtyData: (data) => pty.write(data),
-    onSidebarEnter: () => {
-      if (!sidebarShown) {
-        overlayMode = true;
-        sidebarShown = true;
-      }
-      sidebar.setSidebarMode(true);
-      renderFrame();
-    },
     onSidebarClick: (row) => {
       const session = sidebar.getSessionByRow(row);
       if (session) switchSession(session.id);
-    },
-    onSidebarExit: () => {
-      sidebar.setSidebarMode(false);
-      exitOverlay();
-      renderFrame();
     },
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),
   },
   sidebarShown,
 );
-
-// Sidebar keyboard handler
-inputRouter.setSidebarKeyHandler((key) => {
-  if (key === "\x1b[A" || key === "k") {
-    // Up arrow or k
-    sidebar.moveHighlight(-1);
-    renderFrame();
-  } else if (key === "\x1b[B" || key === "j") {
-    // Down arrow or j
-    sidebar.moveHighlight(1);
-    renderFrame();
-  } else if (key === "\r") {
-    // Enter — switch to highlighted session
-    const targetId = sidebar.getHighlightedSessionId();
-    if (targetId) switchSession(targetId);
-    sidebar.setSidebarMode(false);
-    inputRouter.exitSidebarMode();
-    exitOverlay();
-  }
-});
 
 // --- PTY output pipeline ---
 
@@ -329,7 +283,6 @@ process.on("SIGWINCH", () => {
   const newMainCols = newSidebarVisible ? newCols - SIDEBAR_TOTAL : newCols;
 
   sidebarShown = newSidebarVisible;
-  overlayMode = false;
   inputRouter.setSidebarVisible(newSidebarVisible);
   pty.resize(newMainCols, newRows);
   bridge.resize(newMainCols, newRows);

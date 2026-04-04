@@ -14,10 +14,6 @@ const ACTIVE_MARKER_ATTRS: CellAttrs = {
   fgMode: ColorMode.Palette,
   bold: true,
 };
-const HIGHLIGHT_BG: CellAttrs = {
-  bg: 4,
-  bgMode: ColorMode.Palette,
-};
 const ACTIVITY_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
@@ -68,7 +64,6 @@ function buildRenderPlan(sessions: SessionInfo[]): {
   items: RenderItem[];
   displayOrder: number[];
 } {
-  // Group sessions by parent directory
   const groupMap = new Map<string, number[]>();
   const ungrouped: number[] = [];
 
@@ -91,7 +86,6 @@ function buildRenderPlan(sessions: SessionInfo[]): {
     }
   }
 
-  // Solo groups → move to ungrouped
   for (const [label, indices] of groupMap) {
     if (indices.length === 1) {
       ungrouped.push(indices[0]);
@@ -99,7 +93,6 @@ function buildRenderPlan(sessions: SessionInfo[]): {
     }
   }
 
-  // Sort groups by label, sessions within groups by name
   const sortedGroups: SessionGroup[] = [...groupMap.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([label, indices]) => ({
@@ -109,10 +102,8 @@ function buildRenderPlan(sessions: SessionInfo[]): {
       ),
     }));
 
-  // Sort ungrouped by name
   ungrouped.sort((a, b) => sessions[a].name.localeCompare(sessions[b].name));
 
-  // Build render plan and display order
   const items: RenderItem[] = [];
   const displayOrder: number[] = [];
 
@@ -125,7 +116,6 @@ function buildRenderPlan(sessions: SessionInfo[]): {
     }
   }
 
-  // Ungrouped sessions
   for (const idx of ungrouped) {
     items.push({ type: "session", sessionIndex: idx, grouped: false });
     displayOrder.push(idx);
@@ -142,11 +132,9 @@ export class Sidebar {
   private height: number;
   private sessions: SessionInfo[] = [];
   private activeSessionId: string | null = null;
-  private highlightIndex = 0; // index into displayOrder
-  private displayOrder: number[] = []; // indices into sessions, in visual order
-  private rowToSessionIndex = new Map<number, number>(); // row → index into sessions
+  private displayOrder: number[] = [];
+  private rowToSessionIndex = new Map<number, number>();
   private activitySet = new Set<string>();
-  private _sidebarMode = false;
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -157,18 +145,10 @@ export class Sidebar {
     this.sessions = sessions;
     const { displayOrder } = buildRenderPlan(sessions);
     this.displayOrder = displayOrder;
-    if (this.highlightIndex >= displayOrder.length) {
-      this.highlightIndex = Math.max(0, displayOrder.length - 1);
-    }
   }
 
   setActiveSession(id: string): void {
     this.activeSessionId = id;
-    const sessionIdx = this.sessions.findIndex((s) => s.id === id);
-    if (sessionIdx >= 0) {
-      const displayIdx = this.displayOrder.indexOf(sessionIdx);
-      if (displayIdx >= 0) this.highlightIndex = displayIdx;
-    }
   }
 
   setActivity(sessionId: string, active: boolean): void {
@@ -179,30 +159,16 @@ export class Sidebar {
     }
   }
 
-  moveHighlight(delta: number): void {
-    if (this.displayOrder.length === 0) return;
-    this.highlightIndex =
-      (this.highlightIndex + delta + this.displayOrder.length) %
-      this.displayOrder.length;
-  }
-
-  getHighlightedSessionId(): string | null {
-    const sessionIdx = this.displayOrder[this.highlightIndex];
-    return this.sessions[sessionIdx]?.id ?? null;
-  }
-
   getDisplayOrderIds(): string[] {
-    return this.displayOrder.map((idx) => this.sessions[idx]?.id).filter(Boolean) as string[];
+    return this.displayOrder
+      .map((idx) => this.sessions[idx]?.id)
+      .filter(Boolean) as string[];
   }
 
   getSessionByRow(row: number): SessionInfo | null {
     const sessionIdx = this.rowToSessionIndex.get(row);
     if (sessionIdx === undefined) return null;
     return this.sessions[sessionIdx] ?? null;
-  }
-
-  setSidebarMode(active: boolean): void {
-    this._sidebarMode = active;
   }
 
   resize(width: number, height: number): void {
@@ -225,7 +191,6 @@ export class Sidebar {
       if (row >= this.height) break;
 
       if (item.type === "group-header") {
-        // Group header — last two path segments, dimmed bold
         let label = item.label;
         if (label.length > this.width - 2) {
           label = label.slice(0, this.width - 3) + "\u2026";
@@ -240,7 +205,6 @@ export class Sidebar {
         continue;
       }
 
-      // Session entry — 2 rows: name line + detail line
       const sessionIdx = item.sessionIndex;
       const session = this.sessions[sessionIdx];
       if (!session) continue;
@@ -248,10 +212,7 @@ export class Sidebar {
       const nameRow = row;
       const detailRow = row + 1;
       const isActive = session.id === this.activeSessionId;
-      const displayIdx = this.displayOrder.indexOf(sessionIdx);
-      const isHighlighted = displayIdx === this.highlightIndex;
       const hasActivity = this.activitySet.has(session.id);
-      const showHighlight = isHighlighted && this._sidebarMode;
 
       // Map rows to session for click handling
       this.rowToSessionIndex.set(nameRow, sessionIdx);
@@ -260,40 +221,18 @@ export class Sidebar {
       }
 
       // Active marker
-      if (isActive && !showHighlight) {
+      if (isActive) {
         writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
         if (detailRow < this.height) {
           writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
         }
       }
 
-      // Highlight background
-      if (showHighlight) {
-        writeString(grid, nameRow, 0, " ".repeat(this.width), HIGHLIGHT_BG);
-        if (detailRow < this.height) {
-          writeString(
-            grid,
-            detailRow,
-            0,
-            " ".repeat(this.width),
-            HIGHLIGHT_BG,
-          );
-        }
-      }
-
-      const rowAttrs: CellAttrs = showHighlight ? { ...HIGHLIGHT_BG } : {};
-
       // Indicator
       if (session.attention) {
-        writeString(grid, nameRow, 1, "!", {
-          ...rowAttrs,
-          ...ATTENTION_ATTRS,
-        });
+        writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
       } else if (hasActivity) {
-        writeString(grid, nameRow, 1, "\u25CF", {
-          ...rowAttrs,
-          ...ACTIVITY_ATTRS,
-        });
+        writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
       }
 
       // Window count right-aligned
@@ -309,15 +248,12 @@ export class Sidebar {
       }
 
       const nameAttrs: CellAttrs = isActive
-        ? { ...rowAttrs, ...ACTIVE_NAME_ATTRS }
-        : { ...rowAttrs, ...INACTIVE_NAME_ATTRS };
+        ? { ...ACTIVE_NAME_ATTRS }
+        : { ...INACTIVE_NAME_ATTRS };
       writeString(grid, nameRow, nameStart, displayName, nameAttrs);
 
       if (windowCountCol > nameStart) {
-        writeString(grid, nameRow, windowCountCol, windowCountStr, {
-          ...rowAttrs,
-          ...DIM_ATTRS,
-        });
+        writeString(grid, nameRow, windowCountCol, windowCountStr, DIM_ATTRS);
       }
 
       // Detail line
@@ -325,26 +261,18 @@ export class Sidebar {
         const detailStart = 3;
 
         if (item.grouped) {
-          // Grouped: show only git branch (directory context from group header)
           if (session.gitBranch) {
             const branchCol = this.width - session.gitBranch.length - 1;
             if (branchCol > detailStart) {
-              writeString(grid, detailRow, branchCol, session.gitBranch, {
-                ...rowAttrs,
-                ...DIM_ATTRS,
-              });
+              writeString(grid, detailRow, branchCol, session.gitBranch, DIM_ATTRS);
             }
           }
         } else {
-          // Ungrouped: show directory + branch
           let branchCols = 0;
           if (session.gitBranch) {
             const branchCol = this.width - session.gitBranch.length - 1;
             if (branchCol > detailStart + 1) {
-              writeString(grid, detailRow, branchCol, session.gitBranch, {
-                ...rowAttrs,
-                ...DIM_ATTRS,
-              });
+              writeString(grid, detailRow, branchCol, session.gitBranch, DIM_ATTRS);
               branchCols = session.gitBranch.length + 2;
             }
           }
@@ -354,15 +282,12 @@ export class Sidebar {
             if (displayDir.length > dirMaxLen) {
               displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
             }
-            writeString(grid, detailRow, detailStart, displayDir, {
-              ...rowAttrs,
-              ...DIM_ATTRS,
-            });
+            writeString(grid, detailRow, detailStart, displayDir, DIM_ATTRS);
           }
         }
       }
 
-      row += 2; // name row + detail row (spacer handled by the spacer item)
+      row += 2;
     }
 
     return grid;

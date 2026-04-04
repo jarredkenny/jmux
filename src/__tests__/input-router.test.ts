@@ -3,7 +3,6 @@ import { translateMouseX, parseSgrMouse, InputRouter } from "../input-router";
 
 describe("parseSgrMouse", () => {
   test("parses SGR mouse button press", () => {
-    // ESC [ < 0 ; 30 ; 5 M  (button 1 press at col 30, row 5)
     const result = parseSgrMouse("\x1b[<0;30;5M");
     expect(result).not.toBeNull();
     expect(result!.button).toBe(0);
@@ -54,10 +53,7 @@ describe("Ctrl-Shift arrow detection", () => {
     const router = new InputRouter(
       {
         sidebarCols: 24,
-        tmuxPrefix: "\x01",
-        prefixTimeout: 50,
         onPtyData: () => {},
-        onSidebarEnter: () => {},
         onSidebarClick: () => {},
         onSessionPrev: () => { prevCalled = true; },
       },
@@ -72,10 +68,7 @@ describe("Ctrl-Shift arrow detection", () => {
     const router = new InputRouter(
       {
         sidebarCols: 24,
-        tmuxPrefix: "\x01",
-        prefixTimeout: 50,
         onPtyData: () => {},
-        onSidebarEnter: () => {},
         onSidebarClick: () => {},
         onSessionNext: () => { nextCalled = true; },
       },
@@ -90,10 +83,7 @@ describe("Ctrl-Shift arrow detection", () => {
     const router = new InputRouter(
       {
         sidebarCols: 24,
-        tmuxPrefix: "\x01",
-        prefixTimeout: 50,
         onPtyData: (d) => { ptyData += d; },
-        onSidebarEnter: () => {},
         onSidebarClick: () => {},
         onSessionPrev: () => {},
         onSessionNext: () => {},
@@ -106,22 +96,18 @@ describe("Ctrl-Shift arrow detection", () => {
   });
 });
 
-describe("prefix + n passthrough", () => {
-  test("forwards prefix + n to PTY (tmux handles it natively)", () => {
+describe("passthrough", () => {
+  test("forwards regular input to PTY", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
         sidebarCols: 24,
-        tmuxPrefix: "\x01",
-        prefixTimeout: 50,
         onPtyData: (d) => { ptyData += d; },
-        onSidebarEnter: () => {},
         onSidebarClick: () => {},
       },
       true,
     );
-    router.handleInput("\x01");
-    router.handleInput("n");
-    expect(ptyData).toBe("\x01n");
+    router.handleInput("hello");
+    expect(ptyData).toBe("hello");
   });
 });

@@ -183,30 +183,18 @@ describe("Sidebar", () => {
     expect(foundBang).toBe(true);
   });
 
-  test("keyboard navigation moves highlight through display order", () => {
+  test("getDisplayOrderIds returns sessions in grouped display order", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(
       makeSessions([
+        { name: "c" },
         { name: "a" },
         { name: "b" },
-        { name: "c" },
       ]),
     );
-    sidebar.setActiveSession("$0");
-    sidebar.moveHighlight(1);
-    expect(sidebar.getHighlightedSessionId()).toBe("$1");
-    sidebar.moveHighlight(1);
-    expect(sidebar.getHighlightedSessionId()).toBe("$2");
-    sidebar.moveHighlight(-1);
-    expect(sidebar.getHighlightedSessionId()).toBe("$1");
-  });
-
-  test("highlight wraps around", () => {
-    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
-    sidebar.updateSessions(makeSessions([{ name: "a" }, { name: "b" }]));
-    sidebar.setActiveSession("$0");
-    sidebar.moveHighlight(-1);
-    expect(sidebar.getHighlightedSessionId()).toBe("$1");
+    const ids = sidebar.getDisplayOrderIds();
+    // Ungrouped, sorted alphabetically by name
+    expect(ids).toEqual(["$1", "$2", "$0"]); // a, b, c
   });
 
   test("getSessionByRow returns correct session for click handling", () => {
