@@ -367,7 +367,9 @@ async function start(): Promise<void> {
   // Start control mode
   await control.start({ socketName, configFile });
 
-  // Prefix is C-a — hardcoded since we ship our own tmux.conf
+  // Re-apply our config to the running server — handles the case where
+  // we attached to an existing server that loaded ~/.tmux.conf
+  await control.sendCommand(`source-file ${configFile}`);
 
   // Fetch initial sessions, then resolve client name (needs sessions list)
   await fetchSessions();

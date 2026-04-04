@@ -125,14 +125,6 @@ The session is created in the selected directory and the sidebar updates immedia
 | `Ctrl-a n` | New session (directory picker + name) |
 | Click sidebar | Switch to that session |
 
-### Sidebar Mode (`Ctrl-a j` to enter)
-
-| Key | Action |
-|-----|--------|
-| `j` / `k` / arrows | Move highlight |
-| `Enter` | Switch to highlighted session |
-| `Escape` | Exit sidebar mode |
-
 ### Windows
 
 | Key | Action |
