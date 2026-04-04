@@ -2,9 +2,9 @@
 
 # jmux
 
-**A persistent session sidebar for tmux.**
+**A tmux sidebar for agentic development.**
 
-See every project at a glance. Switch instantly. Never lose context.
+Run AI agents across multiple projects. See what's running, what's finished, and what needs you — all at a glance.
 
 [![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
 [![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)
