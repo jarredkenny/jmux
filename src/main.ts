@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.1.4";
+const VERSION = "0.1.5";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
