@@ -325,12 +325,12 @@ async function lookupSessionDetails(sessions: SessionInfo[]): Promise<void> {
   const home = process.env.HOME || "";
   for (const session of sessions) {
     try {
-      const result =
-        await $`tmux display-message -t ${session.id} -p '#{pane_current_path}'`
-          .text();
-      const cwd = result.trim();
+      // Use control mode connection — respects -L socket and -f config
+      const lines = await control.sendCommand(
+        `display-message -t '${session.id}' -p '#{pane_current_path}'`,
+      );
+      const cwd = (lines[0] || "").trim();
       if (!cwd) continue;
-      // Directory with ~ substitution
       session.directory = cwd.startsWith(home)
         ? "~" + cwd.slice(home.length)
         : cwd;
