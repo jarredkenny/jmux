@@ -3,27 +3,43 @@ import { ColorMode } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 
 const ROWS_PER_SESSION = 3;
-const HEADER_ROWS = 2; // "jmux" + separator line
+const HEADER_ROWS = 2; // header + separator
 
 const DIM_ATTRS: CellAttrs = { dim: true };
-const ACTIVE_BG: CellAttrs = {
-  bg: 8,
-  bgMode: ColorMode.Palette,
-}; // bright black (dark gray) — subtle highlight
+const ACCENT_ATTRS: CellAttrs = {
+  fg: 2,
+  fgMode: ColorMode.Palette,
+}; // green — matches tmux theme accent
+const ACTIVE_MARKER_ATTRS: CellAttrs = {
+  fg: 2,
+  fgMode: ColorMode.Palette,
+  bold: true,
+}; // green bold — left edge marker for active session
 const HIGHLIGHT_BG: CellAttrs = {
   bg: 4,
   bgMode: ColorMode.Palette,
-}; // blue — picking state
+}; // blue — sidebar mode picking state
 const ACTIVITY_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
-}; // green
+}; // green dot
 const ATTENTION_ATTRS: CellAttrs = {
   fg: 3,
   fgMode: ColorMode.Palette,
   bold: true,
 }; // yellow bold
-const ACTIVE_NAME_ATTRS: CellAttrs = { bold: true }; // bold name for active session
+const ACTIVE_NAME_ATTRS: CellAttrs = {
+  fg: 15,
+  fgMode: ColorMode.Palette,
+  bold: true,
+}; // bright white bold — active session name pops
+const INACTIVE_NAME_ATTRS: CellAttrs = {
+  fg: 7,
+  fgMode: ColorMode.Palette,
+}; // light gray — readable but recedes
+const INDEX_ATTRS: CellAttrs = {
+  dim: true,
+}; // session index number
 
 export class Sidebar {
   private width: number;
@@ -89,8 +105,8 @@ export class Sidebar {
   getGrid(): CellGrid {
     const grid = createGrid(this.width, this.height);
 
-    // Header
-    writeString(grid, 0, 0, "jmux", { bold: true });
+    // Header — green accent
+    writeString(grid, 0, 1, "jmux", { ...ACCENT_ATTRS, bold: true });
 
     // Separator line
     const sep = "\u2500".repeat(this.width);
@@ -108,22 +124,32 @@ export class Sidebar {
       const hasActivity = this.activitySet.has(session.id);
 
       const showHighlight = isHighlighted && this._sidebarMode;
-      const rowAttrs: CellAttrs = showHighlight
-        ? { ...HIGHLIGHT_BG }
-        : isActive
-          ? { ...ACTIVE_BG }
-          : {};
 
-      // Fill background on both content rows if active or highlighted
-      if (showHighlight || isActive) {
-        writeString(grid, nameRow, 0, " ".repeat(this.width), rowAttrs);
+      // Active session: green left edge marker ▎
+      if (isActive && !showHighlight) {
+        writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
         if (detailRow < this.height) {
-          writeString(grid, detailRow, 0, " ".repeat(this.width), rowAttrs);
+          writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
         }
       }
 
-      // Col 0: padding space (already blank)
-      // Col 1: indicator
+      // Sidebar mode highlight: fill bg on both rows
+      if (showHighlight) {
+        writeString(grid, nameRow, 0, " ".repeat(this.width), HIGHLIGHT_BG);
+        if (detailRow < this.height) {
+          writeString(
+            grid,
+            detailRow,
+            0,
+            " ".repeat(this.width),
+            HIGHLIGHT_BG,
+          );
+        }
+      }
+
+      const rowAttrs: CellAttrs = showHighlight ? { ...HIGHLIGHT_BG } : {};
+
+      // Col 1: indicator (activity dot or attention flag)
       if (session.attention) {
         writeString(grid, nameRow, 1, "!", {
           ...rowAttrs,
@@ -135,59 +161,62 @@ export class Sidebar {
           ...ACTIVITY_ATTRS,
         });
       }
-      // Col 2: separator space (already blank)
 
       // Right-aligned window count ("Nw"), dimmed
       const windowCountStr = `${session.windowCount}w`;
-      const windowCountCol = this.width - windowCountStr.length;
+      const windowCountCol = this.width - windowCountStr.length - 1; // -1 for right padding
 
-      // Session name starting at col 3, truncated to avoid collision with window count
-      // Leave at least 1 space gap between name and window count
-      const nameMaxLen = windowCountCol - 1 - 3; // width minus windowcount minus gap minus start col
+      // Session name starting at col 3
+      const nameStart = 3;
+      const nameMaxLen = windowCountCol - 1 - nameStart;
       let displayName = session.name;
       if (displayName.length > nameMaxLen) {
         displayName = displayName.slice(0, nameMaxLen - 1) + "\u2026";
       }
 
-      const nameAttrs: CellAttrs =
-        isActive ? { ...rowAttrs, ...ACTIVE_NAME_ATTRS } : rowAttrs;
-      writeString(grid, nameRow, 3, displayName, nameAttrs);
+      const nameAttrs: CellAttrs = isActive
+        ? { ...rowAttrs, ...ACTIVE_NAME_ATTRS }
+        : { ...rowAttrs, ...INACTIVE_NAME_ATTRS };
+      writeString(grid, nameRow, nameStart, displayName, nameAttrs);
 
-      // Window count right-aligned on name row
-      if (windowCountCol > 3) {
+      // Window count
+      if (windowCountCol > nameStart) {
         writeString(grid, nameRow, windowCountCol, windowCountStr, {
           ...rowAttrs,
           ...DIM_ATTRS,
         });
       }
 
-      // Detail line (row 2 of this session)
-      if (detailRow < this.height && session.directory !== undefined) {
+      // Detail line
+      if (detailRow < this.height) {
+        const detailStart = 3;
+
         // Right-aligned git branch, dimmed
         let branchCols = 0;
         if (session.gitBranch) {
           const branchStr = session.gitBranch;
-          const branchCol = this.width - branchStr.length;
-          // Only show if there's room — needs gap from directory start (col 3)
-          if (branchCol > 3 + 1) {
+          const branchCol = this.width - branchStr.length - 1; // right padding
+          if (branchCol > detailStart + 1) {
             writeString(grid, detailRow, branchCol, branchStr, {
               ...rowAttrs,
               ...DIM_ATTRS,
             });
-            branchCols = branchStr.length + 1;
+            branchCols = branchStr.length + 2;
           }
         }
 
-        // Directory path starting at col 3, dimmed
-        const dirMaxLen = this.width - 3 - branchCols;
-        let displayDir = session.directory;
-        if (displayDir.length > dirMaxLen) {
-          displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
+        // Directory path, dimmed
+        if (session.directory !== undefined) {
+          const dirMaxLen = this.width - detailStart - branchCols - 1;
+          let displayDir = session.directory;
+          if (displayDir.length > dirMaxLen) {
+            displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
+          }
+          writeString(grid, detailRow, detailStart, displayDir, {
+            ...rowAttrs,
+            ...DIM_ATTRS,
+          });
         }
-        writeString(grid, detailRow, 3, displayDir, {
-          ...rowAttrs,
-          ...DIM_ATTRS,
-        });
       }
     }
 

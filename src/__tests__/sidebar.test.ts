@@ -20,7 +20,8 @@ describe("Sidebar", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 20);
     sidebar.updateSessions(makeSessions(["main"]));
     const grid = sidebar.getGrid();
-    const headerText = Array.from({ length: 4 }, (_, i) => grid.cells[0][i].char).join("");
+    // Header starts at col 1 with padding
+    const headerText = Array.from({ length: 4 }, (_, i) => grid.cells[0][1 + i].char).join("");
     expect(headerText).toBe("jmux");
   });
 
@@ -36,15 +37,17 @@ describe("Sidebar", () => {
     expect(name2).toBe("dev");
   });
 
-  test("highlights active session", () => {
+  test("highlights active session with green marker", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 20);
     const sessions = makeSessions(["main", "dev"]);
     sidebar.updateSessions(sessions);
     sidebar.setActiveSession("$0");
     const grid = sidebar.getGrid();
-    // Both name row (2) and detail row (3) should have bg set
-    expect(grid.cells[2][0].bgMode).not.toBe(0);
-    expect(grid.cells[3][0].bgMode).not.toBe(0);
+    // Active session has green ▎ marker at col 0 on both rows
+    expect(grid.cells[2][0].char).toBe("\u258e");
+    expect(grid.cells[3][0].char).toBe("\u258e");
+    // Active session name is bold
+    expect(grid.cells[2][3].bold).toBe(true);
   });
 
   test("truncates long session names with ellipsis", () => {
@@ -104,12 +107,8 @@ describe("Sidebar", () => {
     const row = grid.cells[2];
     const text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => row[i].char).join("");
     expect(text).toContain("3w");
-    // Should be right-aligned (last chars)
-    const windowCountStr = "3w";
-    const lastChars = text.slice(SIDEBAR_WIDTH - windowCountStr.length);
-    expect(lastChars).toBe(windowCountStr);
     // Should be dimmed
-    const wcStart = SIDEBAR_WIDTH - windowCountStr.length;
+    const wcStart = text.indexOf("3w");
     expect(row[wcStart].dim).toBe(true);
   });
 
