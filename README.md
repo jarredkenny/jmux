@@ -14,7 +14,7 @@ You lose context constantly. You forget what's running where. You can't see at a
 
 ## The Solution
 
-jmux wraps tmux with a persistent sidebar that shows all your sessions, all the time. It doesn't replace tmux — it sits alongside it. Your keybindings, your panes, your workflow. Everything works exactly like before, plus a sidebar.
+jmux wraps tmux with a persistent sidebar that shows all your sessions, all the time. It ships its own tmux config with opinionated keybindings — a complete terminal workspace out of the box.
 
 **What you get:**
 - Every session visible at all times with git branch and window count
@@ -31,7 +31,7 @@ jmux wraps tmux with a persistent sidebar that shows all your sessions, all the 
 
 jmux owns the terminal. It spawns tmux in a PTY, feeds the output through a headless terminal emulator ([xterm.js](https://xtermjs.org/)), and composites a 24-column sidebar alongside the tmux rendering. A separate tmux control mode connection provides real-time session metadata via push notifications.
 
-Your tmux is unmodified. Sessions, windows, panes, keybindings — all unchanged. jmux just adds a persistent view of what's happening across your projects.
+jmux manages the tmux server. It applies its own config on startup, giving you a consistent environment with the sidebar built in.
 
 ```
 ┌─ jmux sidebar ──┬─ your normal tmux ──────────────────────┐
@@ -144,7 +144,7 @@ The session is created in the selected directory and the sidebar updates immedia
 |-----|--------|
 | `Ctrl-a \|` | Split horizontal |
 | `Ctrl-a -` | Split vertical |
-| `Shift-arrows` | Navigate panes (vim-aware via smart-splits) |
+| `Shift-arrows` | Navigate panes |
 | `Ctrl-a arrows` | Resize panes |
 | `Ctrl-a P` | Toggle pane border titles |
 
@@ -189,9 +189,9 @@ jmux shows an orange `!` indicator. When you switch to that session, the flag cl
 
 jmux ships its own `config/tmux.conf`. It never reads `~/.tmux.conf`. This means:
 
-- Your existing tmux setup is untouched
-- Every jmux user gets the same keybindings and behavior
+- Consistent keybindings and behavior for every user
 - No plugin manager needed — everything is built in
+- Use `-L` to keep jmux's server separate from your existing tmux
 - The status bar shows only window tabs (session info is in the sidebar)
 - Windows auto-rename to the running command (`vim`, `zsh`, `bun`, etc.)
 
