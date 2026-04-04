@@ -279,9 +279,10 @@ const inputRouter = new InputRouter(
     onSessionNext: () => switchByOffset(1),
     onNewSession: () => {
       if (!ptyClientName) return;
+      const scriptPath = resolve(dirname(import.meta.dir), "config", "new-session.sh");
       control
         .sendCommand(
-          `display-popup -c ${ptyClientName} -E -w 40% -h 3 -b heavy -S 'fg=#4f565d' "printf 'Session name: '; read name && tmux new-session -d -s \\"\\$name\\""`,
+          `display-popup -c ${ptyClientName} -E -w 60% -h 70% -b heavy -S 'fg=#4f565d' "${scriptPath}"`,
         )
         .catch(() => {});
     },
