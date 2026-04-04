@@ -45,14 +45,19 @@ interface SessionGroup {
   sessionIndices: number[];
 }
 
-function getParentLabel(dir: string): string | null {
-  const lastSlash = dir.lastIndexOf("/");
-  if (lastSlash <= 0) return null;
-  const parent = dir.slice(0, lastSlash);
-  const segments = parent.split("/").filter((s) => s.length > 0);
-  if (segments.length === 0) return null;
-  if (segments[0] === "~" && segments.length === 1) return null;
-  return segments.slice(-2).join("/");
+function getGroupLabel(dir: string): string | null {
+  const segments = dir.split("/").filter((s) => s.length > 0);
+  // For ~/X/Y/... paths, group by X/Y (fixed depth)
+  // ~/Code/personal/jmux → "Code/personal"
+  // ~/Code/personal      → "Code/personal"
+  // ~/Code/tracktile/platform → "Code/tracktile"
+  if (segments[0] === "~") {
+    if (segments.length < 3) return null; // ~ or ~/Code — too shallow
+    return segments[1] + "/" + segments[2];
+  }
+  // Absolute paths: /X/Y/... → group by X/Y
+  if (segments.length < 2) return null;
+  return segments[0] + "/" + segments[1];
 }
 
 type RenderItem =
@@ -73,7 +78,7 @@ function buildRenderPlan(sessions: SessionInfo[]): {
       ungrouped.push(i);
       continue;
     }
-    const label = getParentLabel(dir);
+    const label = getGroupLabel(dir);
     if (!label) {
       ungrouped.push(i);
       continue;
