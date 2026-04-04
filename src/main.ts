@@ -12,6 +12,42 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
+const VERSION = "0.1.4";
+
+const HELP = `jmux — a persistent session sidebar for tmux
+
+Usage:
+  jmux [session-name] [options]
+
+Options:
+  -L, --socket <name>      Use a separate tmux server socket
+  --install-agent-hooks    Install Claude Code attention flag hooks
+  -v, --version            Show version
+  -h, --help               Show this help
+
+Examples:
+  jmux                     Start with default session
+  jmux my-project          Start with named session
+  jmux -L work             Use isolated tmux server
+  jmux --install-agent-hooks  Set up Claude Code integration
+
+Keybindings:
+  Ctrl-Shift-Up/Down       Switch sessions
+  Ctrl-a n                 New session (directory picker)
+  Ctrl-a j                 Window picker (fzf)
+  Ctrl-a c                 New window
+  Click sidebar            Switch to session`;
+
+if (process.argv.includes("-h") || process.argv.includes("--help")) {
+  console.log(HELP);
+  process.exit(0);
+}
+
+if (process.argv.includes("-v") || process.argv.includes("--version")) {
+  console.log(`jmux ${VERSION}`);
+  process.exit(0);
+}
+
 if (process.argv.includes("--install-agent-hooks")) {
   installAgentHooks();
   process.exit(0);
