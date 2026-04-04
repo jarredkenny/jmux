@@ -6,7 +6,7 @@ FZF_COLORS="border:#4f565d,header:#b5bcc9,prompt:#9fe8c3,label:#9fe8c3,pointer:#
 
 # ─── Step 1: Pick a directory ─────────────────────────────────────────
 
-# Build project list: find directories with .git (real projects)
+# Build project list: find directories with .git (dir or file — worktrees use a file)
 # Search common code directories, limit depth for speed
 PROJECT_DIRS=$(find \
     "$HOME/Code" \
@@ -14,8 +14,7 @@ PROJECT_DIRS=$(find \
     "$HOME/src" \
     "$HOME/work" \
     "$HOME/dev" \
-    2>/dev/null \
-    -maxdepth 3 -name ".git" -type d 2>/dev/null \
+    -maxdepth 4 -name ".git" 2>/dev/null \
     | sed 's|/\.git$||' \
     | sort -u)
 
