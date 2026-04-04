@@ -17,12 +17,13 @@ You lose context constantly. You forget what's running where. You can't see at a
 jmux wraps tmux with a persistent sidebar that shows all your sessions, all the time. It doesn't replace tmux — it sits alongside it. Your keybindings, your panes, your workflow. Everything works exactly like before, plus a sidebar.
 
 **What you get:**
-- Every session visible at all times with its working directory and git branch
+- Every session visible at all times with git branch and window count
+- Sessions grouped by project directory — related work stays together
 - Instant switching with `Ctrl-Shift-Up/Down` — no prefix, no menu, no delay
-- Activity indicators that show which sessions have new output
-- Attention flags that tools like Claude Code can trigger programmatically
+- Activity indicators (green dot) and attention flags (orange `!`) for agentic workflows
 - Mouse click to switch sessions
-- A self-contained tmux config — ships its own keybindings, doesn't touch `~/.tmux.conf`
+- New session modal with fuzzy directory picker
+- A self-contained tmux distribution — ships its own config, doesn't touch `~/.tmux.conf`
 
 ![jmux sidebar alongside vim with split panes and a dev server](docs/screenshots/blog.png)
 
@@ -37,21 +38,33 @@ Your tmux is unmodified. Sessions, windows, panes, keybindings — all unchanged
 │                  │                                         │
 │  jmux            │  $ vim src/server.ts                    │
 │ ──────────────── │  ...                                    │
+│ Code/work        │                                         │
 │ ▎ api-server  3w │                                         │
-│    ~/Code/api    │                                         │
 │              main│                                         │
 │                  │                                         │
 │   dashboard   1w │                                         │
-│    ~/Code/dash   │                                         │
 │            feat/x│                                         │
 │                  │                                         │
-│ ● deploy      2w │                                         │
-│    ~/Code/ops    │                                         │
-│             v2.0 │                                         │
+│ Code/personal    │                                         │
+│ ● blog        1w │                                         │
+│                  │                                         │
+│   dotfiles    2w │                                         │
 │                  ├─────────────────────────────────────────┤
 │                  │  1:vim  2:zsh  3:bun                    │
 └──────────────────┴─────────────────────────────────────────┘
 ```
+
+### Sidebar Features
+
+**Session grouping** — Sessions that share a parent directory are automatically grouped under a header. `~/Code/work/api` and `~/Code/work/web` group under `Code/work`. Solo sessions render ungrouped.
+
+**Two-line entries** — Each session shows its name and window count on the first line, git branch on the second. Grouped sessions inherit directory context from the group header. Ungrouped sessions show their directory path.
+
+**Visual indicators:**
+- Green `▎` left marker — active session
+- Green `●` dot — new output since you last viewed that session
+- Orange `!` flag — attention needed (set programmatically)
+- Blue highlight — sidebar navigation mode (prefix + j)
 
 ## Installation
 
@@ -59,7 +72,7 @@ Your tmux is unmodified. Sessions, windows, panes, keybindings — all unchanged
 
 - [Bun](https://bun.sh) 1.2+
 - [tmux](https://github.com/tmux/tmux) 3.2+
-- [fzf](https://github.com/junegunn/fzf) (for window picker popup)
+- [fzf](https://github.com/junegunn/fzf) (for new session modal and window picker)
 - [git](https://git-scm.com/) (optional, for branch display)
 
 ### Install
@@ -84,11 +97,21 @@ bun run bin/jmux my-project
 
 ### Isolated Server
 
-To run jmux on a separate tmux server (won't interact with your existing sessions):
+To run jmux on a separate tmux server (keeps your existing tmux sessions untouched):
 
 ```bash
 bun run bin/jmux -L jmux
 ```
+
+## New Session Modal
+
+Press `Ctrl-a n` to create a new session. The modal walks you through two steps:
+
+1. **Pick a directory** — fuzzy search over all git repos found under `~/Code`, `~/Projects`, `~/src`, `~/work`, and `~/dev`. Start typing to narrow down instantly.
+
+2. **Name the session** — pre-filled with the directory basename. Edit or accept with Enter.
+
+The session is created in the selected directory and the sidebar updates immediately. The new session is auto-selected.
 
 ## Keybindings
 
@@ -98,7 +121,7 @@ bun run bin/jmux -L jmux
 |-----|--------|
 | `Ctrl-Shift-Up` | Switch to previous session |
 | `Ctrl-Shift-Down` | Switch to next session |
-| `Ctrl-a n` | Create new session (name prompt) |
+| `Ctrl-a n` | New session (directory picker + name) |
 | Click sidebar | Switch to that session |
 
 ### Sidebar Mode (`Ctrl-a j` to enter)
@@ -116,7 +139,6 @@ bun run bin/jmux -L jmux
 | `Ctrl-a c` | New window (opens in `~`) |
 | `Ctrl-Right` / `Ctrl-Left` | Next / previous window |
 | `Ctrl-Shift-Right` / `Ctrl-Shift-Left` | Reorder windows |
-| `Ctrl-a j` | fzf window picker |
 
 ### Panes
 
@@ -124,7 +146,7 @@ bun run bin/jmux -L jmux
 |-----|--------|
 | `Ctrl-a \|` | Split horizontal |
 | `Ctrl-a -` | Split vertical |
-| `Shift-arrows` | Navigate panes (vim-aware) |
+| `Shift-arrows` | Navigate panes (vim-aware via smart-splits) |
 | `Ctrl-a arrows` | Resize panes |
 | `Ctrl-a P` | Toggle pane border titles |
 
@@ -138,15 +160,33 @@ bun run bin/jmux -L jmux
 
 ## Claude Code Integration
 
-Tools can set an attention flag on any session:
+jmux is built for agentic workflows. When you have Claude Code running in multiple sessions, you need to know which ones need your attention.
+
+### One-Command Setup
+
+```bash
+bun run bin/jmux --install-agent-hooks
+```
+
+This adds a hook to `~/.claude/settings.json` that sets the attention flag whenever Claude Code finishes a response. The orange `!` appears in your sidebar so you know which session to check.
+
+### Manual Setup
+
+Set an attention flag on any session:
 
 ```bash
 tmux set-option -t my-session @jmux-attention 1
 ```
 
-jmux shows an orange `!` indicator on that session. When you switch to it, the flag clears automatically.
+jmux shows an orange `!` indicator. When you switch to that session, the flag clears automatically.
 
-This makes it trivial to set up hooks — for example, a Claude Code hook that flags a session when a task completes and needs review.
+### Workflow
+
+1. Start jmux
+2. Create sessions for each project (`Ctrl-a n`)
+3. Run Claude Code in each session on different tasks
+4. Work in one session while others run in the background
+5. Orange `!` flags appear when Claude finishes — switch instantly with `Ctrl-Shift-Down`
 
 ## Self-Contained Config
 
@@ -156,20 +196,23 @@ jmux ships its own `config/tmux.conf`. It never reads `~/.tmux.conf`. This means
 - Every jmux user gets the same keybindings and behavior
 - No plugin manager needed — everything is built in
 - The status bar shows only window tabs (session info is in the sidebar)
+- Windows auto-rename to the running command (`vim`, `zsh`, `bun`, etc.)
+
+The config is fully customizable — see [docs/configuration.md](docs/configuration.md) for details.
 
 ## Architecture
 
 ```
 Terminal (Ghostty, iTerm, etc.)
   └── jmux (owns the terminal surface)
-       ├── Sidebar (24 cols) ── renders session list as a cell grid
+       ├── Sidebar (24 cols) ── session groups, indicators, navigation
        ├── Border (1 col) ──── vertical separator
        └── tmux PTY (remaining cols)
             ├── PTY client ──── spawns tmux, feeds output through @xterm/headless
             └── Control client ─ tmux -C for real-time session metadata
 ```
 
-jmux is ~1000 lines of TypeScript. It has no opinions about what you run inside tmux.
+jmux is ~1500 lines of TypeScript. It has no opinions about what you run inside tmux.
 
 ## License
 
