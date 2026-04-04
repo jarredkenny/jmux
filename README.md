@@ -2,8 +2,7 @@
 
 A persistent session sidebar for tmux. See every project at a glance, switch instantly, never lose context.
 
-<!-- TODO: hero screenshot showing sidebar + tmux with multiple sessions -->
-![jmux sidebar](docs/screenshots/hero.png)
+![jmux with Claude Code, process monitor, and sidebar showing all sessions](docs/screenshots/jmux.png)
 
 ---
 
@@ -24,6 +23,8 @@ jmux wraps tmux with a persistent sidebar that shows all your sessions, all the 
 - Attention flags that tools like Claude Code can trigger programmatically
 - Mouse click to switch sessions
 - A self-contained tmux config — ships its own keybindings, doesn't touch `~/.tmux.conf`
+
+![jmux sidebar alongside vim with split panes and a dev server](docs/screenshots/blog.png)
 
 ## How It Works
 
@@ -52,36 +53,6 @@ Your tmux is unmodified. Sessions, windows, panes, keybindings — all unchanged
 └──────────────────┴─────────────────────────────────────────┘
 ```
 
-## Screenshots
-
-### Session Sidebar
-
-<!-- TODO: screenshot of sidebar with multiple sessions, showing active marker, directory, git branch -->
-![Session sidebar](docs/screenshots/sidebar.png)
-
-*Every session at a glance. Green marker shows your active session. Directories and git branches update in real time.*
-
-### Window Picker
-
-<!-- TODO: screenshot of Ctrl-a j window picker popup with fzf -->
-![Window picker](docs/screenshots/window-picker.png)
-
-*`Ctrl-a j` opens an fzf-powered window picker. Fast, fuzzy, full-height on the left side.*
-
-### New Session
-
-<!-- TODO: screenshot of Ctrl-a n new session popup -->
-![New session](docs/screenshots/new-session.png)
-
-*`Ctrl-a n` opens a popup to name and create a new session. It appears in the sidebar instantly.*
-
-### Git Worktree Workflow
-
-<!-- TODO: screenshot showing multiple sessions with different branches for the same repo -->
-![Worktree workflow](docs/screenshots/worktree-workflow.png)
-
-*Each worktree gets its own session. The sidebar shows which branch each one is on. Switch between feature branches with a single keystroke.*
-
 ## Installation
 
 ### Requirements
@@ -94,7 +65,7 @@ Your tmux is unmodified. Sessions, windows, panes, keybindings — all unchanged
 ### Install
 
 ```bash
-git clone https://github.com/jarred/jmux.git
+git clone https://github.com/jarredkenny/jmux.git
 cd jmux
 bun install
 ```
