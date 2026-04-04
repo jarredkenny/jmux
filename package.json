@@ -1,15 +1,36 @@
 {
-  "name": "jmux",
+  "name": "@jx0/jmux",
   "version": "0.1.0",
+  "description": "A persistent session sidebar for tmux",
   "type": "module",
   "bin": {
     "jmux": "./bin/jmux"
   },
+  "files": [
+    "bin",
+    "src",
+    "config"
+  ],
   "scripts": {
     "dev": "bun run src/main.ts",
     "test": "bun test",
     "typecheck": "bun run tsc --noEmit"
   },
+  "keywords": [
+    "tmux",
+    "terminal",
+    "sidebar",
+    "session-manager",
+    "tui",
+    "cli"
+  ],
+  "author": "Jarred Kenny",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jarredkenny/jmux.git"
+  },
+  "homepage": "https://github.com/jarredkenny/jmux",
   "dependencies": {
     "@xterm/headless": "^6.0.0",
     "bun-pty": "^0.4.8"
