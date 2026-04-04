@@ -103,9 +103,6 @@ export class Renderer {
     const cursorOffset = sidebar ? sidebar.cols + 1 : 0;
     const buf: string[] = [];
 
-    // Hide cursor during render
-    buf.push("\x1b[?25l");
-
     for (let y = 0; y < grid.rows; y++) {
       // Move to start of row (1-indexed)
       buf.push(`\x1b[${y + 1};1H`);
@@ -124,12 +121,11 @@ export class Renderer {
       }
     }
 
-    // Reset attributes, position cursor, show cursor
+    // Reset attributes, position cursor
     buf.push("\x1b[0m");
     buf.push(
       `\x1b[${cursor.y + 1};${cursor.x + cursorOffset + 1}H`,
     );
-    buf.push("\x1b[?25h");
 
     process.stdout.write(buf.join(""));
   }

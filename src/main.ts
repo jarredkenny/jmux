@@ -27,7 +27,6 @@ const mainCols = sidebarVisible ? cols - SIDEBAR_TOTAL : cols;
 
 // Enter alternate screen, raw mode, enable mouse tracking
 process.stdout.write("\x1b[?1049h");
-process.stdout.write("\x1b[?25l");
 process.stdout.write("\x1b[?1000h"); // mouse button tracking
 process.stdout.write("\x1b[?1006h"); // SGR extended mouse mode
 if (process.stdin.setRawMode) {
@@ -237,9 +236,15 @@ inputRouter.setSidebarKeyHandler((key) => {
 
 // --- PTY output pipeline ---
 
+let writesPending = 0;
+
 pty.onData((data: string) => {
+  writesPending++;
   bridge.write(data).then(() => {
-    scheduleRender();
+    writesPending--;
+    if (writesPending === 0) {
+      scheduleRender();
+    }
   });
 });
 
