@@ -102,13 +102,22 @@ async function fetchSessions(): Promise<void> {
 async function resolveClientName(): Promise<void> {
   try {
     const lines = await control.sendCommand(
-      "list-clients -F '#{client_name}:#{client_pid}'",
+      "list-clients -F '#{client_name}:#{client_pid}:#{client_session}'",
     );
     const pid = pty.pid.toString();
     for (const line of lines) {
-      const [name, clientPid] = line.split(":");
-      if (clientPid === pid) {
-        ptyClientName = name;
+      const parts = line.split(":");
+      if (parts[1] === pid) {
+        ptyClientName = parts[0];
+        // Set the initial active session
+        const sessionName = parts[2];
+        if (sessionName) {
+          const match = currentSessions.find((s) => s.name === sessionName);
+          if (match) {
+            currentSessionId = match.id;
+            sidebar.setActiveSession(match.id);
+          }
+        }
         return;
       }
     }
@@ -349,9 +358,6 @@ async function start(): Promise<void> {
   // Start control mode
   await control.start(socketName);
 
-  // Resolve PTY client name
-  await resolveClientName();
-
   // Query tmux prefix key
   try {
     const lines = await control.sendCommand("show-options -g prefix");
@@ -359,7 +365,6 @@ async function start(): Promise<void> {
       const match = lines[0].match(/prefix\s+(.*)/);
       if (match) {
         const prefixName = match[1].trim();
-        // Convert tmux key name to byte (common cases)
         if (prefixName === "C-a") {
           (inputRouter as any).opts.tmuxPrefix = "\x01";
         } else if (prefixName === "C-b") {
@@ -370,8 +375,10 @@ async function start(): Promise<void> {
   } catch (e) {
   }
 
-  // Fetch initial sessions
+  // Fetch initial sessions, then resolve client name (needs sessions list)
   await fetchSessions();
+  await resolveClientName();
+  renderFrame();
 
   // Subscribe to @jmux-attention across all sessions
   await control.registerSubscription(
