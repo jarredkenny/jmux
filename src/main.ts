@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.3.1";
+const VERSION = "0.3.3";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -143,6 +143,7 @@ const mainCols = sidebarVisible ? cols - SIDEBAR_TOTAL : cols;
 // Enter alternate screen, raw mode, enable mouse tracking
 process.stdout.write("\x1b[?1049h");
 process.stdout.write("\x1b[?1000h"); // mouse button tracking
+process.stdout.write("\x1b[?1002h"); // mouse drag tracking
 process.stdout.write("\x1b[?1006h"); // SGR extended mouse mode
 if (process.stdin.setRawMode) {
   process.stdin.setRawMode(true);
@@ -307,7 +308,18 @@ const inputRouter = new InputRouter(
 
 let writesPending = 0;
 
+// OSC 52 clipboard: \x1b]52;...;...\x07 or \x1b]52;...;...\x1b\\
+const OSC52_RE = /\x1b\]52;[^;]*;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+
 pty.onData((data: string) => {
+  // Pass OSC 52 clipboard sequences directly to the outer terminal
+  const osc52Matches = data.match(OSC52_RE);
+  if (osc52Matches) {
+    for (const seq of osc52Matches) {
+      process.stdout.write(seq);
+    }
+  }
+
   writesPending++;
   bridge.write(data).then(() => {
     writesPending--;
@@ -450,6 +462,7 @@ async function start(): Promise<void> {
 function cleanup(): void {
   control.close().catch(() => {});
   process.stdout.write("\x1b[?1000l"); // disable mouse button tracking
+  process.stdout.write("\x1b[?1002l"); // disable mouse drag tracking
   process.stdout.write("\x1b[?1006l"); // disable SGR mouse mode
   process.stdout.write("\x1b[?25h");
   process.stdout.write("\x1b[?1049l");

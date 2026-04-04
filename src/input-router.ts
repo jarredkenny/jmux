@@ -65,8 +65,8 @@ export class InputRouter {
     const mouse = parseSgrMouse(data);
     if (mouse && this.sidebarVisible) {
       if (mouse.x <= this.opts.sidebarCols) {
-        // Click in sidebar region
-        if (!mouse.release) {
+        // Click in sidebar region (ignore drags — button bit 5 = motion)
+        if (!mouse.release && (mouse.button & 32) === 0) {
           this.opts.onSidebarClick(mouse.y - 1); // 0-indexed row
         }
         return; // Consume sidebar mouse events
