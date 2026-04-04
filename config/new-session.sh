@@ -19,5 +19,7 @@ SESSION_NAME=$(echo "" | fzf --print-query \
 
 [ -z "$SESSION_NAME" ] && exit 0
 
+# Create session and switch the parent client to it
+PARENT_CLIENT=$(tmux display-message -p '#{client_name}' 2>/dev/null)
 tmux new-session -d -s "$SESSION_NAME"
-tmux switch-client -t "$SESSION_NAME"
+tmux switch-client -c "$PARENT_CLIENT" -t "$SESSION_NAME"
