@@ -383,7 +383,6 @@ async function lookupSessionDetails(sessions: SessionInfo[]): Promise<void> {
   const home = process.env.HOME || "";
   for (const session of sessions) {
     try {
-      // Use control mode connection — respects -L socket and -f config
       const lines = await control.sendCommand(
         `display-message -t '${session.id}' -p '#{pane_current_path}'`,
       );
@@ -400,6 +399,7 @@ async function lookupSessionDetails(sessions: SessionInfo[]): Promise<void> {
       // Session may not exist or no git repo
     }
   }
+  currentSessions = sessions;
   sidebar.updateSessions(sessions);
   renderFrame();
 }
