@@ -154,7 +154,6 @@ The session is created in the selected directory and the sidebar updates immedia
 |-----|--------|
 | `Ctrl-a k` | Clear pane screen and scrollback |
 | `Ctrl-a y` | Copy entire pane to clipboard |
-| `Ctrl-a Space` | Toggle scratchpad popup |
 
 ## Claude Code Integration
 
