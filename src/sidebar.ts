@@ -7,9 +7,9 @@ const HEADER_ROWS = 2; // "jmux" + separator line
 
 const DIM_ATTRS: CellAttrs = { dim: true };
 const ACTIVE_BG: CellAttrs = {
-  bg: 0,
+  bg: 8,
   bgMode: ColorMode.Palette,
-}; // black — subtle highlight
+}; // bright black (dark gray) — subtle highlight
 const HIGHLIGHT_BG: CellAttrs = {
   bg: 4,
   bgMode: ColorMode.Palette,
@@ -32,6 +32,7 @@ export class Sidebar {
   private activeSessionId: string | null = null;
   private highlightIndex = 0;
   private activitySet = new Set<string>();
+  private _sidebarMode = false;
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -76,6 +77,10 @@ export class Sidebar {
     return this.sessions[idx];
   }
 
+  setSidebarMode(active: boolean): void {
+    this._sidebarMode = active;
+  }
+
   resize(width: number, height: number): void {
     this.width = width;
     this.height = height;
@@ -102,14 +107,15 @@ export class Sidebar {
       const isHighlighted = i === this.highlightIndex;
       const hasActivity = this.activitySet.has(session.id);
 
-      const rowAttrs: CellAttrs = isHighlighted
+      const showHighlight = isHighlighted && this._sidebarMode;
+      const rowAttrs: CellAttrs = showHighlight
         ? { ...HIGHLIGHT_BG }
         : isActive
           ? { ...ACTIVE_BG }
           : {};
 
       // Fill background on both content rows if active or highlighted
-      if (isHighlighted || isActive) {
+      if (showHighlight || isActive) {
         writeString(grid, nameRow, 0, " ".repeat(this.width), rowAttrs);
         if (detailRow < this.height) {
           writeString(grid, detailRow, 0, " ".repeat(this.width), rowAttrs);

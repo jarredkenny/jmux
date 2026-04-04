@@ -190,17 +190,21 @@ const inputRouter = new InputRouter(
     onPtyData: (data) => pty.write(data),
     onSidebarEnter: () => {
       if (!sidebarShown) {
-        // Narrow terminal — show sidebar as overlay
         overlayMode = true;
         sidebarShown = true;
       }
+      sidebar.setSidebarMode(true);
       renderFrame();
     },
     onSidebarClick: (row) => {
       const session = sidebar.getSessionByRow(row);
       if (session) switchSession(session.id);
     },
-    onSidebarExit: () => exitOverlay(),
+    onSidebarExit: () => {
+      sidebar.setSidebarMode(false);
+      exitOverlay();
+      renderFrame();
+    },
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),
     onNewSession: () => {
@@ -229,6 +233,7 @@ inputRouter.setSidebarKeyHandler((key) => {
     // Enter — switch to highlighted session
     const targetId = sidebar.getHighlightedSessionId();
     if (targetId) switchSession(targetId);
+    sidebar.setSidebarMode(false);
     inputRouter.exitSidebarMode();
     exitOverlay();
   }
