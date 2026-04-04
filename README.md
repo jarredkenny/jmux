@@ -14,7 +14,7 @@ You lose context constantly. You forget what's running where. You can't see at a
 
 ## The Solution
 
-jmux wraps tmux with a persistent sidebar that shows all your sessions, all the time. It ships its own tmux config with opinionated keybindings — a complete terminal workspace out of the box.
+jmux wraps tmux with a persistent sidebar that shows all your sessions, all the time. It works with your existing `~/.tmux.conf` — your plugins, your colors, your keybindings — and layers a sidebar on top.
 
 **What you get:**
 - Every session visible at all times with git branch and window count
@@ -23,7 +23,7 @@ jmux wraps tmux with a persistent sidebar that shows all your sessions, all the 
 - Activity indicators (green dot) and attention flags (orange `!`) for agentic workflows
 - Mouse click to switch sessions
 - New session modal with fuzzy directory picker
-- A self-contained tmux distribution — ships its own config, doesn't touch `~/.tmux.conf`
+- Bring your own `~/.tmux.conf` — your plugins and keybindings just work
 
 ![jmux sidebar alongside vim with split panes and a dev server](docs/screenshots/blog.png)
 
@@ -31,7 +31,7 @@ jmux wraps tmux with a persistent sidebar that shows all your sessions, all the 
 
 jmux owns the terminal. It spawns tmux in a PTY, feeds the output through a headless terminal emulator ([xterm.js](https://xtermjs.org/)), and composites a 24-column sidebar alongside the tmux rendering. A separate tmux control mode connection provides real-time session metadata via push notifications.
 
-jmux manages the tmux server. It applies its own config on startup, giving you a consistent environment with the sidebar built in.
+jmux sources your `~/.tmux.conf` first, then layers its own defaults and the few settings the sidebar requires. Your existing setup carries over — jmux just adds the sidebar.
 
 ```
 ┌─ jmux sidebar ──┬─ your normal tmux ──────────────────────┐
@@ -185,17 +185,25 @@ jmux shows an orange `!` indicator. When you switch to that session, the flag cl
 4. Work in one session while others run in the background
 5. Orange `!` flags appear when Claude finishes — switch instantly with `Ctrl-Shift-Down`
 
-## Self-Contained Config
+## Configuration
 
-jmux ships its own `config/tmux.conf`. It never reads `~/.tmux.conf`. This means:
+jmux loads config in three layers:
 
-- Consistent keybindings and behavior for every user
-- No plugin manager needed — everything is built in
-- Use `-L` to keep jmux's server separate from your existing tmux
-- The status bar shows only window tabs (session info is in the sidebar)
-- Windows auto-rename to the running command (`vim`, `zsh`, `bun`, etc.)
+```
+~/.tmux.conf              ← your config (plugins, theme, bindings)
+config/defaults.conf      ← jmux defaults (can be overridden)
+config/core.conf          ← jmux requirements (always wins)
+```
 
-The config is fully customizable — see [docs/configuration.md](docs/configuration.md) for details.
+Your `~/.tmux.conf` is sourced first. Your plugins, colors, prefix key, and custom bindings all carry over. jmux then applies its defaults (keybindings, status bar, window behavior) and finally the core settings the sidebar depends on.
+
+**Core settings** (cannot be overridden):
+- `detach-on-destroy off` — switch to next session on kill, don't exit jmux
+- `mouse on` — required for sidebar clicks
+- `prefix + n` — new session modal
+- Empty `status-left` — session info is in the sidebar
+
+Everything else is yours to customize. See [docs/configuration.md](docs/configuration.md) for details.
 
 ## Architecture
 
