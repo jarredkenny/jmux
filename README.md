@@ -2,9 +2,9 @@
 
 # jmux
 
-**A tmux sidebar for agentic development.**
+**Run a fleet of coding agents from your terminal.**
 
-Run AI agents across multiple projects. See what's running, what's finished, and what needs you — all at a glance.
+Orchestrate parallel Claude Code sessions with a persistent sidebar. See what's running, what's finished, and what needs you — without leaving tmux.
 
 [![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
 [![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)

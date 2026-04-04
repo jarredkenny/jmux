@@ -1,7 +1,7 @@
 {
   "name": "@jx0/jmux",
   "version": "0.3.1",
-  "description": "A persistent session sidebar for tmux",
+  "description": "Run a fleet of coding agents from your terminal",
   "type": "module",
   "bin": {
     "jmux": "./bin/jmux"
