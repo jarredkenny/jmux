@@ -1,144 +1,95 @@
+<div align="center">
+
 # jmux
 
-A persistent session sidebar for tmux. See every project at a glance, switch instantly, never lose context.
+**A persistent session sidebar for tmux.**
+
+See every project at a glance. Switch instantly. Never lose context.
+
+[![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
+[![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)
 
 ![jmux sidebar with grouped sessions alongside vim and server logs](docs/screenshots/hero.png)
 
+</div>
+
+## Install
+
+```bash
+bun install -g @jx0/jmux
+jmux
+```
+
+Requires [Bun](https://bun.sh) 1.2+, [tmux](https://github.com/tmux/tmux) 3.2+, [fzf](https://github.com/junegunn/fzf), and optionally [git](https://git-scm.com/) for branch display.
+
 ---
 
-## The Problem
+## Why
 
-You have 30+ tmux sessions. Each one is a project, a context, a train of thought. But tmux gives you a flat list and a status bar that shows one session name. To switch, you `prefix-s`, scan a wall of text, find the one you want, and hope you remember which window you were in.
+tmux sessions are invisible. You have 30 of them, but the status bar shows one name. To switch, you `prefix-s`, scan a wall of text, and hope you remember what's where.
 
-You lose context constantly. You forget what's running where. You can't see at a glance which sessions have new output or which ones need attention.
+jmux fixes this with a persistent sidebar that shows every session, all the time.
 
-## The Solution
+## Features
 
-jmux wraps tmux with a persistent sidebar that shows all your sessions, all the time. It works with your existing `~/.tmux.conf` — your plugins, your colors, your keybindings — and layers a sidebar on top.
+### Session Sidebar
 
-**What you get:**
-- Every session visible at all times with git branch and window count
-- Sessions grouped by project directory — related work stays together
-- Instant switching with `Ctrl-Shift-Up/Down` — no prefix, no menu, no delay
-- Activity indicators (green dot) and attention flags (orange `!`) for agentic workflows
-- Mouse click to switch sessions
-- New session modal with fuzzy directory picker
-- Bring your own `~/.tmux.conf` — your plugins and keybindings just work
+Every session visible at a glance — name, window count, git branch. Sessions sharing a parent directory are automatically grouped under a header.
 
-![jmux sidebar alongside vim with split panes and a dev server](docs/screenshots/blog.png)
+- Green `▎` left marker on the active session
+- Green `●` dot for sessions with new output
+- Orange `!` flag for attention (set programmatically)
 
-## How It Works
+### Instant Switching
 
-jmux owns the terminal. It spawns tmux in a PTY, feeds the output through a headless terminal emulator ([xterm.js](https://xtermjs.org/)), and composites a 24-column sidebar alongside the tmux rendering. A separate tmux control mode connection provides real-time session metadata via push notifications.
+`Ctrl-Shift-Up/Down` moves between sessions with zero delay. No prefix key, no menu, no mode to enter. Or just click a session in the sidebar.
 
-jmux applies its defaults first, then sources your `~/.tmux.conf` so your settings override them. A small set of core settings the sidebar requires are applied last. Your existing setup carries over — jmux just adds the sidebar.
+### New Session Modal
 
-```
-┌─ jmux sidebar ──┬─ your normal tmux ──────────────────────┐
-│                  │                                         │
-│  jmux            │  $ vim src/server.ts                    │
-│ ──────────────── │  ...                                    │
-│ Code/work        │                                         │
-│ ▎ api-server  3w │                                         │
-│              main│                                         │
-│                  │                                         │
-│   dashboard   1w │                                         │
-│            feat/x│                                         │
-│                  │                                         │
-│ Code/personal    │                                         │
-│ ● blog        1w │                                         │
-│                  │                                         │
-│   dotfiles    2w │                                         │
-│                  ├─────────────────────────────────────────┤
-│                  │  1:vim  2:zsh  3:bun                    │
-└──────────────────┴─────────────────────────────────────────┘
-```
+`Ctrl-a n` opens a two-step fzf flow: fuzzy-search your git repos for a directory, then name the session. Pre-filled with the directory basename.
 
-### Sidebar Features
+### Window Picker
 
-**Session grouping** — Sessions that share a parent directory are automatically grouped under a header. `~/Code/work/api` and `~/Code/work/web` group under `Code/work`. Solo sessions render ungrouped.
+`Ctrl-a j` opens a full-height fzf popup with every window in the current session. Type to filter, Enter to switch.
 
-**Two-line entries** — Each session shows its name and window count on the first line, git branch on the second. Grouped sessions inherit directory context from the group header. Ungrouped sessions show their directory path.
+![fzf window picker popup](docs/screenshots/window-picker.png)
 
-**Visual indicators:**
-- Green `▎` left marker — active session
-- Green `●` dot — new output since you last viewed that session
-- Orange `!` flag — attention needed (set programmatically)
+### Bring Your Own Config
 
-## Installation
+jmux works with your existing `~/.tmux.conf`. Your plugins, theme, prefix key, and custom bindings carry over — jmux applies its defaults first, then your config overrides them. Only a small set of core settings the sidebar needs are enforced.
+
+### Claude Code Integration
+
+Built for agentic workflows. Run Claude Code in multiple sessions and get notified when each one finishes.
 
 ```bash
-# Install globally
-bun install -g @jx0/jmux
-
-# Run
-jmux
+jmux --install-agent-hooks
 ```
 
-### Requirements
+One command adds a hook to `~/.claude/settings.json`. When Claude finishes a response, the orange `!` appears on that session. Switch to it, review the work, move on. See [docs/claude-code-integration.md](docs/claude-code-integration.md) for details.
 
-- [Bun](https://bun.sh) 1.2+
-- [tmux](https://github.com/tmux/tmux) 3.2+
-- [fzf](https://github.com/junegunn/fzf) (for session/window modals)
-- [git](https://git-scm.com/) (optional, for branch display)
-
-### Usage
-
-```bash
-# Start jmux (creates or attaches to default session)
-jmux
-
-# Start with a named session
-jmux my-project
-
-# Use a separate tmux server (won't touch your existing sessions)
-jmux -L work
-```
-
-### From Source
-
-```bash
-git clone https://github.com/jarredkenny/jmux.git
-cd jmux
-bun install
-bun run bin/jmux
-```
-
-## New Session Modal
-
-Press `Ctrl-a n` to create a new session. The modal walks you through two steps:
-
-1. **Pick a directory** — fuzzy search over all git repos found under `~/Code`, `~/Projects`, `~/src`, `~/work`, and `~/dev`. Start typing to narrow down instantly.
-
-2. **Name the session** — pre-filled with the directory basename. Edit or accept with Enter.
-
-The session is created in the selected directory and the sidebar updates immediately. The new session is auto-selected.
+---
 
 ## Keybindings
 
-### Session Navigation (always active)
+### Sessions
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-Shift-Up` | Switch to previous session |
-| `Ctrl-Shift-Down` | Switch to next session |
-| `Ctrl-a n` | New session (directory picker + name) |
-| `Ctrl-a r` | Rename current session |
-| `Ctrl-a m` | Move current window to another session |
-| Click sidebar | Switch to that session |
+| `Ctrl-Shift-Up/Down` | Switch to prev/next session |
+| `Ctrl-a n` | New session |
+| `Ctrl-a r` | Rename session |
+| `Ctrl-a m` | Move window to another session |
+| Click sidebar | Switch to session |
 
 ### Windows
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-a c` | New window (opens in `~`) |
 | `Ctrl-a j` | fzf window picker |
-| `Ctrl-Right` / `Ctrl-Left` | Next / previous window |
-| `Ctrl-Shift-Right` / `Ctrl-Shift-Left` | Reorder windows |
-
-`Ctrl-a j` opens a full-height fzf popup on the left side of the screen with all windows in the current session. Type to fuzzy search, Enter to switch.
-
-![fzf window picker popup](docs/screenshots/window-picker.png)
+| `Ctrl-a c` | New window |
+| `Ctrl-Right/Left` | Next/prev window |
+| `Ctrl-Shift-Right/Left` | Reorder windows |
 
 ### Panes
 
@@ -148,79 +99,49 @@ The session is created in the selected directory and the sidebar updates immedia
 | `Ctrl-a -` | Split vertical |
 | `Shift-arrows` | Navigate panes |
 | `Ctrl-a arrows` | Resize panes |
-| `Ctrl-a P` | Toggle pane border titles |
 
 ### Utilities
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-a k` | Clear pane screen and scrollback |
-| `Ctrl-a y` | Copy entire pane to clipboard |
+| `Ctrl-a k` | Clear pane + scrollback |
+| `Ctrl-a y` | Copy pane to clipboard |
+| `Ctrl-a P` | Toggle pane border titles |
 
-## Claude Code Integration
-
-jmux is built for agentic workflows. When you have Claude Code running in multiple sessions, you need to know which ones need your attention.
-
-### One-Command Setup
-
-```bash
-jmux --install-agent-hooks
-```
-
-This adds a hook to `~/.claude/settings.json` that sets the attention flag whenever Claude Code finishes a response. The orange `!` appears in your sidebar so you know which session to check.
-
-### Manual Setup
-
-Set an attention flag on any session:
-
-```bash
-tmux set-option -t my-session @jmux-attention 1
-```
-
-jmux shows an orange `!` indicator. When you switch to that session, the flag clears automatically.
-
-### Workflow
-
-1. Start jmux
-2. Create sessions for each project (`Ctrl-a n`)
-3. Run Claude Code in each session on different tasks
-4. Work in one session while others run in the background
-5. Orange `!` flags appear when Claude finishes — switch instantly with `Ctrl-Shift-Down`
+---
 
 ## Configuration
 
-jmux loads config in three layers:
+Config loads in three layers:
 
 ```
 config/defaults.conf      ← jmux defaults (baseline)
 ~/.tmux.conf              ← your config (overrides defaults)
-config/core.conf          ← jmux requirements (always wins)
+config/core.conf          ← jmux core (always wins)
 ```
 
-jmux defaults are applied first as a baseline. Your `~/.tmux.conf` is sourced next — anything you set overrides the defaults. Finally, the core settings the sidebar depends on are applied last and cannot be overridden.
+Override any default in your `~/.tmux.conf` — prefix key, colors, keybindings, plugins. Only four core settings are enforced: `detach-on-destroy off`, `mouse on`, `prefix + n` binding, and empty `status-left`.
 
-**Core settings** (cannot be overridden):
-- `detach-on-destroy off` — switch to next session on kill, don't exit jmux
-- `mouse on` — required for sidebar clicks
-- `prefix + n` — new session modal
-- Empty `status-left` — session info is in the sidebar
+See [docs/configuration.md](docs/configuration.md) for the full guide.
 
-Everything else is yours to customize. See [docs/configuration.md](docs/configuration.md) for details.
+---
 
 ## Architecture
 
 ```
 Terminal (Ghostty, iTerm, etc.)
   └── jmux (owns the terminal surface)
-       ├── Sidebar (24 cols) ── session groups, indicators, navigation
-       ├── Border (1 col) ──── vertical separator
+       ├── Sidebar (24 cols) ── session groups, indicators
+       ├── Border (1 col)
        └── tmux PTY (remaining cols)
-            ├── PTY client ──── spawns tmux, feeds output through @xterm/headless
-            └── Control client ─ tmux -C for real-time session metadata
+            ├── PTY client ──── @xterm/headless for VT emulation
+            └── Control client ─ tmux -C for real-time metadata
 ```
 
-jmux is ~1500 lines of TypeScript. It has no opinions about what you run inside tmux.
+~1500 lines of TypeScript. No opinions about what you run inside tmux.
+
+---
 
 ## License
 
-MIT
+[MIT](LICENSE)
