@@ -4,3 +4,4 @@ dist/
 .claude/
 .superpowers/
 *.log
+.candid/
