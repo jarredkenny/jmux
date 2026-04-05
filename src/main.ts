@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.5.1";
+const VERSION = "0.5.2";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -591,6 +591,7 @@ async function start(): Promise<void> {
   // we attached to an existing server that loaded ~/.tmux.conf
   // Set JMUX_DIR in tmux's global environment so config bindings can reference it
   await control.sendCommand(`set-environment -g JMUX_DIR ${jmuxDir}`);
+  await control.sendCommand("set-environment -g JMUX 1");
   await control.sendCommand(`source-file ${configFile}`);
   // Re-enable automatic-rename on all windows — clears any application-set names
   try {
