@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.3.9";
+const VERSION = "0.4.0";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -108,7 +108,7 @@ function installAgentHooks(): void {
 
 // --- TUI startup ---
 
-const SIDEBAR_WIDTH = 24;
+const SIDEBAR_WIDTH = 26;
 const BORDER_WIDTH = 1;
 const SIDEBAR_TOTAL = SIDEBAR_WIDTH + BORDER_WIDTH;
 
@@ -163,7 +163,7 @@ let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
 let currentSessions: SessionInfo[] = [];
 const lastViewedTimestamps = new Map<string, number>();
-const sessionDetailsCache = new Map<string, { directory?: string; gitBranch?: string }>();
+const sessionDetailsCache = new Map<string, { directory?: string; gitBranch?: string; project?: string }>();
 
 function switchByOffset(offset: number): void {
   const ids = sidebar.getDisplayOrderIds();
@@ -446,10 +446,31 @@ async function lookupSessionDetails(sessions: SessionInfo[]): Promise<void> {
         .catch(() => "");
       const gitBranch = branch.trim() || undefined;
 
+      // Detect wtm worktree — .git is a file pointing to a bare repo
+      let project: string | undefined;
+      try {
+        const commonDir = await $`git -C ${cwd} rev-parse --git-common-dir`
+          .text()
+          .catch(() => "");
+        const gitDir = await $`git -C ${cwd} rev-parse --git-dir`
+          .text()
+          .catch(() => "");
+        if (commonDir.trim() && gitDir.trim() && commonDir.trim() !== gitDir.trim()) {
+          // In a worktree — commonDir points to the bare repo's .git
+          // Bare repo structure: /path/to/project/.git → project name is parent dir basename
+          const resolved = resolve(cwd, commonDir.trim());
+          const bareRoot = dirname(resolved);
+          project = bareRoot.split("/").pop();
+        }
+      } catch {
+        // Not a worktree
+      }
+
       // Write to persistent cache
-      sessionDetailsCache.set(session.id, { directory, gitBranch });
+      sessionDetailsCache.set(session.id, { directory, gitBranch, project });
       session.directory = directory;
       session.gitBranch = gitBranch;
+      session.project = project;
     } catch {
       // Session may not exist or no git repo
     }

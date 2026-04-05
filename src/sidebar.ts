@@ -98,12 +98,11 @@ function buildRenderPlan(sessions: SessionInfo[]): {
   const ungrouped: number[] = [];
 
   for (let i = 0; i < sessions.length; i++) {
-    const dir = sessions[i].directory;
-    if (!dir) {
-      ungrouped.push(i);
-      continue;
-    }
-    const label = getGroupLabel(dir);
+    // Prefer project name (wtm) over directory-based grouping
+    const label = sessions[i].project ?? (() => {
+      const dir = sessions[i].directory;
+      return dir ? getGroupLabel(dir) : null;
+    })();
     if (!label) {
       ungrouped.push(i);
       continue;

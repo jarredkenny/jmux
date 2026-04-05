@@ -36,4 +36,5 @@ export interface SessionInfo {
   attention: boolean;
   windowCount: number;
   directory?: string;
+  project?: string; // wtm project name (bare repo basename)
 }
