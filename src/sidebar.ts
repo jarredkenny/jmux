@@ -161,6 +161,11 @@ function itemHeight(item: RenderItem): number {
 
 // --- Sidebar class ---
 
+const UPDATE_AVAILABLE_ATTRS: CellAttrs = {
+  fg: 3,
+  fgMode: ColorMode.Palette,
+};
+
 export class Sidebar {
   private width: number;
   private height: number;
@@ -171,6 +176,8 @@ export class Sidebar {
   private rowToSessionIndex = new Map<number, number>();
   private activitySet = new Set<string>();
   private scrollOffset = 0;
+  private currentVersion: string = "";
+  private latestVersion: string | null = null;
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -212,6 +219,19 @@ export class Sidebar {
       .filter(Boolean) as string[];
   }
 
+  setVersion(current: string, latest?: string): void {
+    this.currentVersion = current;
+    this.latestVersion = latest ?? null;
+  }
+
+  hasUpdate(): boolean {
+    return this.latestVersion !== null && this.latestVersion !== this.currentVersion;
+  }
+
+  isVersionRow(row: number): boolean {
+    return this.currentVersion !== "" && row === this.height - 1;
+  }
+
   getSessionByRow(row: number): SessionInfo | null {
     const sessionIdx = this.rowToSessionIndex.get(row);
     if (sessionIdx === undefined) return null;
@@ -231,7 +251,7 @@ export class Sidebar {
 
   scrollToActive(): void {
     if (!this.activeSessionId) return;
-    const viewportHeight = this.height - HEADER_ROWS;
+    const viewportHeight = this.viewportHeight();
     let vRow = 0;
     for (const item of this.items) {
       const h = itemHeight(item);
@@ -251,10 +271,17 @@ export class Sidebar {
     }
   }
 
+  private footerRows(): number {
+    return this.currentVersion ? 1 : 0;
+  }
+
+  private viewportHeight(): number {
+    return this.height - HEADER_ROWS - this.footerRows();
+  }
+
   private clampScroll(): void {
     const totalRows = this.items.reduce((sum, item) => sum + itemHeight(item), 0);
-    const viewportHeight = this.height - HEADER_ROWS;
-    const maxOffset = Math.max(0, totalRows - viewportHeight);
+    const maxOffset = Math.max(0, totalRows - this.viewportHeight());
     this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset));
   }
 
@@ -266,7 +293,8 @@ export class Sidebar {
     writeString(grid, 0, 1, "jmux", { ...ACCENT_ATTRS, bold: true });
     writeString(grid, 1, 0, "\u2500".repeat(this.width), DIM_ATTRS);
 
-    const viewportHeight = this.height - HEADER_ROWS;
+    const vpHeight = this.viewportHeight();
+    const contentBottom = HEADER_ROWS + vpHeight;
     let vRow = 0;
     let totalRows = 0;
 
@@ -281,7 +309,7 @@ export class Sidebar {
         continue;
       }
       // Track total rows even after viewport
-      if (screenRow >= this.height) {
+      if (screenRow >= contentBottom) {
         vRow += h;
         totalRows += h;
         continue;
@@ -307,8 +335,23 @@ export class Sidebar {
     if (this.scrollOffset > 0) {
       writeString(grid, HEADER_ROWS, this.width - 1, "\u25b2", DIM_ATTRS);
     }
-    if (this.scrollOffset + viewportHeight < totalRows) {
-      writeString(grid, this.height - 1, this.width - 1, "\u25bc", DIM_ATTRS);
+    if (this.scrollOffset + vpHeight < totalRows) {
+      const scrollRow = this.footerRows() ? contentBottom - 1 : this.height - 1;
+      writeString(grid, scrollRow, this.width - 1, "\u25bc", DIM_ATTRS);
+    }
+
+    // Version footer
+    if (this.currentVersion) {
+      const footerRow = this.height - 1;
+      const versionText = `v${this.currentVersion}`;
+      if (this.hasUpdate()) {
+        const updateText = `v${this.latestVersion} avail`;
+        const maxLen = this.width - 2;
+        const display = updateText.length <= maxLen ? updateText : `v${this.latestVersion}`;
+        writeString(grid, footerRow, 1, display, UPDATE_AVAILABLE_ATTRS);
+      } else {
+        writeString(grid, footerRow, 1, versionText, DIM_ATTRS);
+      }
     }
 
     return grid;

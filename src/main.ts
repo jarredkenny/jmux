@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -108,9 +108,22 @@ function installAgentHooks(): void {
 
 // --- TUI startup ---
 
-const SIDEBAR_WIDTH = 26;
+// Read sidebar width from user config, fall back to default
+function loadUserConfig(): Record<string, any> {
+  const configPath = resolve(homedir(), ".config", "jmux", "config.json");
+  try {
+    if (existsSync(configPath)) {
+      return JSON.parse(readFileSync(configPath, "utf-8"));
+    }
+  } catch {
+    // Invalid config — use defaults
+  }
+  return {};
+}
+const userConfig = loadUserConfig();
+let sidebarWidth = (userConfig.sidebarWidth as number) || 26;
 const BORDER_WIDTH = 1;
-const SIDEBAR_TOTAL = SIDEBAR_WIDTH + BORDER_WIDTH;
+function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
 
 // Resolve paths relative to source
 const jmuxDir = resolve(dirname(import.meta.dir));
@@ -138,7 +151,7 @@ for (let i = 2; i < process.argv.length; i++) {
 const cols = process.stdout.columns || 80;
 const rows = process.stdout.rows || 24;
 const sidebarVisible = cols >= 80;
-const mainCols = sidebarVisible ? cols - SIDEBAR_TOTAL : cols;
+const mainCols = sidebarVisible ? cols - sidebarTotal() : cols;
 
 // Enter alternate screen, raw mode, enable mouse tracking
 process.stdout.write("\x1b[?1049h");
@@ -155,13 +168,15 @@ process.stdin.resume();
 const pty = new TmuxPty({ sessionName, socketName, configFile, jmuxDir, cols: mainCols, rows });
 const bridge = new ScreenBridge(mainCols, rows);
 const renderer = new Renderer();
-const sidebar = new Sidebar(SIDEBAR_WIDTH, rows);
+const sidebar = new Sidebar(sidebarWidth, rows);
 const control = new TmuxControl();
 
 let currentSessionId: string | null = null;
 let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
 let currentSessions: SessionInfo[] = [];
+
+sidebar.setVersion(VERSION);
 const lastViewedTimestamps = new Map<string, number>();
 const sessionDetailsCache = new Map<string, { directory?: string; gitBranch?: string; project?: string }>();
 
@@ -303,12 +318,16 @@ function clearSessionIndicators(): void {
 
 const inputRouter = new InputRouter(
   {
-    sidebarCols: SIDEBAR_WIDTH,
+    sidebarCols: sidebarWidth,
     onPtyData: (data) => {
       pty.write(data);
       clearSessionIndicators();
     },
     onSidebarClick: (row) => {
+      if (sidebar.isVersionRow(row)) {
+        showVersionInfo();
+        return;
+      }
       const session = sidebar.getSessionByRow(row);
       if (session) switchSession(session.id);
     },
@@ -393,14 +412,75 @@ process.on("SIGWINCH", () => {
   const newCols = process.stdout.columns || 80;
   const newRows = process.stdout.rows || 24;
   const newSidebarVisible = newCols >= 80;
-  const newMainCols = newSidebarVisible ? newCols - SIDEBAR_TOTAL : newCols;
+  const newMainCols = newSidebarVisible ? newCols - sidebarTotal() : newCols;
 
   sidebarShown = newSidebarVisible;
   inputRouter.setSidebarVisible(newSidebarVisible);
   pty.resize(newMainCols, newRows);
   bridge.resize(newMainCols, newRows);
-  sidebar.resize(SIDEBAR_WIDTH, newRows);
+  sidebar.resize(sidebarWidth, newRows);
 });
+
+// --- Config file watcher ---
+
+const configPath = resolve(homedir(), ".config", "jmux", "config.json");
+try {
+  const { watch } = await import("fs");
+  watch(configPath, () => {
+    const updated = loadUserConfig();
+    const newWidth = (updated.sidebarWidth as number) || 26;
+    if (newWidth !== sidebarWidth) {
+      sidebarWidth = newWidth;
+      const cols = process.stdout.columns || 80;
+      const rows = process.stdout.rows || 24;
+      const newSidebarVisible = cols >= 80;
+      const newMainCols = newSidebarVisible ? cols - sidebarTotal() : cols;
+
+      sidebarShown = newSidebarVisible;
+      inputRouter.setSidebarVisible(newSidebarVisible);
+      pty.resize(newMainCols, rows);
+      bridge.resize(newMainCols, rows);
+      sidebar.resize(sidebarWidth, rows);
+    }
+  });
+} catch {
+  // Config file may not exist yet — watcher will fail silently
+}
+
+// --- Update check ---
+
+async function checkForUpdates(): Promise<void> {
+  try {
+    const resp = await fetch(
+      "https://api.github.com/repos/jarredkenny/jmux/releases/latest",
+      { headers: { "Accept": "application/vnd.github.v3+json" } },
+    );
+    if (!resp.ok) return;
+    const data = await resp.json() as { tag_name?: string };
+    const latest = data.tag_name?.replace(/^v/, "");
+    if (latest && latest !== VERSION) {
+      sidebar.setVersion(VERSION, latest);
+      scheduleRender();
+    }
+  } catch {
+    // Offline or rate-limited — no problem
+  }
+}
+
+async function showVersionInfo(): Promise<void> {
+  if (!ptyClientName) await resolveClientName();
+  if (!ptyClientName) return;
+  const tag = `v${VERSION}`;
+  const cmd = `${jmuxDir}/config/release-notes.sh ${tag}`;
+  // Use tmux CLI directly — confirmed working from terminal tests
+  const args = ["tmux"];
+  if (socketName) args.push("-L", socketName);
+  args.push("display-popup", "-c", ptyClientName, "-E", "-w", "70%", "-h", "40%", "-b", "heavy", "-S", "fg=#4f565d", "sh", "-c", cmd);
+  Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+}
+
+// Check for updates in the background (non-blocking)
+checkForUpdates();
 
 // --- Control mode events ---
 
