@@ -4,7 +4,9 @@
 
 **The terminal workspace for agentic development.**
 
-Run coding agents in parallel from your terminal. A persistent sidebar shows every session, what's running, and what needs your attention — without leaving the tools you already use.
+Agents, editors, servers, logs. All running. All visible. One terminal.
+
+Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are working, which finished, and which need your review. No Electron. No lock-in. Just your terminal.
 
 [![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
 [![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)
@@ -125,6 +127,7 @@ When Claude Code finishes a response, the orange `!` appears on that session in 
 |-----|--------|
 | `Ctrl-a k` | Clear pane + scrollback |
 | `Ctrl-a y` | Copy pane to clipboard |
+| `Ctrl-a i` | Settings |
 
 ---
 

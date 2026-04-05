@@ -14,7 +14,14 @@ import { homedir } from "os";
 
 const VERSION = "0.5.2";
 
-const HELP = `jmux — a persistent session sidebar for tmux
+const HELP = `jmux — the terminal workspace for agentic development
+
+Agents, editors, servers, logs.
+All running. All visible. One terminal.
+
+Run Claude Code, Codex, or aider in parallel — jmux shows you which
+agents are working, which finished, and which need your review.
+No Electron. No lock-in. Just your terminal.
 
 Usage:
   jmux [session-name] [options]
@@ -33,10 +40,13 @@ Examples:
 
 Keybindings:
   Ctrl-Shift-Up/Down       Switch sessions
-  Ctrl-a n                 New session (directory picker)
+  Ctrl-a n                 New session / worktree
+  Ctrl-a i                 Settings
   Ctrl-a j                 Window picker (fzf)
   Ctrl-a c                 New window
-  Click sidebar            Switch to session`;
+  Click sidebar            Switch to session
+
+https://github.com/jarredkenny/jmux`;
 
 if (process.argv.includes("-h") || process.argv.includes("--help")) {
   console.log(HELP);
