@@ -15,14 +15,9 @@
       theme: {
         extend: {
           colors: {
-            base: '#171b26',
             surface: '#111520',
             border: '#252b3a',
             accent: '#4ade80',
-            'text-primary': '#ffffff',
-            'text-secondary': '#a1a1aa',
-            'text-muted': '#71717a',
-            'text-dim': '#52525b',
           },
           fontFamily: {
             mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
@@ -31,11 +26,12 @@
       },
     }
   </script>
-  <style type="text/tailwindcss">
-    @layer base {
-      body {
-        @apply bg-base text-text-primary antialiased;
-      }
+  <style>
+    body {
+      background-color: #171b26;
+      color: #ffffff;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
   </style>
 </head>
@@ -49,8 +45,8 @@
       <span class="text-xs font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded">v0.4.0</span>
     </div>
     <div class="flex items-center gap-6 text-sm">
-      <a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener" class="text-text-muted hover:text-text-secondary transition-colors hidden sm:block">Docs</a>
-      <a href="#ecosystem" class="text-text-muted hover:text-text-secondary transition-colors hidden sm:block">Ecosystem</a>
+      <a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors hidden sm:block">Docs</a>
+      <a href="#ecosystem" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors hidden sm:block">Ecosystem</a>
       <a href="#install" class="text-xs font-medium bg-accent text-[#171b26] px-3.5 py-1.5 rounded-md hover:bg-accent/90 transition-colors">Install</a>
     </div>
   </nav>
@@ -60,9 +56,9 @@
     <p class="font-mono text-xs md:text-sm text-accent tracking-[0.2em] uppercase mb-4">Parallel Development Environment</p>
     <h1 class="text-3xl md:text-5xl font-extrabold leading-tight max-w-2xl mx-auto mb-6 tracking-tight">
       Run 10 coding agents at once.<br>
-      <span class="text-text-muted">See all of them.</span>
+      <span class="text-[#71717a]">See all of them.</span>
     </h1>
-    <p class="text-base md:text-lg text-text-secondary max-w-xl mx-auto mb-9 leading-relaxed">
+    <p class="text-base md:text-lg text-[#a1a1aa] max-w-xl mx-auto mb-9 leading-relaxed">
       jmux gives you a persistent overview of every agent session — what's running,
       what's finished, and what needs your attention. No Electron. No lock-in. Just your terminal.
     </p>
@@ -70,8 +66,8 @@
     <!-- Install command -->
     <div class="inline-flex items-center gap-3 bg-surface border border-border rounded-lg px-5 py-3 font-mono text-sm">
       <span class="text-accent">$</span>
-      <span class="text-text-primary">bun install -g @jx0/jmux</span>
-      <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux');this.textContent='✓';setTimeout(()=>this.textContent='⧉',1500)" class="text-text-dim hover:text-text-secondary transition-colors ml-2 cursor-pointer" title="Copy to clipboard">⧉</button>
+      <span class="text-white">bun install -g @jx0/jmux</span>
+      <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux');this.textContent='✓';setTimeout(()=>this.textContent='⧉',1500)" class="text-[#52525b] hover:text-[#a1a1aa] transition-colors ml-2 cursor-pointer" title="Copy to clipboard">⧉</button>
     </div>
   </section>
 
@@ -88,7 +84,7 @@
       <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">The Difference</p>
       <h2 class="text-2xl md:text-3xl font-bold tracking-tight">
         Run 10 agents in parallel.<br>
-        <span class="text-text-muted">Without 10 tabs of Electron.</span>
+        <span class="text-[#71717a]">Without 10 tabs of Electron.</span>
       </h2>
     </div>
 
@@ -96,41 +92,41 @@
       <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-border">
-            <th class="text-left py-3 px-4 text-text-dim font-medium w-1/4"></th>
+            <th class="text-left py-3 px-4 text-[#52525b] font-medium w-1/4"></th>
             <th class="text-left py-3 px-4 text-accent font-semibold font-mono">jmux</th>
-            <th class="text-left py-3 px-4 text-text-dim font-medium">GUI Orchestrators</th>
+            <th class="text-left py-3 px-4 text-[#52525b] font-medium">GUI Orchestrators</th>
           </tr>
         </thead>
         <tbody class="text-sm">
           <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-text-muted">Size</td>
-            <td class="py-3 px-4 text-text-primary font-mono">~0.3 MB</td>
-            <td class="py-3 px-4 text-text-muted">100+ MB</td>
+            <td class="py-3 px-4 text-[#71717a]">Size</td>
+            <td class="py-3 px-4 text-white font-mono">~0.3 MB</td>
+            <td class="py-3 px-4 text-[#71717a]">100+ MB</td>
           </tr>
           <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-text-muted">Platform</td>
-            <td class="py-3 px-4 text-text-primary">Anywhere tmux runs</td>
-            <td class="py-3 px-4 text-text-muted">macOS only</td>
+            <td class="py-3 px-4 text-[#71717a]">Platform</td>
+            <td class="py-3 px-4 text-white">Anywhere tmux runs</td>
+            <td class="py-3 px-4 text-[#71717a]">macOS only</td>
           </tr>
           <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-text-muted">Editor</td>
-            <td class="py-3 px-4 text-text-primary">Yours</td>
-            <td class="py-3 px-4 text-text-muted">Built-in</td>
+            <td class="py-3 px-4 text-[#71717a]">Editor</td>
+            <td class="py-3 px-4 text-white">Yours</td>
+            <td class="py-3 px-4 text-[#71717a]">Built-in</td>
           </tr>
           <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-text-muted">Agents</td>
-            <td class="py-3 px-4 text-text-primary">Any</td>
-            <td class="py-3 px-4 text-text-muted">Bundled subset</td>
+            <td class="py-3 px-4 text-[#71717a]">Agents</td>
+            <td class="py-3 px-4 text-white">Any</td>
+            <td class="py-3 px-4 text-[#71717a]">Bundled subset</td>
           </tr>
           <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-text-muted">Lock-in</td>
-            <td class="py-3 px-4 text-text-primary">None — it's tmux</td>
-            <td class="py-3 px-4 text-text-muted">Proprietary</td>
+            <td class="py-3 px-4 text-[#71717a]">Lock-in</td>
+            <td class="py-3 px-4 text-white">None — it's tmux</td>
+            <td class="py-3 px-4 text-[#71717a]">Proprietary</td>
           </tr>
           <tr>
-            <td class="py-3 px-4 text-text-muted">Cost</td>
-            <td class="py-3 px-4 text-text-primary">Free, forever</td>
-            <td class="py-3 px-4 text-text-muted italic">Free today</td>
+            <td class="py-3 px-4 text-[#71717a]">Cost</td>
+            <td class="py-3 px-4 text-white">Free, forever</td>
+            <td class="py-3 px-4 text-[#71717a] italic">Free today</td>
           </tr>
         </tbody>
       </table>
@@ -148,26 +144,26 @@
 
       <div class="bg-surface border border-border rounded-xl p-6">
         <div class="text-2xl mb-3 text-accent">▎</div>
-        <h3 class="text-base font-semibold mb-2">Session Sidebar</h3>
-        <p class="text-sm text-text-secondary leading-relaxed">Every session at a glance — name, branch, status. Green dot for activity, orange flag when an agent needs review. Sessions auto-group by project.</p>
+        <h3 class="text-base font-semibold mb-2 text-white">Session Sidebar</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">Every session at a glance — name, branch, status. Green dot for activity, orange flag when an agent needs review. Sessions auto-group by project.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-6">
         <div class="text-2xl mb-3">⚡</div>
-        <h3 class="text-base font-semibold mb-2">Instant Switching</h3>
-        <p class="text-sm text-text-secondary leading-relaxed">Ctrl-Shift-Up/Down. No prefix, no menu, no mode. Or click the sidebar. Indicators clear only when you actually interact.</p>
+        <h3 class="text-base font-semibold mb-2 text-white">Instant Switching</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">Ctrl-Shift-Up/Down. No prefix, no menu, no mode. Or click the sidebar. Indicators clear only when you actually interact.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-6">
         <div class="text-2xl mb-3 text-amber-400">!</div>
-        <h3 class="text-base font-semibold mb-2">Attention Flags</h3>
-        <p class="text-sm text-text-secondary leading-relaxed">When Claude Code finishes a response, the orange <span class="text-amber-400">!</span> appears. Switch to it, review the work, move on. One command to install hooks for any agent.</p>
+        <h3 class="text-base font-semibold mb-2 text-white">Attention Flags</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">When Claude Code finishes a response, the orange <span class="text-amber-400">!</span> appears. Switch to it, review the work, move on. One command to install hooks for any agent.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-6">
         <div class="text-2xl mb-3">⌨</div>
-        <h3 class="text-base font-semibold mb-2">Bring Your Own Everything</h3>
-        <p class="text-sm text-text-secondary leading-relaxed">Works with your ~/.tmux.conf. Your plugins, your prefix key, your bindings. jmux doesn't replace your tools — it organizes them.</p>
+        <h3 class="text-base font-semibold mb-2 text-white">Bring Your Own Everything</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">Works with your ~/.tmux.conf. Your plugins, your prefix key, your bindings. jmux doesn't replace your tools — it organizes them.</p>
       </div>
 
     </div>
@@ -184,38 +180,38 @@
 
       <div class="bg-surface border border-border rounded-xl p-5 text-center">
         <div class="font-mono text-lg font-bold mb-1">wtm</div>
-        <p class="text-xs text-text-muted mb-2">Git worktree manager</p>
-        <p class="text-xs text-text-secondary leading-relaxed">One worktree per agent, one session per branch. Parallel agents on parallel branches.</p>
+        <p class="text-xs text-[#71717a] mb-2">Git worktree manager</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">One worktree per agent, one session per branch. Parallel agents on parallel branches.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-5 text-center">
         <div class="font-mono text-lg font-bold mb-1">Claude Code</div>
-        <p class="text-xs text-text-muted mb-2">AI coding agent</p>
-        <p class="text-xs text-text-secondary leading-relaxed">Built-in attention flag support. Know the moment Claude finishes without watching every pane.</p>
+        <p class="text-xs text-[#71717a] mb-2">AI coding agent</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">Built-in attention flag support. Know the moment Claude finishes without watching every pane.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-5 text-center">
         <div class="font-mono text-lg font-bold mb-1">lazygit</div>
-        <p class="text-xs text-text-muted mb-2">Terminal Git UI</p>
-        <p class="text-xs text-text-secondary leading-relaxed">Run it in a jmux pane alongside your agent. Full Git workflow without leaving the terminal.</p>
+        <p class="text-xs text-[#71717a] mb-2">Terminal Git UI</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">Run it in a jmux pane alongside your agent. Full Git workflow without leaving the terminal.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-5 text-center">
         <div class="font-mono text-lg font-bold mb-1">gh / glab</div>
-        <p class="text-xs text-text-muted mb-2">GitHub &amp; GitLab CLIs</p>
-        <p class="text-xs text-text-secondary leading-relaxed">PRs, issues, reviews. Everything stays in the terminal where you're already working.</p>
+        <p class="text-xs text-[#71717a] mb-2">GitHub &amp; GitLab CLIs</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">PRs, issues, reviews. Everything stays in the terminal where you're already working.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-5 text-center">
         <div class="font-mono text-lg font-bold mb-1">Codex / aider</div>
-        <p class="text-xs text-text-muted mb-2">Any coding agent</p>
-        <p class="text-xs text-text-secondary leading-relaxed">If it runs in a terminal, it works in jmux. Attention hooks for anything that can trigger a shell command.</p>
+        <p class="text-xs text-[#71717a] mb-2">Any coding agent</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">If it runs in a terminal, it works in jmux. Attention hooks for anything that can trigger a shell command.</p>
       </div>
 
       <div class="border border-dashed border-border rounded-xl p-5 text-center">
         <div class="font-mono text-lg font-bold mb-1 text-accent">yours</div>
-        <p class="text-xs text-text-muted mb-2">Whatever you use</p>
-        <p class="text-xs text-text-secondary leading-relaxed">vim, emacs, VS Code, your shell, your scripts. jmux doesn't care. It's tmux underneath.</p>
+        <p class="text-xs text-[#71717a] mb-2">Whatever you use</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">vim, emacs, VS Code, your shell, your scripts. jmux doesn't care. It's tmux underneath.</p>
       </div>
 
     </div>
@@ -224,32 +220,32 @@
   <!-- Install CTA -->
   <section id="install" class="px-6 md:px-12 py-16 md:py-24 border-t border-border text-center">
     <h2 class="text-2xl md:text-4xl font-extrabold tracking-tight mb-3">Two commands. You're in.</h2>
-    <p class="text-sm text-text-muted mb-8">Requires Bun 1.2+, tmux 3.2+, and fzf.</p>
+    <p class="text-sm text-[#71717a] mb-8">Requires Bun 1.2+, tmux 3.2+, and fzf.</p>
 
     <div class="max-w-sm mx-auto bg-surface border border-border rounded-xl px-6 py-5 font-mono text-sm text-left">
       <div class="mb-2">
         <span class="text-accent">$</span>
-        <span class="text-text-primary"> bun install -g @jx0/jmux</span>
+        <span class="text-white"> bun install -g @jx0/jmux</span>
       </div>
       <div>
         <span class="text-accent">$</span>
-        <span class="text-text-primary"> jmux</span>
+        <span class="text-white"> jmux</span>
       </div>
     </div>
 
-    <p class="text-xs text-text-dim mt-5">~0.3 MB. Installs in under a second.</p>
+    <p class="text-xs text-[#52525b] mt-5">~0.3 MB. Installs in under a second.</p>
   </section>
 
   <!-- Footer -->
   <footer class="border-t border-border px-6 md:px-12 py-6 flex items-center justify-between text-sm">
     <div class="flex items-center gap-2">
       <span class="font-mono text-sm font-bold">jmux</span>
-      <span class="text-text-dim text-xs">MIT License</span>
+      <span class="text-[#52525b] text-xs">MIT License</span>
     </div>
     <div class="flex items-center gap-5">
-      <a href="https://github.com/jarredkenny/jmux" target="_blank" rel="noopener" class="text-text-muted hover:text-text-secondary transition-colors">GitHub</a>
-      <a href="https://www.npmjs.com/package/@jx0/jmux" target="_blank" rel="noopener" class="text-text-muted hover:text-text-secondary transition-colors">npm</a>
-      <a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener" class="text-text-muted hover:text-text-secondary transition-colors">Docs</a>
+      <a href="https://github.com/jarredkenny/jmux" target="_blank" rel="noopener" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors">GitHub</a>
+      <a href="https://www.npmjs.com/package/@jx0/jmux" target="_blank" rel="noopener" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors">npm</a>
+      <a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors">Docs</a>
     </div>
   </footer>
 
