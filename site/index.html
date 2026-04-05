@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>jmux — Parallel development environment for agent-driven development</title>
+  <meta name="description" content="Run 10 coding agents at once. See all of them. A persistent sidebar shows every session, what's running, and what needs your attention — without leaving tmux.">
+  <meta property="og:title" content="jmux — Parallel development environment">
+  <meta property="og:description" content="Run 10 coding agents at once. See all of them. No Electron. No lock-in. Just your terminal.">
+  <meta property="og:type" content="website">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: '#171b26',
+            surface: '#111520',
+            border: '#252b3a',
+            accent: '#4ade80',
+            'text-primary': '#ffffff',
+            'text-secondary': '#a1a1aa',
+            'text-muted': '#71717a',
+            'text-dim': '#52525b',
+          },
+          fontFamily: {
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer base {
+      body {
+        @apply bg-base text-text-primary antialiased;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sections will be added in subsequent tasks -->
+
+</body>
+</html>
