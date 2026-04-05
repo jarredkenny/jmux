@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.3.8";
+const VERSION = "0.3.9";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -179,19 +179,19 @@ function switchByOffset(offset: number): void {
 async function fetchSessions(): Promise<void> {
   try {
     const lines = await control.sendCommand(
-      "list-sessions -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}'",
+      "list-sessions -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{@jmux-attention}'",
     );
     const sessions: SessionInfo[] = lines
       .filter((l) => l.length > 0)
       .map((line) => {
-        const [id, name, activity, attached, windows] = line.split(":");
+        const [id, name, activity, attached, windows, attn] = line.split(":");
         const cached = sessionDetailsCache.get(id);
         return {
           id,
           name,
           activity: parseInt(activity, 10) || 0,
           attached: attached === "1",
-          attention: false,
+          attention: attn === "1",
           windowCount: parseInt(windows, 10) || 1,
           directory: cached?.directory,
           gitBranch: cached?.gitBranch,
@@ -421,16 +421,6 @@ control.onEvent((event: ControlEvent) => {
       break;
     case "subscription-changed":
       if (event.name === "attention") {
-        const pairs = event.value.trim().split(/\s+/);
-        for (const pair of pairs) {
-          const eqIdx = pair.indexOf("=");
-          if (eqIdx === -1) continue;
-          const id = pair.slice(0, eqIdx);
-          const val = pair.slice(eqIdx + 1);
-          if (val === "1") {
-            sidebar.setActivity(id, false);
-          }
-        }
         fetchSessions();
       }
       break;
