@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.3.7";
+const VERSION = "0.3.8";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -495,6 +495,20 @@ async function start(): Promise<void> {
   // Set JMUX_DIR in tmux's global environment so config bindings can reference it
   await control.sendCommand(`set-environment -g JMUX_DIR ${jmuxDir}`);
   await control.sendCommand(`source-file ${configFile}`);
+  // Re-enable automatic-rename on all windows — clears any application-set names
+  try {
+    const windowLines = await control.sendCommand(
+      "list-windows -a -F '#{window_id}'"
+    );
+    for (const line of windowLines) {
+      const winId = line.trim();
+      if (winId) {
+        await control.sendCommand(`set-option -w -t ${winId} automatic-rename on`);
+      }
+    }
+  } catch {
+    // Non-critical — windows will rename on next command change
+  }
 
   // Fetch initial sessions, then resolve client name (needs sessions list)
   await fetchSessions();
