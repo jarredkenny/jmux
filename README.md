@@ -22,7 +22,9 @@ bun install -g @jx0/jmux
 jmux
 ```
 
-Requires [Bun](https://bun.sh) 1.2+, [tmux](https://github.com/tmux/tmux) 3.2+, [fzf](https://github.com/junegunn/fzf), and optionally [git](https://git-scm.com/) for branch display.
+Requires [Bun](https://bun.sh) 1.2+, [tmux](https://github.com/tmux/tmux) 3.2+, [fzf](https://github.com/junegunn/fzf), and optionally [git](https://git-scm.com/) for branch display. jmux will offer to install tmux and fzf for you on first run.
+
+New to tmux? See the **[Getting Started guide](docs/getting-started.md)** — no prior tmux knowledge needed.
 
 ---
 
