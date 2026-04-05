@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.5.0";
+const VERSION = "0.5.1";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -47,6 +47,12 @@ if (process.argv.includes("-v") || process.argv.includes("--version")) {
   console.log(`jmux ${VERSION}`);
   process.exit(0);
 }
+
+if (process.env.JMUX) {
+  console.error("Already running inside jmux.");
+  process.exit(1);
+}
+process.env.JMUX = "1";
 
 if (process.argv.includes("--install-agent-hooks")) {
   installAgentHooks();
