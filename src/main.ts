@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.5.4";
+const VERSION = "0.6.0";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -687,6 +687,22 @@ async function start(): Promise<void> {
   await fetchSessions();
   await resolveClientName();
   renderFrame();
+
+  // First-run welcome screen
+  const configDir = resolve(homedir(), ".config", "jmux");
+  const configPath = resolve(configDir, "config.json");
+  if (!existsSync(configPath)) {
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(configPath, JSON.stringify({}, null, 2) + "\n");
+    if (!ptyClientName) await resolveClientName();
+    if (ptyClientName) {
+      const welcomeScript = resolve(jmuxDir, "config", "welcome.sh");
+      const args = ["tmux"];
+      if (socketName) args.push("-L", socketName);
+      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "55%", "-h", "60%", "-b", "heavy", "-S", "fg=#4f565d", welcomeScript);
+      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+    }
+  }
 
   // Subscribe to @jmux-attention across all sessions
   await control.registerSubscription(
