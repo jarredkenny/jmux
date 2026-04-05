@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.5.3";
+const VERSION = "0.5.4";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -57,12 +57,6 @@ if (process.argv.includes("-v") || process.argv.includes("--version")) {
   console.log(`jmux ${VERSION}`);
   process.exit(0);
 }
-
-if (process.env.JMUX) {
-  console.error("Already running inside jmux.");
-  process.exit(1);
-}
-process.env.JMUX = "1";
 
 if (process.argv.includes("--install-agent-hooks")) {
   installAgentHooks();
@@ -121,6 +115,14 @@ function installAgentHooks(): void {
   console.log("When Claude Code finishes a response, your jmux sidebar");
   console.log("will show an orange ! on that session.");
 }
+
+// --- Nesting guard (after CLI commands, before TUI) ---
+
+if (process.env.JMUX) {
+  console.error("Already running inside jmux.");
+  process.exit(1);
+}
+process.env.JMUX = "1";
 
 // --- TUI startup ---
 
