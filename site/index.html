@@ -53,5 +53,32 @@
     </div>
   </nav>
 
+  <!-- Hero -->
+  <section class="text-center px-6 md:px-12 pt-20 md:pt-28 pb-10">
+    <p class="font-mono text-xs md:text-sm text-accent tracking-[0.2em] uppercase mb-4">Parallel Development Environment</p>
+    <h1 class="text-3xl md:text-5xl font-extrabold leading-tight max-w-2xl mx-auto mb-6 tracking-tight">
+      Run 10 coding agents at once.<br>
+      <span class="text-text-muted">See all of them.</span>
+    </h1>
+    <p class="text-base md:text-lg text-text-secondary max-w-xl mx-auto mb-9 leading-relaxed">
+      jmux gives you a persistent overview of every agent session — what's running,
+      what's finished, and what needs your attention. No Electron. No lock-in. Just your terminal.
+    </p>
+
+    <!-- Install command -->
+    <div class="inline-flex items-center gap-3 bg-surface border border-border rounded-lg px-5 py-3 font-mono text-sm">
+      <span class="text-accent">$</span>
+      <span class="text-text-primary" id="install-cmd">bun install -g @jx0/jmux</span>
+      <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux');this.textContent='✓';setTimeout(()=>this.textContent='⧉',1500)" class="text-text-dim hover:text-text-secondary transition-colors ml-2 cursor-pointer" title="Copy to clipboard">⧉</button>
+    </div>
+  </section>
+
+  <!-- Hero Screenshot -->
+  <section class="px-6 md:px-12 pb-16 md:pb-24">
+    <div class="max-w-4xl mx-auto">
+      <img src="assets/hero.png" alt="jmux sidebar with grouped sessions alongside vim and Claude Code" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50">
+    </div>
+  </section>
+
 </body>
 </html>
