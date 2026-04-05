@@ -35,7 +35,7 @@ jmux takes the opposite approach: it's a thin orchestration layer over tmux — 
 | **Size** | ~0.3 MB | ~100+ MB |
 | **Platform** | Anywhere tmux runs (macOS, Linux, SSH, containers) | macOS only |
 | **Editor** | Yours (vim, emacs, VS Code, whatever) | Built-in (take it or leave it) |
-| **Git** | `git`, `gh`, lazygit, your workflow | Built-in GUI (their workflow) |
+| **Git** | `git`, `gh`, lazygit, [wtm](https://github.com/jarredkenny/worktree-manager), your workflow | Built-in GUI (their workflow) |
 | **Agents** | Any (Claude Code, Codex, aider, custom) | Bundled subset |
 | **Lock-in** | None — it's tmux underneath | Proprietary workspace format |
 | **Cost** | Free, open source | Free today, VC-funded |
@@ -67,6 +67,13 @@ Window tabs auto-name to the working directory. Pane borders show the running co
 jmux works with your existing `~/.tmux.conf`. Your plugins, theme, prefix key, and custom bindings carry over. jmux applies its defaults first, then your config overrides them. Only a small set of core settings are enforced.
 
 Use any editor. Any Git tool. Any AI agent. Any shell. jmux doesn't replace your tools — it organizes them.
+
+### Works Great With
+
+- **[wtm](https://github.com/jarredkenny/worktree-manager)** — Git worktree manager. Create isolated worktrees for each agent, one session per branch. `wtm create feature-auth --from main` + jmux = parallel agents on parallel branches.
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI coding agent with built-in attention flag support.
+- **[lazygit](https://github.com/jesseduffield/lazygit)** — Terminal Git UI. Run it in a jmux pane alongside your agent.
+- **[gh](https://cli.github.com/)** — GitHub CLI for PRs, issues, and reviews without leaving the terminal.
 
 ### Agent Integration
 
