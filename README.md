@@ -73,7 +73,7 @@ Use any editor. Any Git tool. Any AI agent. Any shell. jmux doesn't replace your
 - **[wtm](https://github.com/jarredkenny/worktree-manager)** — Git worktree manager. Create isolated worktrees for each agent, one session per branch. `wtm create feature-auth --from main` + jmux = parallel agents on parallel branches.
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI coding agent with built-in attention flag support.
 - **[lazygit](https://github.com/jesseduffield/lazygit)** — Terminal Git UI. Run it in a jmux pane alongside your agent.
-- **[gh](https://cli.github.com/)** — GitHub CLI for PRs, issues, and reviews without leaving the terminal.
+- **[gh](https://cli.github.com/)** / **[glab](https://gitlab.com/gitlab-org/cli)** — GitHub and GitLab CLIs for PRs, issues, and reviews without leaving the terminal.
 
 ### Agent Integration
 
