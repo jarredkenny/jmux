@@ -97,8 +97,9 @@ One command adds a hook to `~/.claude/settings.json`. When Claude finishes a res
 |-----|--------|
 | `Ctrl-a \|` | Split horizontal |
 | `Ctrl-a -` | Split vertical |
-| `Shift-arrows` | Navigate panes |
-| `Ctrl-a arrows` | Resize panes |
+| `Shift-Left/Right/Up/Down` | Navigate panes (vim-aware) |
+| `Ctrl-a Left/Right/Up/Down` | Resize panes |
+| `Ctrl-a P` | Toggle pane border titles |
 
 ### Utilities
 
