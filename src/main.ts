@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.3.6";
+const VERSION = "0.3.7";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -252,21 +252,10 @@ async function switchSession(sessionId: string): Promise<void> {
     await control.sendCommand(
       `switch-client -c ${ptyClientName} -t '${sessionId}'`,
     );
-    lastViewedTimestamps.set(sessionId, Math.floor(Date.now() / 1000));
-    sidebar.setActivity(sessionId, false);
     currentSessionId = sessionId;
     sidebar.setActiveSession(sessionId);
     sidebar.scrollToActive();
     renderFrame();
-
-    // Clear attention flag if set
-    try {
-      await control.sendCommand(
-        `set-option -t '${sessionId}' -u @jmux-attention`,
-      );
-    } catch {
-      // Option may not be set
-    }
   } catch {
     // Session may have been killed
   }
@@ -290,12 +279,35 @@ function scheduleRender(): void {
   }, 16); // ~60fps cap
 }
 
+// --- Indicator clearing on interaction ---
+
+function clearSessionIndicators(): void {
+  if (!currentSessionId) return;
+  const id = currentSessionId;
+
+  // Only clear if there's something to clear
+  const needsActivityClear = sidebar.hasActivity(id);
+  const needsAttentionClear = sidebar.hasAttention(id);
+  if (!needsActivityClear && !needsAttentionClear) return;
+
+  lastViewedTimestamps.set(id, Math.floor(Date.now() / 1000));
+  sidebar.setActivity(id, false);
+  scheduleRender();
+
+  if (needsAttentionClear) {
+    control.sendCommand(`set-option -t '${id}' -u @jmux-attention`).catch(() => {});
+  }
+}
+
 // --- Input Router ---
 
 const inputRouter = new InputRouter(
   {
     sidebarCols: SIDEBAR_WIDTH,
-    onPtyData: (data) => pty.write(data),
+    onPtyData: (data) => {
+      pty.write(data);
+      clearSessionIndicators();
+    },
     onSidebarClick: (row) => {
       const session = sidebar.getSessionByRow(row);
       if (session) switchSession(session.id);

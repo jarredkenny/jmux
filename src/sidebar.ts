@@ -198,6 +198,15 @@ export class Sidebar {
     }
   }
 
+  hasActivity(sessionId: string): boolean {
+    return this.activitySet.has(sessionId);
+  }
+
+  hasAttention(sessionId: string): boolean {
+    const session = this.sessions.find((s) => s.id === sessionId);
+    return session?.attention === true;
+  }
+
   getDisplayOrderIds(): string[] {
     return this.displayOrder
       .map((idx) => this.sessions[idx]?.id)
