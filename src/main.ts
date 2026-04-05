@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.3.5";
+const VERSION = "0.3.6";
 
 const HELP = `jmux — a persistent session sidebar for tmux
 
@@ -145,6 +145,7 @@ process.stdout.write("\x1b[?1049h");
 process.stdout.write("\x1b[?1000h"); // mouse button tracking
 process.stdout.write("\x1b[?1002h"); // mouse drag tracking
 process.stdout.write("\x1b[?1006h"); // SGR extended mouse mode
+process.stdout.write("\x1b[?2004h"); // bracketed paste mode
 if (process.stdin.setRawMode) {
   process.stdin.setRawMode(true);
 }
@@ -500,6 +501,7 @@ async function start(): Promise<void> {
 
 function cleanup(): void {
   control.close().catch(() => {});
+  process.stdout.write("\x1b[?2004l"); // disable bracketed paste mode
   process.stdout.write("\x1b[?1000l"); // disable mouse button tracking
   process.stdout.write("\x1b[?1002l"); // disable mouse drag tracking
   process.stdout.write("\x1b[?1006l"); // disable SGR mouse mode
