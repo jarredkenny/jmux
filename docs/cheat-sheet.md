@@ -69,6 +69,7 @@ Shift-arrow pane navigation is smart-splits.nvim aware — if the active pane is
 |-----|--------|
 | `Ctrl-a k` | Clear pane content + scrollback |
 | `Ctrl-a y` | Copy entire pane content to clipboard |
+| `Ctrl-a i` | Settings |
 
 ---
 

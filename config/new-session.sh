@@ -6,14 +6,24 @@ FZF_COLORS="border:#4f565d,header:#b5bcc9,prompt:#9fe8c3,label:#9fe8c3,pointer:#
 
 # ─── Step 1: Pick a directory ─────────────────────────────────────────
 
+# Read project directories from config, fall back to defaults
+CONFIG_FILE="$HOME/.config/jmux/config.json"
+SEARCH_DIRS=""
+if [ -f "$CONFIG_FILE" ]; then
+    SEARCH_DIRS=$(bun -e "
+        const c = await Bun.file('$CONFIG_FILE').json().catch(() => ({}));
+        const dirs = c.projectDirs ?? [];
+        console.log(dirs.map(d => d.replace('~', process.env.HOME)).join('\n'));
+    " 2>/dev/null)
+fi
+if [ -z "$SEARCH_DIRS" ]; then
+    SEARCH_DIRS=$(printf "%s\n%s\n%s\n%s\n%s" \
+        "$HOME/Code" "$HOME/Projects" "$HOME/src" "$HOME/work" "$HOME/dev")
+fi
+
 # Build project list: find directories with .git (dir or file — worktrees use a file)
 # Search common code directories, limit depth for speed
-PROJECT_DIRS=$(find \
-    "$HOME/Code" \
-    "$HOME/Projects" \
-    "$HOME/src" \
-    "$HOME/work" \
-    "$HOME/dev" \
+PROJECT_DIRS=$(echo "$SEARCH_DIRS" | xargs -I{} find "{}" \
     -maxdepth 4 -name ".git" 2>/dev/null \
     | sed 's|/\.git$||' \
     | sort -u)
@@ -44,7 +54,11 @@ WORK_DIR="${SELECTED_DIR/#\~/$HOME}"
 
 # Check if this is a bare repo (wtm-managed) and wtm is available
 IS_BARE=false
-if command -v wtm &>/dev/null && [ -f "$WORK_DIR/.git/config" ]; then
+WTM_ENABLED=$(bun -e "
+    const c = await Bun.file('$CONFIG_FILE').json().catch(() => ({}));
+    console.log(c.wtmIntegration ?? true);
+" 2>/dev/null || echo "true")
+if [ "$WTM_ENABLED" = "true" ] && command -v wtm &>/dev/null && [ -f "$WORK_DIR/.git/config" ]; then
     if git --git-dir="$WORK_DIR/.git" config --get core.bare 2>/dev/null | grep -q "true"; then
         IS_BARE=true
     fi

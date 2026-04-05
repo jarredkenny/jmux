@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.5.2";
+const VERSION = "0.5.3";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -164,6 +164,69 @@ for (let i = 2; i < process.argv.length; i++) {
     process.exit(1);
   }
 }
+// Preflight checks — offer to install missing dependencies
+async function preflight(): Promise<void> {
+  const missing: string[] = [];
+  if (Bun.spawnSync(["tmux", "-V"], { stdout: "pipe", stderr: "pipe" }).exitCode !== 0) {
+    missing.push("tmux");
+  }
+  if (Bun.spawnSync(["fzf", "--version"], { stdout: "pipe", stderr: "pipe" }).exitCode !== 0) {
+    missing.push("fzf");
+  }
+  if (missing.length === 0) return;
+
+  const isMac = process.platform === "darwin";
+  const hasBrew = isMac && Bun.spawnSync(["brew", "--version"], { stdout: "pipe", stderr: "pipe" }).exitCode === 0;
+  const hasApt = !isMac && Bun.spawnSync(["apt", "--version"], { stdout: "pipe", stderr: "pipe" }).exitCode === 0;
+
+  console.log(`\njmux requires ${missing.join(" and ")} to run.\n`);
+
+  if (hasBrew || hasApt) {
+    const pm = hasBrew ? "brew" : "sudo apt";
+    const installCmd = `${pm} install ${missing.join(" ")}`;
+    console.log(`Install with:\n\n  ${installCmd}\n`);
+
+    // Prompt to install
+    process.stdout.write("Install now? [Y/n] ");
+    const response = await new Promise<string>((resolve) => {
+      process.stdin.setRawMode?.(false);
+      process.stdin.resume();
+      process.stdin.once("data", (data) => {
+        process.stdin.pause();
+        resolve(data.toString().trim().toLowerCase());
+      });
+    });
+
+    if (response === "" || response === "y" || response === "yes") {
+      console.log(`\nRunning: ${installCmd}\n`);
+      const args = hasBrew
+        ? ["brew", "install", ...missing]
+        : ["sudo", "apt", "install", "-y", ...missing];
+      const result = Bun.spawnSync(args, { stdout: "inherit", stderr: "inherit" });
+      if (result.exitCode !== 0) {
+        console.error("\nInstallation failed. Please install manually and try again.");
+        process.exit(1);
+      }
+      console.log("\nDependencies installed. Starting jmux...\n");
+      return;
+    }
+  } else {
+    // No package manager detected — just show instructions
+    if (isMac) {
+      console.log("Install Homebrew first: https://brew.sh");
+      console.log(`Then run: brew install ${missing.join(" ")}`);
+    } else {
+      console.log(`Install with your package manager, e.g.:`);
+      console.log(`  apt install ${missing.join(" ")}`);
+      console.log(`  dnf install ${missing.join(" ")}`);
+      console.log(`  pacman -S ${missing.join(" ")}`);
+    }
+  }
+
+  process.exit(1);
+}
+await preflight();
+
 const cols = process.stdout.columns || 80;
 const rows = process.stdout.rows || 24;
 const sidebarVisible = cols >= 80;
