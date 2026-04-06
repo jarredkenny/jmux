@@ -51,6 +51,21 @@
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
+    .card-hover {
+      transition: border-color 280ms ease, transform 280ms ease, box-shadow 280ms ease;
+    }
+    .card-hover:hover {
+      transform: translateY(-3px);
+      border-color: rgba(74, 222, 128, 0.35);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+    .card-hover-dashed {
+      transition: transform 280ms ease, box-shadow 280ms ease;
+    }
+    .card-hover-dashed:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -67,6 +82,9 @@
       <a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors hidden sm:block">Docs</a>
       <a href="#ecosystem" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors hidden sm:block">Ecosystem</a>
       <a href="#install" class="text-xs font-medium bg-accent text-[#171b26] px-3.5 py-1.5 rounded-md hover:bg-accent/90 transition-colors">Install</a>
+      <a href="https://github.com/jarredkenny/jmux" target="_blank" rel="noopener" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors" title="GitHub">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      </a>
     </div>
   </nav>
 
@@ -113,17 +131,17 @@
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-3xl mx-auto">
 
-      <div class="bg-surface border border-border rounded-xl p-6">
+      <div class="bg-surface border border-border rounded-xl p-6 card-hover">
         <h3 class="text-base font-semibold mb-2 text-white">Use any tool</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">jmux doesn't bundle an editor, a diff viewer, or a Git GUI. You bring vim, VS Code, lazygit, whatever you already use. Any agent that runs in a terminal works in jmux.</p>
       </div>
 
-      <div class="bg-surface border border-border rounded-xl p-6">
+      <div class="bg-surface border border-border rounded-xl p-6 card-hover">
         <h3 class="text-base font-semibold mb-2 text-white">Work anywhere</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">jmux runs in any terminal — local, SSH, containers, devboxes. Your workspace follows you because it's terminal-native, not because it syncs to a cloud.</p>
       </div>
 
-      <div class="bg-surface border border-border rounded-xl p-6">
+      <div class="bg-surface border border-border rounded-xl p-6 card-hover">
         <h3 class="text-base font-semibold mb-2 text-white">No lock-in</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">Under the hood, jmux orchestrates tmux sessions. If you stop using jmux, your sessions are still there. Your tools are still your tools. Nothing is proprietary.</p>
       </div>
@@ -140,25 +158,25 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto">
 
-      <div class="bg-surface border border-border rounded-xl p-6">
+      <div class="bg-surface border border-border rounded-xl p-6 card-hover">
         <div class="text-2xl mb-3 text-accent">▎</div>
         <h3 class="text-base font-semibold mb-2 text-white">Session Sidebar</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">Every session at a glance — name, branch, status. Green dot for activity, orange flag when an agent needs review. Sessions auto-group by project.</p>
       </div>
 
-      <div class="bg-surface border border-border rounded-xl p-6">
+      <div class="bg-surface border border-border rounded-xl p-6 card-hover">
         <div class="text-2xl mb-3">⚡</div>
         <h3 class="text-base font-semibold mb-2 text-white">Instant Switching</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">Ctrl-Shift-Up/Down. No prefix, no menu, no mode. Or click the sidebar. Indicators clear only when you actually interact.</p>
       </div>
 
-      <div class="bg-surface border border-border rounded-xl p-6">
+      <div class="bg-surface border border-border rounded-xl p-6 card-hover">
         <div class="text-2xl mb-3 text-amber-400">!</div>
         <h3 class="text-base font-semibold mb-2 text-white">Attention Flags</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">When Claude Code finishes a response, the orange <span class="text-amber-400">!</span> appears. Switch to it, review the work, move on. One command to install hooks for any agent.</p>
       </div>
 
-      <div class="bg-surface border border-border rounded-xl p-6">
+      <div class="bg-surface border border-border rounded-xl p-6 card-hover">
         <div class="text-2xl mb-3">⌨</div>
         <h3 class="text-base font-semibold mb-2 text-white">Bring Your Own Everything</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">Works with your ~/.tmux.conf. Your plugins, your prefix key, your bindings. jmux doesn't replace your tools — it organizes them.</p>
@@ -176,37 +194,37 @@
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl mx-auto">
 
-      <div class="bg-surface border border-border rounded-xl p-5 text-center">
+      <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover">
         <div class="font-mono text-lg font-bold mb-1">wtm</div>
         <p class="text-xs text-[#71717a] mb-2">Git worktree manager</p>
         <p class="text-xs text-[#a1a1aa] leading-relaxed">One worktree per agent, one session per branch. Parallel agents on parallel branches.</p>
       </div>
 
-      <div class="bg-surface border border-border rounded-xl p-5 text-center">
+      <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover">
         <div class="font-mono text-lg font-bold mb-1">Claude Code</div>
         <p class="text-xs text-[#71717a] mb-2">AI coding agent</p>
         <p class="text-xs text-[#a1a1aa] leading-relaxed">Built-in attention flag support. Know the moment Claude finishes without watching every pane.</p>
       </div>
 
-      <div class="bg-surface border border-border rounded-xl p-5 text-center">
+      <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover">
         <div class="font-mono text-lg font-bold mb-1">lazygit</div>
         <p class="text-xs text-[#71717a] mb-2">Terminal Git UI</p>
         <p class="text-xs text-[#a1a1aa] leading-relaxed">Run it in a jmux pane alongside your agent. Full Git workflow without leaving the terminal.</p>
       </div>
 
-      <div class="bg-surface border border-border rounded-xl p-5 text-center">
+      <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover">
         <div class="font-mono text-lg font-bold mb-1">gh / glab</div>
         <p class="text-xs text-[#71717a] mb-2">GitHub &amp; GitLab CLIs</p>
         <p class="text-xs text-[#a1a1aa] leading-relaxed">PRs, issues, reviews. Everything stays in the terminal where you're already working.</p>
       </div>
 
-      <div class="bg-surface border border-border rounded-xl p-5 text-center">
+      <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover">
         <div class="font-mono text-lg font-bold mb-1">Codex / aider</div>
         <p class="text-xs text-[#71717a] mb-2">Any coding agent</p>
         <p class="text-xs text-[#a1a1aa] leading-relaxed">If it runs in a terminal, it works in jmux. Attention hooks for anything that can trigger a shell command.</p>
       </div>
 
-      <div class="border border-dashed border-border rounded-xl p-5 text-center">
+      <div class="border border-dashed border-border rounded-xl p-5 text-center card-hover-dashed">
         <div class="font-mono text-lg font-bold mb-1 text-accent">yours</div>
         <p class="text-xs text-[#71717a] mb-2">Whatever you use</p>
         <p class="text-xs text-[#a1a1aa] leading-relaxed">vim, emacs, VS Code, your shell, your scripts. jmux doesn't care. It's tmux underneath.</p>
