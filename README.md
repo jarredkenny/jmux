@@ -56,6 +56,14 @@ The top toolbar shows clickable window tabs on the left and action buttons on th
 
 Pane borders show the running command with automatic detection for tools like Claude Code. Window tabs auto-name to the working directory. No more tabs full of `zsh` or garbled version strings.
 
+### Command Palette
+
+Press `Ctrl-a p` to open a fuzzy-searchable command palette — switch sessions, manage windows and panes, change settings, all without remembering keybindings.
+
+![Command palette floating over a jmux workspace](docs/screenshots/command-palette.png)
+
+Type to filter, arrow keys to navigate, Enter to execute. Settings like sidebar width drill into sub-lists with selectable values. Escape backs out or closes.
+
 ### Instant Switching
 
 `Ctrl-Shift-Up/Down` moves between sessions with zero delay. No prefix key, no menu, no mode to enter. Or just click a session in the sidebar. Click a window tab to switch windows. Hover states on sidebar sessions, toolbar tabs, and action buttons. Indicators only clear when you actually interact with a session — not when you're cycling through.

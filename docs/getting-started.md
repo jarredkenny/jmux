@@ -219,6 +219,7 @@ Settings are saved to `~/.config/jmux/config.json` and most take effect immediat
 
 ## Tips
 
+- **Command palette** (`Ctrl-a` then `p`) lets you fuzzy-search sessions, windows, pane actions, and settings — useful when you can't remember a keybinding
 - **Scroll the sidebar** with your mouse wheel when you have many sessions
 - **Click the version** at the bottom of the sidebar to see release notes
 - **Mouse selection** works — click and drag to select text, it copies to your clipboard

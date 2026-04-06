@@ -64,6 +64,22 @@ Shift-arrow pane navigation is smart-splits.nvim aware — if the active pane is
 
 ---
 
+## Command Palette
+
+Press `Ctrl-a p` to open the command palette — a floating overlay for fuzzy-searching all actions.
+
+| Key | Action (inside palette) |
+|-----|--------|
+| Type | Fuzzy filter commands |
+| `↑` / `↓` | Navigate results (scrolls with long lists) |
+| `Enter` | Execute command or drill into setting sub-list |
+| `Escape` | Back out of sub-list, or close palette |
+| `Ctrl-a p` | Close palette |
+
+**Available commands:** switch sessions, switch windows, new session/window, kill session, close window/pane, split horizontal/vertical, zoom pane, rename session, move window, window picker, open Claude, sidebar width, Claude command, project directories.
+
+---
+
 ## Utilities
 
 | Key | Action |
