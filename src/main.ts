@@ -1,7 +1,7 @@
 import { $ } from "bun";
 import { TmuxPty } from "./tmux-pty";
 import { ScreenBridge } from "./screen-bridge";
-import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, type ToolbarConfig } from "./renderer";
+import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getPalettePosition, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { CommandPalette } from "./command-palette";
@@ -401,14 +401,21 @@ function renderFrame(): void {
   const grid = bridge.getGrid();
   const cursor = bridge.getCursor();
   const tb = toolbarEnabled ? makeToolbar() : null;
-  const paletteGrid = palette.isOpen() ? palette.getGrid(mainCols) : null;
-  const paletteCursorCol = palette.isOpen() ? palette.getCursorCol() : null;
+  let paletteGrid: import("./types").CellGrid | null = null;
+  let paletteCursor: { row: number; col: number } | null = null;
+  if (palette.isOpen()) {
+    const ptyRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+    const paletteWidth = Math.min(Math.max(40, Math.round(mainCols * 0.7)), 80);
+    paletteGrid = palette.getGrid(paletteWidth);
+    const pos = getPalettePosition(mainCols, ptyRows, paletteWidth, paletteGrid.rows, toolbarEnabled ? 1 : 0);
+    paletteCursor = { row: pos.startRow, col: pos.startCol + palette.getCursorCol() };
+  }
   renderer.render(
     grid, cursor,
     sidebarShown ? sidebar.getGrid() : null,
     tb,
     paletteGrid,
-    paletteCursorCol,
+    paletteCursor,
   );
 }
 
