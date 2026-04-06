@@ -129,7 +129,7 @@ export class ControlParser {
 // --- Control Client (subprocess management) ---
 
 export class TmuxControl {
-  private proc: Subprocess | null = null;
+  private proc: Subprocess<"pipe", "pipe", "ignore"> | null = null;
   private parser = new ControlParser();
   // FIFO queue — tmux command numbers are global server counters,
   // not sequential from 0. We match responses in order instead.

@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.7.2";
+const VERSION = "0.7.3";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -234,7 +234,7 @@ await preflight();
 const cols = process.stdout.columns || 80;
 const rows = process.stdout.rows || 24;
 const sidebarVisible = cols >= 80;
-const mainCols = sidebarVisible ? cols - sidebarTotal() : cols;
+let mainCols = sidebarVisible ? cols - sidebarTotal() : cols;
 const ptyRows = toolbarEnabled ? rows - 1 : rows;
 
 // Toolbar buttons
@@ -553,11 +553,13 @@ process.on("SIGWINCH", () => {
   const newMainCols = newSidebarVisible ? newCols - sidebarTotal() : newCols;
   const newPtyRows = toolbarEnabled ? newRows - 1 : newRows;
 
+  mainCols = newMainCols;
   sidebarShown = newSidebarVisible;
   inputRouter.setSidebarVisible(newSidebarVisible);
   pty.resize(newMainCols, newPtyRows);
   bridge.resize(newMainCols, newPtyRows);
   sidebar.resize(sidebarWidth, newRows);
+  renderFrame();
 });
 
 // --- Config file watcher ---
@@ -584,11 +586,13 @@ try {
       const newMainCols = newSidebarVisible ? cols - sidebarTotal() : cols;
       const newPtyRows = toolbarEnabled ? rows - 1 : rows;
 
+      mainCols = newMainCols;
       sidebarShown = newSidebarVisible;
       inputRouter.setSidebarVisible(newSidebarVisible);
       pty.resize(newMainCols, newPtyRows);
       bridge.resize(newMainCols, newPtyRows);
       sidebar.resize(sidebarWidth, rows);
+      renderFrame();
     }
   });
 } catch {
@@ -620,10 +624,13 @@ async function showVersionInfo(): Promise<void> {
   if (!ptyClientName) return;
   const tag = `v${VERSION}`;
   const cmd = `${jmuxDir}/config/release-notes.sh ${tag}`;
-  // Use tmux CLI directly — confirmed working from terminal tests
+  const termCols = process.stdout.columns || 80;
+  const termRows = process.stdout.rows || 24;
+  const popupW = Math.max(40, Math.round(termCols * 0.7));
+  const popupH = Math.max(12, Math.round(termRows * 0.8));
   const args = ["tmux"];
   if (socketName) args.push("-L", socketName);
-  args.push("display-popup", "-c", ptyClientName, "-E", "-w", "70%", "-h", "80%", "-b", "heavy", "-S", "fg=#4f565d", "sh", "-c", cmd);
+  args.push("display-popup", "-c", ptyClientName, "-E", "-w", String(popupW), "-h", String(popupH), "-b", "heavy", "-S", "fg=#4f565d", "sh", "-c", cmd);
   Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
 }
 
