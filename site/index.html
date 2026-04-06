@@ -88,6 +88,25 @@
       position: relative;
       z-index: 1;
     }
+    .icon-container {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(74, 222, 128, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+    .icon-container svg {
+      width: 20px;
+      height: 20px;
+      stroke: #4ade80;
+      fill: none;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
   </style>
 </head>
 <body>
@@ -181,25 +200,25 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto">
 
       <div class="bg-surface border border-border rounded-xl p-6 card-hover">
-        <div class="text-2xl mb-3 text-accent">▎</div>
+        <div class="icon-container"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="18" rx="1"/><line x1="14" y1="3" x2="14" y2="21"/><rect x="14" y="3" width="7" height="18" rx="1"/></svg></div>
         <h3 class="text-base font-semibold mb-2 text-white">Session Sidebar</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">Every session at a glance — name, branch, status. Green dot for activity, orange flag when an agent needs review. Sessions auto-group by project.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-6 card-hover">
-        <div class="text-2xl mb-3">⚡</div>
+        <div class="icon-container"><svg viewBox="0 0 24 24"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg></div>
         <h3 class="text-base font-semibold mb-2 text-white">Instant Switching</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">Ctrl-Shift-Up/Down. No prefix, no menu, no mode. Or click the sidebar. Indicators clear only when you actually interact.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-6 card-hover">
-        <div class="text-2xl mb-3 text-amber-400">!</div>
+        <div class="icon-container"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
         <h3 class="text-base font-semibold mb-2 text-white">Attention Flags</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">When Claude Code finishes a response, the orange <span class="text-amber-400">!</span> appears. Switch to it, review the work, move on. One command to install hooks for any agent.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-6 card-hover">
-        <div class="text-2xl mb-3">⌨</div>
+        <div class="icon-container"><svg viewBox="0 0 24 24"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg></div>
         <h3 class="text-base font-semibold mb-2 text-white">Bring Your Own Everything</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">Works with your ~/.tmux.conf. Your plugins, your prefix key, your bindings. jmux doesn't replace your tools — it organizes them.</p>
       </div>
