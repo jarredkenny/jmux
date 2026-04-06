@@ -118,6 +118,20 @@
       transform: translateY(0);
       transition: opacity 300ms ease, transform 300ms ease;
     }
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #52525b;
+      transition: color 200ms ease;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .copy-btn:hover {
+      color: #a1a1aa;
+    }
   </style>
 </head>
 <body>
@@ -156,7 +170,7 @@
     <div class="inline-flex items-center gap-3 bg-surface border border-border rounded-lg px-5 py-3 font-mono text-sm">
       <span class="text-accent">$</span>
       <span class="text-white">bun install -g @jx0/jmux</span>
-      <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux');this.textContent='✓';setTimeout(()=>this.textContent='⧉',1500)" class="text-[#52525b] hover:text-[#a1a1aa] transition-colors ml-2 cursor-pointer" title="Copy to clipboard">⧉</button>
+      <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux');var s=this.innerHTML;this.innerHTML='<svg width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#4ade80\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'/></svg>';setTimeout(()=>this.innerHTML=s,1500)" class="copy-btn ml-2" title="Copy to clipboard"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
     </div>
 
     <div class="mt-5">
@@ -290,7 +304,8 @@
     <h2 class="text-2xl md:text-4xl font-extrabold tracking-tight mb-3 animate-in fade-up">Two commands. You're in.</h2>
     <p class="text-sm text-[#71717a] mb-8">Requires Bun 1.2+, tmux 3.2+, and fzf.</p>
 
-    <div class="max-w-sm mx-auto bg-surface border border-border rounded-xl px-6 py-5 font-mono text-sm text-left">
+    <div class="max-w-sm mx-auto bg-surface border border-border rounded-xl px-6 py-5 font-mono text-sm text-left relative">
+      <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux\njmux');var s=this.innerHTML;this.innerHTML='<svg width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#4ade80\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'/></svg>';setTimeout(()=>this.innerHTML=s,1500)" class="copy-btn absolute top-4 right-4" title="Copy to clipboard"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
       <div class="mb-2">
         <span class="text-accent">$</span>
         <span class="text-white"> bun install -g @jx0/jmux</span>
