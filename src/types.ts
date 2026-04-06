@@ -34,6 +34,7 @@ export interface WindowTab {
   name: string;
   active: boolean;
   bell: boolean;
+  zoomed: boolean;
 }
 
 export interface SessionInfo {
@@ -47,3 +48,26 @@ export interface SessionInfo {
   directory?: string;
   project?: string; // wtm project name (bare repo basename)
 }
+
+export interface PaletteCommand {
+  id: string;
+  label: string;
+  category: string;
+  sublist?: PaletteSublistOption[];
+}
+
+export interface PaletteSublistOption {
+  id: string;
+  label: string;
+  current?: boolean;
+}
+
+export interface PaletteResult {
+  commandId: string;
+  sublistOptionId?: string;
+}
+
+export type PaletteAction =
+  | { type: "consumed" }
+  | { type: "closed" }
+  | { type: "execute"; result: PaletteResult };
