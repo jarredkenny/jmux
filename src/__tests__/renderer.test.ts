@@ -8,7 +8,7 @@ describe("sgrForCell", () => {
   test("returns reset only for default cell", () => {
     const cell: Cell = {
       char: " ",
-      fg: 0, bg: 0,
+      width: 1, fg: 0, bg: 0,
       fgMode: ColorMode.Default, bgMode: ColorMode.Default,
       bold: false, italic: false, underline: false, dim: false,
     };
@@ -18,7 +18,7 @@ describe("sgrForCell", () => {
   test("includes bold attribute", () => {
     const cell: Cell = {
       char: "x",
-      fg: 0, bg: 0,
+      width: 1, fg: 0, bg: 0,
       fgMode: ColorMode.Default, bgMode: ColorMode.Default,
       bold: true, italic: false, underline: false, dim: false,
     };
@@ -28,7 +28,7 @@ describe("sgrForCell", () => {
   test("encodes standard ANSI foreground color 0-7", () => {
     const cell: Cell = {
       char: "x",
-      fg: 1, bg: 0,
+      width: 1, fg: 1, bg: 0,
       fgMode: ColorMode.Palette, bgMode: ColorMode.Default,
       bold: false, italic: false, underline: false, dim: false,
     };
@@ -38,7 +38,7 @@ describe("sgrForCell", () => {
   test("encodes bright ANSI foreground color 8-15", () => {
     const cell: Cell = {
       char: "x",
-      fg: 9, bg: 0,
+      width: 1, fg: 9, bg: 0,
       fgMode: ColorMode.Palette, bgMode: ColorMode.Default,
       bold: false, italic: false, underline: false, dim: false,
     };
@@ -48,7 +48,7 @@ describe("sgrForCell", () => {
   test("encodes 256-color foreground", () => {
     const cell: Cell = {
       char: "x",
-      fg: 200, bg: 0,
+      width: 1, fg: 200, bg: 0,
       fgMode: ColorMode.Palette, bgMode: ColorMode.Default,
       bold: false, italic: false, underline: false, dim: false,
     };
@@ -58,7 +58,7 @@ describe("sgrForCell", () => {
   test("encodes RGB foreground", () => {
     const cell: Cell = {
       char: "x",
-      fg: 0xFF8800, bg: 0,
+      width: 1, fg: 0xFF8800, bg: 0,
       fgMode: ColorMode.RGB, bgMode: ColorMode.Default,
       bold: false, italic: false, underline: false, dim: false,
     };
@@ -68,7 +68,7 @@ describe("sgrForCell", () => {
   test("encodes background color", () => {
     const cell: Cell = {
       char: "x",
-      fg: 0, bg: 4,
+      width: 1, fg: 0, bg: 4,
       fgMode: ColorMode.Default, bgMode: ColorMode.Palette,
       bold: false, italic: false, underline: false, dim: false,
     };
@@ -78,7 +78,7 @@ describe("sgrForCell", () => {
   test("encodes combined attributes and colors", () => {
     const cell: Cell = {
       char: "x",
-      fg: 2, bg: 0,
+      width: 1, fg: 2, bg: 0,
       fgMode: ColorMode.Palette, bgMode: ColorMode.Default,
       bold: true, italic: true, underline: false, dim: false,
     };

@@ -164,6 +164,9 @@ export class Renderer {
       for (let x = 0; x < grid.cols; x++) {
         const cell = grid.cells[y][x];
 
+        // Skip continuation cells (second half of wide characters)
+        if (cell.width === 0) continue;
+
         // Emit SGR only when attributes change
         if (!this.prevAttrs || !cellsEqual(this.prevAttrs, cell)) {
           buf.push(sgrForCell(cell));

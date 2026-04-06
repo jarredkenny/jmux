@@ -6,6 +6,7 @@ export const enum ColorMode {
 
 export interface Cell {
   char: string;
+  width: number; // 0 = continuation of wide char, 1 = normal, 2 = wide
   fg: number;
   bg: number;
   fgMode: ColorMode;

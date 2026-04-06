@@ -36,7 +36,9 @@ export class ScreenBridge {
 
         const cell = grid.cells[y][x];
         const chars = xtermCell.getChars();
-        cell.char = chars || " ";
+        const w = xtermCell.getWidth();
+        cell.char = w === 0 ? "" : (chars || " ");
+        cell.width = w;
         cell.fg = xtermCell.getFgColor();
         cell.bg = xtermCell.getBgColor();
         cell.fgMode = xtermCell.isFgRGB()

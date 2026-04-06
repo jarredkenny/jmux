@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.7.3";
+const VERSION = "0.7.4";
 
 const HELP = `jmux — the terminal workspace for agentic development
 

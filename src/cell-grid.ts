@@ -3,6 +3,7 @@ import { ColorMode } from "./types";
 
 export const DEFAULT_CELL: Readonly<Cell> = {
   char: " ",
+  width: 1,
   fg: 0,
   bg: 0,
   fgMode: ColorMode.Default,
