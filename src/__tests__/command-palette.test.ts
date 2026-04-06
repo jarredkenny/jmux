@@ -229,3 +229,108 @@ describe("CommandPalette", () => {
     expect(results[0].command.id).toBe("30");
   });
 });
+
+describe("CommandPalette rendering", () => {
+  test("getHeight returns input row + result rows + border row", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    // 4 commands + 1 input row + 1 border row = 6
+    expect(palette.getHeight()).toBe(6);
+  });
+
+  test("getHeight caps at MAX_VISIBLE_RESULTS + 2", () => {
+    const manyCommands: PaletteCommand[] = [];
+    for (let i = 0; i < 20; i++) {
+      manyCommands.push({ id: `cmd-${i}`, label: `Command ${i}`, category: "other" });
+    }
+    const palette = new CommandPalette();
+    palette.open(manyCommands);
+    // 10 visible + 1 input + 1 border = 12
+    expect(palette.getHeight()).toBe(12);
+  });
+
+  test("getGrid returns grid with correct dimensions", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    const grid = palette.getGrid(60);
+    expect(grid.cols).toBe(60);
+    expect(grid.rows).toBe(palette.getHeight());
+  });
+
+  test("getGrid input row shows prompt and query", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    palette.handleInput("s");
+    palette.handleInput("p");
+    const grid = palette.getGrid(60);
+    // Row 0: "▷ sp" — prompt at col 0, space at col 1, query starts at col 2
+    expect(grid.cells[0][0].char).toBe("▷");
+    expect(grid.cells[0][2].char).toBe("s");
+    expect(grid.cells[0][3].char).toBe("p");
+  });
+
+  test("getGrid shows selected row indicator", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    const grid = palette.getGrid(60);
+    // Row 1 (first result) should have "▸" at col 1
+    expect(grid.cells[1][1].char).toBe("▸");
+  });
+
+  test("getGrid shows category tags right-aligned", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    const grid = palette.getGrid(60);
+    // First result is "Split horizontal" category "pane"
+    // "pane" is 4 chars, right-aligned with 1 col padding = col 60-4-1 = 55
+    expect(grid.cells[1][55].char).toBe("p");
+    expect(grid.cells[1][56].char).toBe("a");
+    expect(grid.cells[1][57].char).toBe("n");
+    expect(grid.cells[1][58].char).toBe("e");
+  });
+
+  test("getGrid border row shows horizontal line", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    const grid = palette.getGrid(60);
+    const borderRow = palette.getHeight() - 1;
+    expect(grid.cells[borderRow][0].char).toBe("─");
+  });
+
+  test("getGrid sublist shows breadcrumb in input row", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    // Navigate to "Sidebar width" (index 3) and drill in
+    palette.handleInput("\x1b[B");
+    palette.handleInput("\x1b[B");
+    palette.handleInput("\x1b[B");
+    palette.handleInput("\r");
+    const grid = palette.getGrid(60);
+    // Input row should show "Sidebar width › "
+    expect(grid.cells[0][0].char).toBe("S");
+    expect(grid.cells[0][1].char).toBe("i");
+  });
+
+  test("getGrid shows no matches message", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    palette.handleInput("z");
+    palette.handleInput("z");
+    palette.handleInput("z");
+    const grid = palette.getGrid(60);
+    // Should show "No matches" in results area — height is input + 1 result row + border = 3
+    expect(palette.getHeight()).toBe(3);
+    // Row 1 should contain "No matches"
+    const row1text = grid.cells[1].map(c => c.char).join("").trim();
+    expect(row1text).toContain("No matches");
+  });
+
+  test("getCursorCol returns correct position", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    expect(palette.getCursorCol()).toBe(2); // "▷ " = 2
+    palette.handleInput("a");
+    palette.handleInput("b");
+    expect(palette.getCursorCol()).toBe(4); // "▷ ab" = 4
+  });
+});

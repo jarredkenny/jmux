@@ -1,7 +1,95 @@
-import type { PaletteCommand, PaletteSublistOption, PaletteResult, PaletteAction } from "./types";
+import type { PaletteCommand, PaletteResult, PaletteAction } from "./types";
 import type { CellGrid } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import { ColorMode } from "./types";
+
+const MAX_VISIBLE_RESULTS = 10;
+const PALETTE_BG = (0x16 << 16) | (0x1b << 8) | 0x22; // #161b22
+const SELECTED_BG = (0x1e << 16) | (0x2a << 8) | 0x35; // #1e2a35
+
+const PROMPT_ATTRS: CellAttrs = {
+  fg: 2,
+  fgMode: ColorMode.Palette,
+  bg: PALETTE_BG,
+  bgMode: ColorMode.RGB,
+};
+const QUERY_ATTRS: CellAttrs = {
+  fg: 7,
+  fgMode: ColorMode.Palette,
+  bold: true,
+  bg: PALETTE_BG,
+  bgMode: ColorMode.RGB,
+};
+const RESULT_ATTRS: CellAttrs = {
+  fg: 7,
+  fgMode: ColorMode.Palette,
+  dim: true,
+  bg: PALETTE_BG,
+  bgMode: ColorMode.RGB,
+};
+const SELECTED_RESULT_ATTRS: CellAttrs = {
+  fg: 7,
+  fgMode: ColorMode.Palette,
+  bg: SELECTED_BG,
+  bgMode: ColorMode.RGB,
+};
+const MATCH_ATTRS: CellAttrs = {
+  fg: 2,
+  fgMode: ColorMode.Palette,
+  bg: PALETTE_BG,
+  bgMode: ColorMode.RGB,
+};
+const SELECTED_MATCH_ATTRS: CellAttrs = {
+  fg: 2,
+  fgMode: ColorMode.Palette,
+  bold: true,
+  bg: SELECTED_BG,
+  bgMode: ColorMode.RGB,
+};
+const CATEGORY_ATTRS: CellAttrs = {
+  fg: 8,
+  fgMode: ColorMode.Palette,
+  bg: PALETTE_BG,
+  bgMode: ColorMode.RGB,
+};
+const SELECTED_CATEGORY_ATTRS: CellAttrs = {
+  fg: 8,
+  fgMode: ColorMode.Palette,
+  bg: SELECTED_BG,
+  bgMode: ColorMode.RGB,
+};
+const CURRENT_TAG_ATTRS: CellAttrs = {
+  fg: 3,
+  fgMode: ColorMode.Palette,
+  bg: PALETTE_BG,
+  bgMode: ColorMode.RGB,
+};
+const SELECTED_CURRENT_TAG_ATTRS: CellAttrs = {
+  fg: 3,
+  fgMode: ColorMode.Palette,
+  bg: SELECTED_BG,
+  bgMode: ColorMode.RGB,
+};
+const BORDER_ATTRS: CellAttrs = {
+  fg: 8,
+  fgMode: ColorMode.Palette,
+  dim: true,
+  bg: PALETTE_BG,
+  bgMode: ColorMode.RGB,
+};
+const BREADCRUMB_ATTRS: CellAttrs = {
+  fg: 8,
+  fgMode: ColorMode.Palette,
+  bg: PALETTE_BG,
+  bgMode: ColorMode.RGB,
+};
+const NO_MATCHES_ATTRS: CellAttrs = {
+  fg: 8,
+  fgMode: ColorMode.Palette,
+  dim: true,
+  bg: PALETTE_BG,
+  bgMode: ColorMode.RGB,
+};
 
 export interface FilteredItem {
   command: PaletteCommand;
@@ -42,6 +130,13 @@ export function fuzzyMatch(query: string, label: string): FuzzyResult | null {
   }
 
   return { score, indices };
+}
+
+function truncateLabel(label: string, maxLen: number): string {
+  if (maxLen <= 0) return "";
+  if (label.length <= maxLen) return label;
+  if (maxLen <= 1) return "…";
+  return label.slice(0, maxLen - 1) + "…";
 }
 
 const CONSUMED: PaletteAction = { type: "consumed" };
@@ -224,12 +319,94 @@ export class CommandPalette {
     return CONSUMED;
   }
 
+  getHeight(): number {
+    return 1 + Math.min(this.filtered.length || 1, MAX_VISIBLE_RESULTS) + 1;
+  }
+
+  getGrid(width: number): CellGrid {
+    const height = this.getHeight();
+    const grid = createGrid(width, height);
+
+    // Fill background
+    const bgAttrs: CellAttrs = { bg: PALETTE_BG, bgMode: ColorMode.RGB };
+    for (let r = 0; r < height; r++) {
+      writeString(grid, r, 0, " ".repeat(width), bgAttrs);
+    }
+
+    // Row 0: input line
+    if (this.sublistParent) {
+      const breadcrumb = this.sublistParent.label + " › ";
+      writeString(grid, 0, 0, breadcrumb, BREADCRUMB_ATTRS);
+      writeString(grid, 0, breadcrumb.length, this.query, QUERY_ATTRS);
+    } else {
+      writeString(grid, 0, 0, "▷", PROMPT_ATTRS);
+      writeString(grid, 0, 2, this.query, QUERY_ATTRS);
+    }
+
+    // Rows 1..N: results
+    const visibleCount = Math.min(this.filtered.length, MAX_VISIBLE_RESULTS);
+    if (this.filtered.length === 0) {
+      writeString(grid, 1, 3, "No matches", NO_MATCHES_ATTRS);
+    } else {
+      for (let i = 0; i < visibleCount; i++) {
+        const row = i + 1;
+        const item = this.filtered[i];
+        const isSelected = i === this.selectedIndex;
+        const baseAttrs = isSelected ? SELECTED_RESULT_ATTRS : RESULT_ATTRS;
+
+        // Paint selected row background
+        if (isSelected) {
+          writeString(grid, row, 0, " ".repeat(width), { bg: SELECTED_BG, bgMode: ColorMode.RGB });
+        }
+
+        // Selection indicator
+        if (isSelected) {
+          writeString(grid, row, 1, "▸", baseAttrs);
+        }
+
+        // Category tag (right-aligned with 1 col padding)
+        const category = item.command.category;
+        let tagWidth = 0;
+        if (category) {
+          tagWidth = category.length + 2; // 1 col gap before tag + 1 col padding after
+          const tagCol = width - category.length - 1;
+          const tagAttrs = category === "current"
+            ? (isSelected ? SELECTED_CURRENT_TAG_ATTRS : CURRENT_TAG_ATTRS)
+            : (isSelected ? SELECTED_CATEGORY_ATTRS : CATEGORY_ATTRS);
+          writeString(grid, row, tagCol, category, tagAttrs);
+        }
+
+        // Label with match highlighting
+        const labelStart = 3;
+        const maxLabelLen = width - labelStart - tagWidth;
+        const label = truncateLabel(item.command.label, maxLabelLen);
+        const matchIndices = new Set(item.match.indices);
+
+        for (let ci = 0; ci < label.length; ci++) {
+          const col = labelStart + ci;
+          if (col >= width) break;
+          const isMatch = matchIndices.has(ci);
+          const charAttrs = isMatch
+            ? (isSelected ? SELECTED_MATCH_ATTRS : MATCH_ATTRS)
+            : baseAttrs;
+          writeString(grid, row, col, label[ci], charAttrs);
+        }
+      }
+    }
+
+    // Last row: border
+    const borderRow = height - 1;
+    writeString(grid, borderRow, 0, "─".repeat(width), BORDER_ATTRS);
+
+    return grid;
+  }
+
   private refilter(): void {
     const source: PaletteCommand[] = this.sublistParent?.sublist
       ? this.sublistParent.sublist.map((opt) => ({
           id: opt.id,
           label: opt.label,
-          category: this.sublistParent!.category,
+          category: opt.current ? "current" : "",
         }))
       : this.commands;
 
