@@ -79,10 +79,12 @@ export class InputRouter {
       if (isMotion && this.opts.onHover) {
         if (mouse.x <= this.opts.sidebarCols) {
           this.opts.onHover({ area: "sidebar", row: mouse.y - 1 });
-        } else if (mouse.y === 1) {
-          this.opts.onHover({ area: "toolbar", col: mouse.x - this.opts.sidebarCols - 1 });
-        } else {
-          this.opts.onHover(null);
+        } else if (!this.paletteOpen) {
+          if (mouse.y === 1) {
+            this.opts.onHover({ area: "toolbar", col: mouse.x - this.opts.sidebarCols - 1 });
+          } else {
+            this.opts.onHover(null);
+          }
         }
       }
 
