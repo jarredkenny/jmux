@@ -538,6 +538,7 @@ const inputRouter = new InputRouter(
       }
       if (changed) scheduleRender();
     },
+    onPaletteToggle: () => togglePalette(),
     onPaletteInput: (data) => {
       if (!palette.isOpen()) return;
       const action = palette.handleInput(data);
@@ -1111,7 +1112,6 @@ async function start(): Promise<void> {
   // Re-apply our config to the running server
   await control.sendCommand(`set-environment -g JMUX_DIR ${jmuxDir}`);
   await control.sendCommand("set-environment -g JMUX 1");
-  await control.sendCommand(`set-environment -g JMUX_PID ${process.pid}`);
   await control.sendCommand(`source-file ${configFile}`);
 
   // Resolve client and session — retry until the PTY client registers
@@ -1181,9 +1181,6 @@ function cleanup(): void {
 pty.onExit(() => cleanup());
 process.on("SIGINT", () => cleanup());
 process.on("SIGTERM", () => cleanup());
-process.on("SIGUSR1", () => {
-  togglePalette();
-});
 
 // --- Go ---
 

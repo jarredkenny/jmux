@@ -37,6 +37,7 @@ export interface InputRouterOptions {
   onToolbarClick?: (col: number) => void;
   onHover?: (target: { area: "sidebar"; row: number } | { area: "toolbar"; col: number } | null) => void;
   onPaletteInput?: (data: string) => void;
+  onPaletteToggle?: () => void;
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
 }
@@ -45,6 +46,8 @@ export class InputRouter {
   private opts: InputRouterOptions;
   private sidebarVisible: boolean;
   private paletteOpen = false;
+  private prefixSeen = false;
+  private prefixTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(opts: InputRouterOptions, sidebarVisible: boolean) {
     this.opts = opts;
     this.sidebarVisible = sidebarVisible;
@@ -67,6 +70,27 @@ export class InputRouter {
     if (data === "\x1b[1;6B") {
       this.opts.onSessionNext?.();
       return;
+    }
+
+    // Ctrl-a p interception: detect prefix + p to toggle palette
+    // Ctrl-a is forwarded to tmux (so other prefix bindings work),
+    // but if next byte is "p" we intercept it before tmux sees it.
+    if (!this.paletteOpen) {
+      if (this.prefixSeen) {
+        this.prefixSeen = false;
+        if (this.prefixTimer) { clearTimeout(this.prefixTimer); this.prefixTimer = null; }
+        if (data === "p") {
+          this.opts.onPaletteToggle?.();
+          return;
+        }
+        // Not "p" — forward to PTY normally (tmux handles its prefix binding)
+      } else if (data === "\x01") {
+        this.prefixSeen = true;
+        this.prefixTimer = setTimeout(() => { this.prefixSeen = false; this.prefixTimer = null; }, 2000);
+        // Forward Ctrl-a to PTY so tmux enters prefix mode
+        this.opts.onPtyData(data);
+        return;
+      }
     }
 
     // Check for SGR mouse events
