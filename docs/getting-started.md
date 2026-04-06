@@ -137,6 +137,47 @@ No prefix key needed — these work instantly.
 5. Repeat for more projects
 6. Switch between sessions with `Ctrl-Shift-Up/Down` or click the sidebar
 
+### Parallel agents with worktrees (recommended)
+
+The most powerful workflow: give each agent its own git branch in an isolated worktree. No conflicts, no stashing, agents can't step on each other.
+
+**One-time setup:**
+
+```bash
+bun install -g @jx0/wtm
+wtm init git@github.com:you/repo.git
+```
+
+This creates a bare repo with [wtm](https://github.com/jarredkenny/worktree-manager) — a git worktree manager built for this workflow.
+
+**Daily workflow:**
+
+1. Press `Ctrl-a` then `n` to create a new session
+2. Select your wtm-managed project
+3. Choose **+ new worktree**
+4. Pick a base branch (e.g., `main`) and name your branch
+5. jmux creates the worktree and opens a split-pane session
+6. Start your agent: `claude`
+7. Repeat for more features — each gets its own branch
+
+The sidebar groups worktrees by project and shows each branch name. When an agent finishes (orange `!`), switch to it, review the diff, and merge if it's good.
+
+**Example:** 5 agents, 5 branches, all working off `main` simultaneously:
+
+```
+myproject (sidebar)
+  ● feature-auth        1w
+    feature-auth
+  ! feature-search      1w
+    feature-search
+  ● fix-validation      1w
+    fix-validation
+  ● refactor-api        1w
+    refactor-api
+    add-tests           1w
+    add-tests
+```
+
 ### Monitoring multiple agents
 
 When you have several agents running in different sessions:

@@ -72,12 +72,26 @@ jmux works with your existing `~/.tmux.conf`. Your plugins, theme, prefix key, a
 
 Use any editor. Any Git tool. Any AI agent. Any shell. jmux doesn't replace your tools — it organizes them.
 
+### Worktree-Native Workflows
+
+jmux integrates with **[wtm](https://github.com/jarredkenny/worktree-manager)** to give each agent its own isolated branch — no stashing, no conflicts, no switching.
+
+```bash
+bun install -g @jx0/wtm     # one-time setup
+wtm init git@github.com:you/repo.git
+```
+
+Then from jmux, press `Ctrl-a n`, select your project, and choose **+ new worktree**. jmux walks you through picking a base branch and naming the worktree, then opens a split-pane session with the setup running on the left and a ready shell on the right.
+
+The sidebar automatically detects worktrees and groups sessions by project. Each worktree shows its branch name — you see at a glance which agent is working on which branch.
+
+**The workflow:** spin up 5 worktrees from `main`, start Claude Code in each one, and let them work in parallel on different features. Review each one when the `!` flag appears. Merge the good ones.
+
 ### Works Great With
 
-- **[wtm](https://github.com/jarredkenny/worktree-manager)** — Git worktree manager. Create isolated worktrees for each agent, one session per branch. `wtm create feature-auth --from main` + jmux = parallel agents on parallel branches.
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI coding agent with built-in attention flag support.
-- **[lazygit](https://github.com/jesseduffield/lazygit)** — Terminal Git UI. Run it in a jmux pane alongside your agent.
-- **[gh](https://cli.github.com/)** / **[glab](https://gitlab.com/gitlab-org/cli)** — GitHub and GitLab CLIs for PRs, issues, and reviews without leaving the terminal.
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI coding agent with built-in attention flag support
+- **[lazygit](https://github.com/jesseduffield/lazygit)** — Terminal Git UI. Run it in a jmux pane alongside your agent
+- **[gh](https://cli.github.com/)** / **[glab](https://gitlab.com/gitlab-org/cli)** — GitHub and GitLab CLIs for PRs, issues, and reviews without leaving the terminal
 
 ### Agent Integration
 

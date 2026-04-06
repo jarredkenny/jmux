@@ -28,7 +28,7 @@ The sidebar shows all sessions with:
 |-----|--------|
 | `Ctrl-Shift-Up` | Switch to previous session |
 | `Ctrl-Shift-Down` | Switch to next session |
-| `Ctrl-a n` | New session (fzf directory picker) |
+| `Ctrl-a n` | New session / new worktree (auto-detects wtm projects) |
 | `Ctrl-a r` | Rename current session |
 | `Ctrl-a m` | Move current window to another session |
 
