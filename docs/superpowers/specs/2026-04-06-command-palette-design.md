@@ -49,7 +49,7 @@ A self-contained module that owns:
 - **State**: open/closed, query string, cursor position, selected index, filtered results, sub-list state (parent command + options)
 - **Command registry**: static list of commands plus dynamic entries (sessions, windows) injected on open
 - **Fuzzy matching**: simple substring/character matching against command labels, scoring by match quality
-- **Grid rendering**: produces a `CellGrid` via `createGrid`/`writeString` (same pattern as `Sidebar`)
+- **Grid rendering**: produces a `CellGrid` via `createGrid`/`writeString` (same pattern as `Sidebar`). Note: result rows with match highlighting require cell-by-cell writing rather than `writeString`, since matched characters use different attrs (green) than the surrounding text (dim). The input line and category tags can still use `writeString`.
 
 Public API:
 
@@ -69,6 +69,7 @@ class CommandPalette {
   // Rendering
   getGrid(width: number): CellGrid          // returns overlay grid
   getHeight(): number                        // rows the palette occupies (input + results)
+  getCursorCol(): number                     // cursor X position within the input line
 }
 
 interface PaletteCommand {
@@ -119,9 +120,9 @@ Modify `compositeGrids` to accept an optional palette grid:
 **Handling palette input**:
 
 1. Forward raw input to `palette.handleInput(data)`
-2. If it returns a `PaletteResult`, execute the corresponding action (same handlers as toolbar actions, session switching, etc.)
-3. If it returns null, the palette consumed the input (typing, navigation) — just re-render
-4. If the palette closed itself (Escape at top level), set `inputRouter.setPaletteOpen(false)` and render
+2. If it returns `{ type: "execute", result }`, execute the corresponding action (same handlers as toolbar actions, session switching, etc.) and close the palette
+3. If it returns `{ type: "consumed" }`, the palette handled the input (typing, navigation) — just re-render
+4. If it returns `{ type: "closed" }`, the palette dismissed itself (Escape at top level) — set `inputRouter.setPaletteOpen(false)` and render
 
 **Closing the palette**:
 
@@ -131,9 +132,13 @@ Modify `compositeGrids` to accept an optional palette grid:
 
 ### Keybinding
 
-`Ctrl-a p` is already unbound (explicitly freed in `config/defaults.conf` line 9). Bind it to send a recognizable escape sequence that the InputRouter can intercept, OR handle it via tmux `send-keys` / `run-shell` that signals the jmux process.
+`Ctrl-a p` is already unbound (explicitly freed in `config/defaults.conf` line 9).
 
-Preferred approach: bind `Ctrl-a p` in tmux config to `send-keys` a custom escape sequence (e.g., `\x1b[80;112~`). The InputRouter detects this sequence and triggers the palette toggle. This keeps the binding in tmux config (consistent with all other `Ctrl-a` bindings) while the behavior lives in the TS process.
+**Signal-based approach**: Bind `Ctrl-a p` in tmux config to `run-shell -b "kill -USR1 $JMUX_PID"`. The jmux process sets `JMUX_PID` in the tmux environment at startup (alongside `JMUX_DIR` and `JMUX`), and listens for `SIGUSR1` to toggle the palette.
+
+This is clean and isolated — no data stream interception, no buffering, no risk of split sequences. The signal fires regardless of whether the palette is open or closed, giving us a reliable toggle.
+
+**When the palette is open**: All stdin routes to the palette handler, so `\x01` (Ctrl-a) never reaches tmux and the prefix binding never fires. The palette itself detects `\x01` followed by `p` to close (toggle off). While the palette is open, all tmux prefix bindings are inert — this is acceptable since the UI is overlaid and the user is interacting with the palette, not tmux. The palette's `handleInput` buffers `\x01` and waits for the next byte: if `p`, close; otherwise discard (no forwarding to PTY while palette is open).
 
 ## Commands
 
@@ -197,10 +202,11 @@ The palette handles these inputs:
 | Down arrow | Move selection down |
 | Enter | Execute selected command (or drill into sub-list) |
 | Escape | Back out of sub-list, or close palette at top level |
-| `Ctrl-a p` sequence | Close palette (toggle) |
+| `\x01` (`Ctrl-a`) then `p` | Close palette (toggle) — palette buffers `\x01`, checks next byte |
+| `\x01` (`Ctrl-a`) then anything else | Discard both bytes (tmux prefix bindings are inert while palette is open) |
 | Tab | No-op (reserved for future use) |
 
-All other input is silently consumed (not forwarded to PTY).
+All other input is silently consumed (not forwarded to PTY). While the palette is open, all tmux prefix bindings are inert since `\x01` never reaches tmux — this is acceptable because the overlay UI has full focus.
 
 ## Rendering Integration
 
@@ -221,6 +227,10 @@ When `paletteOverlay` is provided:
 - The palette grid width equals `mainCols` and is positioned after the sidebar border, same as the toolbar
 
 When `paletteOverlay` is null, rendering is unchanged (toolbar renders normally).
+
+### Cursor Positioning
+
+When the palette is open, `Renderer.render()` positions the terminal cursor at the palette's text input cursor (row 0 of the palette area, column from `palette.getCursorCol()`), offset by the sidebar width. When the palette is closed, cursor positioning reverts to the PTY cursor as usual.
 
 ## Edge Cases
 
