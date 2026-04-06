@@ -141,7 +141,7 @@
   <nav class="flex items-center justify-between px-6 md:px-12 py-4 border-b border-border">
     <div class="flex items-center gap-2">
       <span class="font-mono text-lg font-bold tracking-tight">jmux</span>
-      <span class="text-xs font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded">v0.5.3</span>
+      <span class="text-xs font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded">v0.9.0</span>
     </div>
     <div class="flex items-center gap-6 text-sm">
       <a href="https://github.com/jarredkenny/jmux/blob/main/docs/getting-started.md" target="_blank" rel="noopener" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors hidden sm:block">Getting Started</a>
@@ -159,9 +159,9 @@
     <p class="font-mono text-xs md:text-sm text-accent tracking-[0.2em] uppercase mb-4">Parallel Development Environment</p>
     <h1 class="text-3xl md:text-5xl font-extrabold leading-tight max-w-2xl mx-auto mb-6 tracking-tight">
       Run 10 agents in parallel.<br>
-      <span class="text-[#71717a]">Know exactly what each one is doing.</span>
+      <span class="text-[#94a3b8]">Know exactly what each one is doing.</span>
     </h1>
-    <p class="text-base md:text-lg text-[#a1a1aa] max-w-xl mx-auto mb-9 leading-relaxed">
+    <p class="text-base md:text-lg text-[#c4c9d4] max-w-xl mx-auto mb-9 leading-relaxed">
       Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are working,
       which finished, and which need your review. Bring your own editor, your own Git workflow, any agent.
     </p>
@@ -248,6 +248,28 @@
         <p class="text-sm text-[#a1a1aa] leading-relaxed">Works with your ~/.tmux.conf. Your plugins, your prefix key, your bindings. jmux doesn't replace your tools — it organizes them.</p>
       </div>
 
+    </div>
+  </section>
+
+  <!-- Command Palette -->
+  <section class="px-6 md:px-12 py-16 md:py-24 border-t border-border">
+    <div class="max-w-3xl mx-auto">
+      <div class="flex flex-col md:flex-row gap-8 md:gap-12 items-center">
+        <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
+          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">New in 0.9</p>
+          <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Command Palette</h2>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
+            <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">Ctrl-a p</span> to open.
+            Type to fuzzy-search sessions, windows, pane actions, and settings. Hit Enter to execute.
+          </p>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed">
+            Switch sessions by name, split panes, zoom, change settings — all without memorizing keybindings.
+          </p>
+        </div>
+        <div class="md:w-3/5 animate-in">
+          <img src="assets/command-palette.png" alt="jmux command palette floating over a workspace with sessions, Claude Code, and htop" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50">
+        </div>
+      </div>
     </div>
   </section>
 
