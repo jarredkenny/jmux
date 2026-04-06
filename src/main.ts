@@ -1,18 +1,18 @@
 import { $ } from "bun";
 import { TmuxPty } from "./tmux-pty";
 import { ScreenBridge } from "./screen-bridge";
-import { Renderer, getToolbarButtonRanges, type ToolbarConfig } from "./renderer";
+import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
-import type { SessionInfo } from "./types";
+import type { SessionInfo, WindowTab } from "./types";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.7.4";
+const VERSION = "0.8.0";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -142,7 +142,7 @@ const userConfig = loadUserConfig();
 let sidebarWidth = (userConfig.sidebarWidth as number) || 26;
 const BORDER_WIDTH = 1;
 function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
-let toolbarEnabled = userConfig.toolbar !== false; // default on
+const toolbarEnabled = true;
 let claudeCommand = (userConfig.claudeCommand as string) || "claude";
 
 // Resolve paths relative to source
@@ -237,23 +237,32 @@ const sidebarVisible = cols >= 80;
 let mainCols = sidebarVisible ? cols - sidebarTotal() : cols;
 const ptyRows = toolbarEnabled ? rows - 1 : rows;
 
-// Toolbar buttons
+// Toolbar buttons and window tabs
+let hoveredToolbarButton: string | null = null;
+let currentWindows: WindowTab[] = [];
+let hoveredTabId: string | null = null;
+let startupComplete = false;
+
 function makeToolbar(): ToolbarConfig {
   return {
     buttons: [
-      { label: "⬒", id: "split-v" },
-      { label: "⬓", id: "split-h" },
+      { label: "＋", id: "new-window" },
+      { label: "⏸", id: "split-v" },
+      { label: "⏏", id: "split-h" },
       { label: "◈", id: "claude", fg: (0xE8 << 16) | (0xA0 << 8) | 0xB4, fgMode: 2 },
       { label: "⚙", id: "settings" },
     ],
     mainCols,
+    hoveredButton: hoveredToolbarButton,
+    tabs: currentWindows,
+    hoveredTabId,
   };
 }
 
 // Enter alternate screen, raw mode, enable mouse tracking
 process.stdout.write("\x1b[?1049h");
 process.stdout.write("\x1b[?1000h"); // mouse button tracking
-process.stdout.write("\x1b[?1002h"); // mouse drag tracking
+process.stdout.write("\x1b[?1003h"); // mouse motion tracking (hover)
 process.stdout.write("\x1b[?1006h"); // SGR extended mouse mode
 process.stdout.write("\x1b[?2004h"); // bracketed paste mode
 if (process.stdin.setRawMode) {
@@ -307,6 +316,7 @@ async function fetchSessions(): Promise<void> {
           windowCount: parseInt(windows, 10) || 1,
           directory: cached?.directory,
           gitBranch: cached?.gitBranch,
+          project: cached?.project,
         };
       });
     currentSessions = sessions;
@@ -332,27 +342,32 @@ async function fetchSessions(): Promise<void> {
 async function resolveClientName(): Promise<void> {
   try {
     const lines = await control.sendCommand(
-      "list-clients -F '#{client_name}:#{client_pid}:#{client_session}'",
+      "list-clients -F '#{client_name}:#{client_pid}:#{session_id}:#{session_name}'",
     );
     const pid = pty.pid.toString();
     for (const line of lines) {
-      const parts = line.split(":");
-      if (parts[1] === pid) {
-        ptyClientName = parts[0];
-        // Set the initial active session
-        const clientSessionName = parts[2];
-        if (clientSessionName) {
-          const match = currentSessions.find((s) => s.name === clientSessionName);
-          if (match) {
-            currentSessionId = match.id;
-            sidebar.setActiveSession(match.id);
-          }
+      const [name, clientPid, ...rest] = line.split(":");
+      if (clientPid === pid) {
+        ptyClientName = name;
+        // rest[0] = session_id, rest.slice(1).join(":") = session_name (may contain colons)
+        const sessionId = rest[0];
+        if (sessionId) {
+          currentSessionId = sessionId;
+          sidebar.setActiveSession(sessionId);
         }
         return;
       }
     }
   } catch {
     // Retry on next session switch
+  }
+}
+
+async function syncControlClient(): Promise<void> {
+  if (currentSessionId) {
+    try {
+      await control.sendCommand(`switch-client -t '${currentSessionId}'`);
+    } catch { /* non-critical */ }
   }
 }
 
@@ -367,6 +382,7 @@ async function switchSession(sessionId: string): Promise<void> {
     currentSessionId = sessionId;
     sidebar.setActiveSession(sessionId);
     sidebar.scrollToActive();
+    fetchWindows();
     renderFrame();
   } catch {
     // Session may have been killed
@@ -436,6 +452,15 @@ const inputRouter = new InputRouter(
     onToolbarClick: (col) => {
       if (!toolbarEnabled) return;
       const tb = makeToolbar();
+      // Check tabs first (left side)
+      const tabRanges = getToolbarTabRanges(tb);
+      for (const { id, startCol, endCol } of tabRanges) {
+        if (col >= startCol && col <= endCol) {
+          handleTabClick(id);
+          return;
+        }
+      }
+      // Then buttons (right side)
       const ranges = getToolbarButtonRanges(tb);
       for (const { id, startCol, endCol } of ranges) {
         if (col >= startCol && col <= endCol) {
@@ -444,11 +469,59 @@ const inputRouter = new InputRouter(
         }
       }
     },
+    onHover: (target) => {
+      let changed = false;
+      if (target?.area === "toolbar") {
+        const tb = makeToolbar();
+        // Check tab hover (left side)
+        const tabRanges = getToolbarTabRanges(tb);
+        let foundTab: string | null = null;
+        for (const { id, startCol, endCol } of tabRanges) {
+          if (target.col >= startCol && target.col <= endCol) {
+            foundTab = id;
+            break;
+          }
+        }
+        if (foundTab !== hoveredTabId) {
+          hoveredTabId = foundTab;
+          changed = true;
+        }
+        // Check button hover (right side)
+        const ranges = getToolbarButtonRanges(tb);
+        let found: string | null = null;
+        for (const { id, startCol, endCol } of ranges) {
+          if (target.col >= startCol && target.col <= endCol) {
+            found = id;
+            break;
+          }
+        }
+        if (found !== hoveredToolbarButton) {
+          hoveredToolbarButton = found;
+          changed = true;
+        }
+        if (sidebar.getHoveredRow() !== null) {
+          sidebar.setHoveredRow(null);
+          changed = true;
+        }
+      } else if (target?.area === "sidebar") {
+        if (hoveredToolbarButton !== null) { hoveredToolbarButton = null; changed = true; }
+        if (hoveredTabId !== null) { hoveredTabId = null; changed = true; }
+        const prev = sidebar.getHoveredRow();
+        if (prev !== target.row) {
+          sidebar.setHoveredRow(target.row);
+          changed = true;
+        }
+      } else {
+        if (hoveredToolbarButton !== null) { hoveredToolbarButton = null; changed = true; }
+        if (hoveredTabId !== null) { hoveredTabId = null; changed = true; }
+        if (sidebar.getHoveredRow() !== null) { sidebar.setHoveredRow(null); changed = true; }
+      }
+      if (changed) scheduleRender();
+    },
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),
   },
   sidebarShown,
-  toolbarEnabled,
 );
 
 // --- Toolbar actions ---
@@ -456,18 +529,28 @@ const inputRouter = new InputRouter(
 async function handleToolbarAction(id: string): Promise<void> {
   if (!ptyClientName) await resolveClientName();
   if (!ptyClientName) return;
+
+  // Window/pane operations go through the control connection so events fire reliably
+  switch (id) {
+    case "new-window":
+      await control.sendCommand(`new-window -t ${ptyClientName} -c '#{pane_current_path}'`);
+      fetchWindows();
+      return;
+    case "split-v":
+      await control.sendCommand(`split-window -t ${ptyClientName} -h -c '#{pane_current_path}'`);
+      return;
+    case "split-h":
+      await control.sendCommand(`split-window -t ${ptyClientName} -v -c '#{pane_current_path}'`);
+      return;
+    case "claude":
+      await control.sendCommand(`split-window -t ${ptyClientName} -h -c '#{pane_current_path}' ${claudeCommand}`);
+      return;
+  }
+
+  // Non-window actions still use Bun.spawn (popups need a real PTY)
   const args = ["tmux"];
   if (socketName) args.push("-L", socketName);
   switch (id) {
-    case "split-v":
-      args.push("split-window", "-t", ptyClientName, "-h", "-c", "#{pane_current_path}");
-      break;
-    case "split-h":
-      args.push("split-window", "-t", ptyClientName, "-v", "-c", "#{pane_current_path}");
-      break;
-    case "claude":
-      args.push("split-window", "-t", ptyClientName, "-h", "-c", "#{pane_current_path}", claudeCommand);
-      break;
     case "settings": {
       const settingsScript = resolve(jmuxDir, "config", "settings.sh");
       args.push("display-popup", "-c", ptyClientName, "-E", "-w", "50%", "-h", "40%", "-b", "heavy", "-S", "fg=#4f565d", settingsScript);
@@ -570,14 +653,10 @@ try {
   watch(configPath, () => {
     const updated = loadUserConfig();
     const newWidth = (updated.sidebarWidth as number) || 26;
-    const newToolbar = updated.toolbar !== false;
     const newClaudeCmd = (updated.claudeCommand as string) || "claude";
     claudeCommand = newClaudeCmd;
 
-    const needsResize = newWidth !== sidebarWidth || newToolbar !== toolbarEnabled;
-    sidebarWidth = newWidth;
-    toolbarEnabled = newToolbar;
-    inputRouter.setToolbarEnabled(newToolbar);
+    const needsResize = newWidth !== sidebarWidth;
 
     if (needsResize) {
       const cols = process.stdout.columns || 80;
@@ -643,20 +722,38 @@ control.onEvent((event: ControlEvent) => {
   switch (event.type) {
     case "sessions-changed":
     case "session-renamed":
+      if (!startupComplete) return;
       fetchSessions();
+      fetchWindows();
       break;
     case "session-changed":
-      currentSessionId = event.args;
-      sidebar.setActiveSession(event.args);
-      renderFrame();
+      // This fires for the CONTROL client — ignore during startup since
+      // the control client may be on a different session than the PTY client
+      if (!startupComplete) break;
       break;
     case "client-session-changed":
-      // A client (possibly our PTY client) switched sessions — re-resolve
-      resolveClientName().then(() => renderFrame());
+      // This fires when the PTY client switches sessions — authoritative
+      resolveClientName().then(async () => {
+        sidebar.setActiveSession(currentSessionId ?? "");
+        if (startupComplete) {
+          await syncControlClient();
+          fetchWindows();
+        }
+        renderFrame();
+      });
+      break;
+    case "window-add":
+    case "window-close":
+    case "window-renamed":
+    case "session-window-changed":
+      if (startupComplete) fetchWindows();
       break;
     case "subscription-changed":
+      if (!startupComplete) break;
       if (event.name === "attention") {
         fetchSessions();
+      } else if (event.name === "windows") {
+        fetchWindows();
       }
       break;
   }
@@ -719,6 +816,41 @@ async function lookupSessionDetails(sessions: SessionInfo[]): Promise<void> {
   renderFrame();
 }
 
+// --- Window tabs ---
+
+async function fetchWindows(): Promise<void> {
+  try {
+    const target = currentSessionId ? `-t '${currentSessionId}'` : "";
+    const lines = await control.sendCommand(
+      `list-windows ${target} -F '#{window_id}:#{window_index}:#{window_name}:#{window_active}:#{window_bell_flag}'`,
+    );
+    currentWindows = lines
+      .filter((l) => l.length > 0)
+      .map((line) => {
+        const [windowId, index, name, active, bell] = line.split(":");
+        return {
+          windowId,
+          index: parseInt(index, 10),
+          name,
+          active: active === "1",
+          bell: bell === "1",
+        };
+      });
+    scheduleRender();
+  } catch {
+    // Session may be shutting down
+  }
+}
+
+async function handleTabClick(windowId: string): Promise<void> {
+  try {
+    await control.sendCommand(`select-window -t ${windowId}`);
+    await fetchWindows();
+  } catch {
+    // Window may have been closed
+  }
+}
+
 // --- Startup sequence ---
 
 async function start(): Promise<void> {
@@ -736,30 +868,26 @@ async function start(): Promise<void> {
   // Start control mode
   await control.start({ socketName, configFile });
 
-  // Re-apply our config to the running server — handles the case where
-  // we attached to an existing server that loaded ~/.tmux.conf
-  // Set JMUX_DIR in tmux's global environment so config bindings can reference it
+  // Re-apply our config to the running server
   await control.sendCommand(`set-environment -g JMUX_DIR ${jmuxDir}`);
   await control.sendCommand("set-environment -g JMUX 1");
   await control.sendCommand(`source-file ${configFile}`);
-  // Re-enable automatic-rename on all windows — clears any application-set names
-  try {
-    const windowLines = await control.sendCommand(
-      "list-windows -a -F '#{window_id}'"
-    );
-    for (const line of windowLines) {
-      const winId = line.trim();
-      if (winId) {
-        await control.sendCommand(`set-option -w -t ${winId} automatic-rename on`);
-      }
-    }
-  } catch {
-    // Non-critical — windows will rename on next command change
-  }
 
-  // Fetch initial sessions, then resolve client name (needs sessions list)
+  // Resolve client and session — retry until the PTY client registers
   await fetchSessions();
-  await resolveClientName();
+  for (let i = 0; i < 20 && !currentSessionId; i++) {
+    await resolveClientName();
+    if (!currentSessionId) {
+      await new Promise<void>((r) => {
+        // Wait for next PTY data rather than fixed delay — that's the signal tmux is ready
+        const handler = () => { pty.offData(handler); r(); };
+        pty.onData(handler);
+      });
+    }
+  }
+  await syncControlClient();
+  await fetchWindows();
+  startupComplete = true;
   renderFrame();
 
   // First-run welcome screen
@@ -784,6 +912,13 @@ async function start(): Promise<void> {
     1,
     "#{S:#{session_id}=#{@jmux-attention} }",
   );
+
+  // Subscribe to window count + active window + name — fires on add/remove/switch/rename
+  await control.registerSubscription(
+    "windows",
+    1,
+    "#{session_windows} #{window_index} #{window_name}",
+  );
 }
 
 // --- Cleanup ---
@@ -792,7 +927,7 @@ function cleanup(): void {
   control.close().catch(() => {});
   process.stdout.write("\x1b[?2004l"); // disable bracketed paste mode
   process.stdout.write("\x1b[?1000l"); // disable mouse button tracking
-  process.stdout.write("\x1b[?1002l"); // disable mouse drag tracking
+  process.stdout.write("\x1b[?1003l"); // disable mouse motion tracking
   process.stdout.write("\x1b[?1006l"); // disable SGR mouse mode
   process.stdout.write("\x1b[?25h");
   process.stdout.write("\x1b[?1049l");

@@ -1,4 +1,4 @@
-import type { Cell, CellGrid, CursorPosition } from "./types";
+import type { Cell, CellGrid, CursorPosition, WindowTab } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, DEFAULT_CELL } from "./cell-grid";
 
@@ -14,6 +14,9 @@ export interface ToolbarButton {
 export interface ToolbarConfig {
   buttons: ToolbarButton[];
   mainCols: number;
+  hoveredButton?: string | null;
+  tabs?: WindowTab[];
+  hoveredTabId?: string | null;
 }
 
 export function sgrForCell(cell: Cell): string {
@@ -59,15 +62,63 @@ export function sgrForCell(cell: Cell): string {
   return `\x1b[${parts.join(";")}m`;
 }
 
+// Display width of a character — wide Unicode symbols take 2 terminal columns
+function charDisplayWidth(ch: string): number {
+  const cp = ch.codePointAt(0) ?? 0;
+  if (cp < 0x2000) return 1;
+  // Ranges that render as 2-wide in most terminal fonts
+  if (
+    (cp >= 0x2300 && cp <= 0x23FF) ||  // Miscellaneous Technical
+    (cp >= 0x25A0 && cp <= 0x25FF) ||  // Geometric Shapes
+    (cp >= 0x2600 && cp <= 0x27BF) ||  // Misc Symbols + Dingbats
+    (cp >= 0x2900 && cp <= 0x29FF) ||  // Misc Mathematical Symbols-B
+    (cp >= 0x2B00 && cp <= 0x2BFF) ||  // Misc Symbols and Arrows
+    (cp >= 0xFF01 && cp <= 0xFF60) ||  // Fullwidth Forms
+    (cp >= 0x1F000)                     // Supplementary symbols/emoji
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
+function stringDisplayWidth(s: string): number {
+  let w = 0;
+  for (const ch of s) w += charDisplayWidth(ch);
+  return w;
+}
+
 // Returns the column ranges for each toolbar button (relative to main area start)
 export function getToolbarButtonRanges(toolbar: ToolbarConfig): Array<{ id: string; startCol: number; endCol: number }> {
   const ranges: Array<{ id: string; startCol: number; endCol: number }> = [];
   let col = toolbar.mainCols;
   for (let i = toolbar.buttons.length - 1; i >= 0; i--) {
     const btn = toolbar.buttons[i];
-    const width = btn.label.length + 2; // padding
+    const width = stringDisplayWidth(btn.label) + 2; // label display width + padding
     col -= width;
     ranges.unshift({ id: btn.id, startCol: col, endCol: col + width - 1 });
+  }
+  return ranges;
+}
+
+// Returns the column ranges for each window tab (left-aligned in toolbar)
+export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string; startCol: number; endCol: number; tab: WindowTab }> {
+  const tabs = toolbar.tabs ?? [];
+  if (tabs.length === 0) return [];
+
+  const buttonRanges = getToolbarButtonRanges(toolbar);
+  const buttonsStart = buttonRanges.length > 0 ? buttonRanges[0].startCol : toolbar.mainCols;
+  const maxCol = buttonsStart - 2; // 2-col gap before buttons
+
+  const ranges: Array<{ id: string; startCol: number; endCol: number; tab: WindowTab }> = [];
+  let col = 1; // 1-col left padding
+
+  for (let i = 0; i < tabs.length; i++) {
+    const tab = tabs[i];
+    const width = stringDisplayWidth(tab.name) + 2; // " name "
+    const sepWidth = i < tabs.length - 1 ? 3 : 0; // " │ " separator after non-last tabs
+    if (col + width > maxCol) break; // no room
+    ranges.push({ id: tab.windowId, startCol: col, endCol: col + width - 1, tab });
+    col += width + sepWidth;
   }
   return ranges;
 }
@@ -99,21 +150,91 @@ export function compositeGrids(
     };
 
     if (toolbar && y === 0) {
-      // Toolbar row — icons right-aligned
-      const ranges = getToolbarButtonRanges(toolbar);
-      for (const { id, startCol } of ranges) {
-        const btn = toolbar.buttons.find(b => b.id === id)!;
-        const label = ` ${btn.label} `;
-        for (let i = 0; i < label.length; i++) {
-          const c = borderCol + 1 + startCol + i;
+      // Toolbar row — tabs left-aligned, buttons right-aligned
+      const hoverBg = (0x2a << 16) | (0x2f << 8) | 0x38;
+      const activeBg = (0x1e << 16) | (0x2a << 8) | 0x35;
+
+      // Render window tabs (left side)
+      // Peach accent for active tab — matches pane border and old status bar design
+      const peachFg = (0xfb << 16) | (0xd4 << 8) | 0xb8;
+      const tabRanges = getToolbarTabRanges(toolbar);
+      for (let ti = 0; ti < tabRanges.length; ti++) {
+        const { id, startCol, endCol, tab } = tabRanges[ti];
+        const isActive = tab.active;
+        const isHovered = !isActive && toolbar.hoveredTabId === id;
+        const label = ` ${tab.name} `;
+        let col = 0;
+        for (const ch of label) {
+          const c = borderCol + 1 + startCol + col;
+          const w = charDisplayWidth(ch);
+          const hasBg = isActive || isHovered;
+          const bg = isActive ? activeBg : hoverBg;
           if (c < totalCols) {
             grid.cells[0][c] = {
               ...DEFAULT_CELL,
-              char: label[i],
-              fg: btn.fg ?? 8,
-              fgMode: btn.fgMode ?? ColorMode.Palette,
+              char: ch,
+              width: w,
+              fg: tab.bell ? 3 : isActive ? peachFg : 8,
+              fgMode: tab.bell ? ColorMode.Palette : isActive ? ColorMode.RGB : ColorMode.Palette,
+              bold: isActive || tab.bell,
+              bg: hasBg ? bg : 0,
+              bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
+            };
+            if (w === 2 && c + 1 < totalCols) {
+              grid.cells[0][c + 1] = {
+                ...DEFAULT_CELL, char: "", width: 0,
+                bg: hasBg ? bg : 0,
+                bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
+              };
+            }
+          }
+          col += w;
+        }
+        // Separator after non-last tabs
+        if (ti < tabRanges.length - 1) {
+          const sepCol = borderCol + 1 + endCol + 2; // 1 space + separator
+          if (sepCol < totalCols) {
+            grid.cells[0][sepCol] = {
+              ...DEFAULT_CELL,
+              char: "\u2502", // │
+              fg: 8,
+              fgMode: ColorMode.Palette,
+              dim: true,
             };
           }
+        }
+      }
+
+      // Render action buttons (right side)
+      const ranges = getToolbarButtonRanges(toolbar);
+      for (const { id, startCol } of ranges) {
+        const btn = toolbar.buttons.find(b => b.id === id)!;
+        const isHovered = toolbar.hoveredButton === id;
+        const label = ` ${btn.label} `;
+        let col = 0;
+        for (const ch of label) {
+          const c = borderCol + 1 + startCol + col;
+          const w = charDisplayWidth(ch);
+          const isIcon = ch !== " ";
+          if (c < totalCols) {
+            grid.cells[0][c] = {
+              ...DEFAULT_CELL,
+              char: ch,
+              width: w,
+              fg: isIcon ? (btn.fg ?? 8) : 8,
+              fgMode: isIcon ? (btn.fgMode ?? ColorMode.Palette) : ColorMode.Palette,
+              bg: isHovered ? hoverBg : 0,
+              bgMode: isHovered ? ColorMode.RGB : ColorMode.Default,
+            };
+            if (w === 2 && c + 1 < totalCols) {
+              grid.cells[0][c + 1] = {
+                ...DEFAULT_CELL, char: "", width: 0,
+                bg: isHovered ? hoverBg : 0,
+                bgMode: isHovered ? ColorMode.RGB : ColorMode.Default,
+              };
+            }
+          }
+          col += w;
         }
       }
     } else {

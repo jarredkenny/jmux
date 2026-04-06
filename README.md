@@ -54,13 +54,17 @@ Every session visible at a glance — name, window count, git branch. Sessions s
 - Green `●` dot for sessions with new output
 - Orange `!` flag for attention (e.g., an agent finished and needs review)
 
-### Smart Window & Pane Titles
+### Toolbar with Window Tabs
 
-Window tabs auto-name to the working directory. Pane borders show the running command with automatic detection for tools like Claude Code. No more tabs full of `zsh` or garbled version strings.
+The top toolbar shows clickable window tabs on the left and action buttons on the right — new window, split panes, launch Claude Code, settings. The active tab is highlighted in peach, inactive tabs are dim with separators between them. Hover states on everything. tmux's status bar is fully replaced.
+
+### Smart Pane Titles
+
+Pane borders show the running command with automatic detection for tools like Claude Code. Window tabs auto-name to the working directory. No more tabs full of `zsh` or garbled version strings.
 
 ### Instant Switching
 
-`Ctrl-Shift-Up/Down` moves between sessions with zero delay. No prefix key, no menu, no mode to enter. Or just click a session in the sidebar. Indicators only clear when you actually interact with a session — not when you're cycling through.
+`Ctrl-Shift-Up/Down` moves between sessions with zero delay. No prefix key, no menu, no mode to enter. Or just click a session in the sidebar. Click a window tab to switch windows. Hover states on sidebar sessions, toolbar tabs, and action buttons. Indicators only clear when you actually interact with a session — not when you're cycling through.
 
 ### New Session Modal
 
@@ -122,10 +126,11 @@ When Claude Code finishes a response, the orange `!` appears on that session in 
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-a j` | fzf window picker |
+| Click tab | Switch to window |
 | `Ctrl-a c` | New window |
 | `Ctrl-Right/Left` | Next/prev window |
 | `Ctrl-Shift-Right/Left` | Reorder windows |
+| `Ctrl-a j` | fzf window picker |
 
 ### Panes
 
@@ -157,7 +162,7 @@ config/defaults.conf      <- jmux defaults (baseline)
 config/core.conf          <- jmux core (always wins)
 ```
 
-Override any default in your `~/.tmux.conf` — prefix key, colors, keybindings, plugins. Only core settings the sidebar depends on are enforced (`mouse on`, `detach-on-destroy off`, window naming, `status-left`).
+Override any default in your `~/.tmux.conf` — prefix key, colors, keybindings, plugins. Only core settings jmux depends on are enforced (`mouse on`, `detach-on-destroy off`, window naming, `status off` since jmux renders its own toolbar).
 
 See [docs/configuration.md](docs/configuration.md) for the full guide.
 
@@ -168,14 +173,16 @@ See [docs/configuration.md](docs/configuration.md) for the full guide.
 ```
 Terminal (Ghostty, iTerm, etc.)
   +-- jmux (owns the terminal surface)
-       +-- Sidebar (26 cols) -- session groups, indicators
+       +-- Sidebar (26 cols) -- session groups, indicators, hover states
        +-- Border (1 col)
-       +-- tmux PTY (remaining cols)
-            +-- PTY client ---- @xterm/headless for VT emulation
-            +-- Control client - tmux -C for real-time metadata
+       +-- Main area (remaining cols)
+            +-- Toolbar (row 0) -- window tabs (left), action buttons (right)
+            +-- tmux PTY (remaining rows)
+                 +-- PTY client ---- @xterm/headless for VT emulation
+                 +-- Control client - tmux -C for real-time metadata
 ```
 
-~1800 lines of TypeScript. No opinions about what you run inside tmux.
+~2400 lines of TypeScript. No opinions about what you run inside tmux.
 
 ---
 

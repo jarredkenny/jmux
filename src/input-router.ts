@@ -35,6 +35,7 @@ export interface InputRouterOptions {
   onSidebarClick: (row: number) => void;
   onSidebarScroll?: (delta: number) => void;
   onToolbarClick?: (col: number) => void;
+  onHover?: (target: { area: "sidebar"; row: number } | { area: "toolbar"; col: number } | null) => void;
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
 }
@@ -42,20 +43,13 @@ export interface InputRouterOptions {
 export class InputRouter {
   private opts: InputRouterOptions;
   private sidebarVisible: boolean;
-  private toolbarEnabled: boolean;
-
-  constructor(opts: InputRouterOptions, sidebarVisible: boolean, toolbarEnabled: boolean = false) {
+  constructor(opts: InputRouterOptions, sidebarVisible: boolean) {
     this.opts = opts;
     this.sidebarVisible = sidebarVisible;
-    this.toolbarEnabled = toolbarEnabled;
   }
 
   setSidebarVisible(visible: boolean): void {
     this.sidebarVisible = visible;
-  }
-
-  setToolbarEnabled(enabled: boolean): void {
-    this.toolbarEnabled = enabled;
   }
 
   handleInput(data: string): void {
@@ -72,28 +66,44 @@ export class InputRouter {
     // Check for SGR mouse events
     const mouse = parseSgrMouse(data);
     if (mouse && this.sidebarVisible) {
+      const isMotion = (mouse.button & 32) !== 0;
+      const isWheel = (mouse.button & 64) !== 0;
+
+      // Dispatch hover on any motion event
+      if (isMotion && this.opts.onHover) {
+        if (mouse.x <= this.opts.sidebarCols) {
+          this.opts.onHover({ area: "sidebar", row: mouse.y - 1 });
+        } else if (mouse.y === 1) {
+          this.opts.onHover({ area: "toolbar", col: mouse.x - this.opts.sidebarCols - 1 });
+        } else {
+          this.opts.onHover(null);
+        }
+      }
+
       if (mouse.x <= this.opts.sidebarCols) {
         // Wheel events: button 64 = up, 65 = down
-        if ((mouse.button & 64) !== 0) {
+        if (isWheel) {
           const delta = (mouse.button & 1) ? 3 : -3;
           this.opts.onSidebarScroll?.(delta);
           return;
         }
-        // Click in sidebar region (ignore drags — button bit 5 = motion)
-        if (!mouse.release && (mouse.button & 32) === 0) {
+        // Click in sidebar region (ignore drags/motion)
+        if (!mouse.release && !isMotion) {
           this.opts.onSidebarClick(mouse.y - 1); // 0-indexed row
         }
         return; // Consume sidebar mouse events
       }
-      // Toolbar click — row 0 or 1 (mouse.y === 1 or 2) in main area
-      if (this.toolbarEnabled && mouse.y === 1 && !mouse.release && (mouse.button & 32) === 0 && (mouse.button & 64) === 0) {
+      // Toolbar click — row 1 in main area
+      if (mouse.y === 1 && !mouse.release && !isMotion && !isWheel) {
         const mainCol = mouse.x - this.opts.sidebarCols - 1; // 0-indexed in main area
         this.opts.onToolbarClick?.(mainCol);
         return;
       }
       // Mouse in main area — translate X coordinate and Y (offset by toolbar)
+      // Don't forward bare motion events to PTY (too noisy)
+      if (isMotion && (mouse.button & 0x03) === 3) return;
       const offset = this.opts.sidebarCols + 1;
-      const yOffset = this.toolbarEnabled ? 1 : 0;
+      const yOffset = 1;
       const match = data.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
       if (match) {
         const newX = parseInt(match[2], 10) - offset;

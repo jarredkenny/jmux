@@ -61,18 +61,14 @@ while true; do
         console.log(dirs.join(', '));
     " 2>/dev/null || echo "~/Code, ~/Projects, ~/src, ~/work, ~/dev")
     WTM_ENABLED=$(get_value "$CONFIG" "wtmIntegration" "true")
-    TOOLBAR_ENABLED=$(get_value "$CONFIG" "toolbar" "true")
     CLAUDE_CMD=$(get_value "$CONFIG" "claudeCommand" "claude")
 
     # Format display
     WTM_DISPLAY="on"
     [ "$WTM_ENABLED" = "false" ] && WTM_DISPLAY="off"
-    TOOLBAR_DISPLAY="on"
-    [ "$TOOLBAR_ENABLED" = "false" ] && TOOLBAR_DISPLAY="off"
 
-    SELECTION=$(printf "%s\n%s\n%s\n%s\n%s" \
+    SELECTION=$(printf "%s\n%s\n%s\n%s" \
         "Sidebar Width            $SIDEBAR_WIDTH" \
-        "Toolbar                  $TOOLBAR_DISPLAY" \
         "Claude Command           $CLAUDE_CMD" \
         "Project Directories      $PROJECT_DIRS_RAW" \
         "wtm Integration          $WTM_DISPLAY" \
@@ -131,15 +127,6 @@ while true; do
                 CONFIG=$(set_value "$CONFIG" "projectDirs" "$NEW_DIRS" "array")
                 write_config "$CONFIG"
             fi
-            ;;
-
-        "Toolbar"*)
-            if [ "$TOOLBAR_ENABLED" = "true" ]; then
-                CONFIG=$(set_value "$CONFIG" "toolbar" "false" "bool")
-            else
-                CONFIG=$(set_value "$CONFIG" "toolbar" "true" "bool")
-            fi
-            write_config "$CONFIG"
             ;;
 
         "Claude Command"*)

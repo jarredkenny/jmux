@@ -62,6 +62,11 @@ export class TmuxPty {
     this.dataListeners.push(listener);
   }
 
+  offData(listener: (data: string) => void): void {
+    const idx = this.dataListeners.indexOf(listener);
+    if (idx >= 0) this.dataListeners.splice(idx, 1);
+  }
+
   onExit(listener: (code: number) => void): void {
     this.exitListeners.push(listener);
   }

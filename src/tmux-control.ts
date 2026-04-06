@@ -7,6 +7,9 @@ export type ControlEvent =
   | { type: "session-changed"; args: string }
   | { type: "session-renamed"; args: string }
   | { type: "window-renamed"; args: string }
+  | { type: "window-add"; args: string }
+  | { type: "window-close"; args: string }
+  | { type: "session-window-changed"; args: string }
   | { type: "client-session-changed"; args: string }
   | {
       type: "subscription-changed";
@@ -94,6 +97,23 @@ export class ControlParser {
         type: "window-renamed",
         args: line.slice("%window-renamed ".length),
       });
+    } else if (line.startsWith("%window-add ") || line.startsWith("%unlinked-window-add ")) {
+      this.emit({
+        type: "window-add",
+        args: line.includes("unlinked") ? line.slice("%unlinked-window-add ".length) : line.slice("%window-add ".length),
+      });
+    } else if (line.startsWith("%window-close ") || line.startsWith("%unlinked-window-close ")) {
+      this.emit({
+        type: "window-close",
+        args: line.includes("%unlinked-window-close ")
+          ? line.slice("%unlinked-window-close ".length)
+          : line.slice("%window-close ".length),
+      });
+    } else if (line.startsWith("%session-window-changed ")) {
+      this.emit({
+        type: "session-window-changed",
+        args: line.slice("%session-window-changed ".length),
+      });
     } else if (line.startsWith("%client-session-changed ")) {
       this.emit({
         type: "client-session-changed",
@@ -160,6 +180,7 @@ export class TmuxControl {
   onEvent(listener: EventListener): void {
     this.parser.onEvent(listener);
   }
+
 
   async start(opts?: { socketName?: string; configFile?: string }): Promise<void> {
     const args = ["tmux"];

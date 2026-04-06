@@ -28,6 +28,14 @@ export interface CursorPosition {
   y: number;
 }
 
+export interface WindowTab {
+  windowId: string;
+  index: number;
+  name: string;
+  active: boolean;
+  bell: boolean;
+}
+
 export interface SessionInfo {
   id: string;
   name: string;

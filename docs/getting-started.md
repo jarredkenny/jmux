@@ -66,7 +66,7 @@ Use sessions to separate projects:
 
 ### Windows
 
-A **window** is a tab within a session. The window tabs appear at the bottom of the screen. Each window is a full-screen terminal.
+A **window** is a tab within a session. Window tabs appear in the toolbar at the top of the screen — click one to switch. Each window is a full-screen terminal.
 
 ### Panes
 

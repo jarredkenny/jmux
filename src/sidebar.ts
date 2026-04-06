@@ -43,6 +43,19 @@ const INACTIVE_NAME_ATTRS: CellAttrs = {
   fg: 7,
   fgMode: ColorMode.Palette,
 };
+// Subtle hover background — slightly lighter than the default terminal bg
+const HOVER_BG = (0x1a << 16) | (0x1f << 8) | 0x26;
+const HOVER_NAME_ATTRS: CellAttrs = {
+  fg: 7,
+  fgMode: ColorMode.Palette,
+  bg: HOVER_BG,
+  bgMode: ColorMode.RGB,
+};
+const HOVER_DETAIL_ATTRS: CellAttrs = {
+  dim: true,
+  bg: HOVER_BG,
+  bgMode: ColorMode.RGB,
+};
 const GROUP_HEADER_ATTRS: CellAttrs = {
   fg: 8,
   fgMode: ColorMode.Palette,
@@ -176,6 +189,7 @@ export class Sidebar {
   private rowToSessionIndex = new Map<number, number>();
   private activitySet = new Set<string>();
   private scrollOffset = 0;
+  private hoveredRow: number | null = null;
   private currentVersion: string = "";
   private latestVersion: string | null = null;
 
@@ -236,6 +250,14 @@ export class Sidebar {
     const sessionIdx = this.rowToSessionIndex.get(row);
     if (sessionIdx === undefined) return null;
     return this.sessions[sessionIdx] ?? null;
+  }
+
+  setHoveredRow(row: number | null): void {
+    this.hoveredRow = row;
+  }
+
+  getHoveredRow(): number | null {
+    return this.hoveredRow;
   }
 
   resize(width: number, height: number): void {
@@ -368,6 +390,8 @@ export class Sidebar {
 
     const detailRow = nameRow + 1;
     const isActive = session.id === this.activeSessionId;
+    const isHovered = !isActive && this.hoveredRow !== null &&
+      (this.hoveredRow === nameRow || this.hoveredRow === detailRow);
     const hasActivity = this.activitySet.has(session.id);
 
     // Map rows to session for click handling
@@ -376,10 +400,11 @@ export class Sidebar {
       this.rowToSessionIndex.set(detailRow, sessionIdx);
     }
 
-    // Paint active background across both rows
-    if (isActive) {
+    // Paint background across both rows
+    if (isActive || isHovered) {
+      const bg = isActive ? ACTIVE_BG : HOVER_BG;
       const bgFill = " ".repeat(this.width);
-      const bgAttrs: CellAttrs = { bg: ACTIVE_BG, bgMode: ColorMode.RGB };
+      const bgAttrs: CellAttrs = { bg, bgMode: ColorMode.RGB };
       writeString(grid, nameRow, 0, bgFill, bgAttrs);
       writeString(grid, detailRow, 0, bgFill, bgAttrs);
     }
@@ -409,18 +434,26 @@ export class Sidebar {
 
     const nameAttrs: CellAttrs = isActive
       ? { ...ACTIVE_NAME_ATTRS }
-      : { ...INACTIVE_NAME_ATTRS };
+      : isHovered
+        ? { ...HOVER_NAME_ATTRS }
+        : { ...INACTIVE_NAME_ATTRS };
     writeString(grid, nameRow, nameStart, displayName, nameAttrs);
 
     const wcAttrs: CellAttrs = isActive
       ? { ...DIM_ATTRS, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
-      : DIM_ATTRS;
+      : isHovered
+        ? { ...DIM_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
+        : DIM_ATTRS;
     if (windowCountCol > nameStart) {
       writeString(grid, nameRow, windowCountCol, windowCountStr, wcAttrs);
     }
 
     // Detail line
-    const detailAttrs: CellAttrs = isActive ? ACTIVE_DETAIL_ATTRS : DIM_ATTRS;
+    const detailAttrs: CellAttrs = isActive
+      ? ACTIVE_DETAIL_ATTRS
+      : isHovered
+        ? HOVER_DETAIL_ATTRS
+        : DIM_ATTRS;
     if (item.grouped) {
       if (session.gitBranch) {
         const detailStart = 3;

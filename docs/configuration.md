@@ -48,18 +48,9 @@ bind-key S command-prompt -p "ssh:" "new-window -n '%1' 'ssh %1'"
 
 ### Overriding jmux Defaults
 
-jmux sets defaults for things like window behavior, pane borders, and the status bar. Override any of them in `~/.tmux.conf`:
+jmux sets defaults for things like window behavior and pane borders. Override any of them in `~/.tmux.conf`:
 
 ```tmux
-# Use your own status bar style
-set -g status-bg "#1a1b26"
-set -g status-right "#[fg=#7aa2f7]%H:%M"
-set -g status-right-length 20
-
-# Different window tab format
-setw -g window-status-current-format " #[bold]#W "
-setw -g window-status-format " #W "
-
 # Change pane border colors
 set -g pane-border-style 'fg=#3b4261'
 set -g pane-active-border-style 'fg=#7aa2f7'
@@ -87,9 +78,9 @@ These settings are required for jmux to function. They're applied last and overr
 | Setting | Value | Why |
 |---------|-------|-----|
 | `detach-on-destroy` | `off` | Switch to next session on kill instead of exiting jmux |
-| `mouse` | `on` | Sidebar click handling |
+| `mouse` | `on` | Sidebar and toolbar click/hover handling |
 | `prefix + n` | New session modal | jmux's fzf-powered session creation |
-| `status-left` | Empty | Session info is in the sidebar |
+| `status` | `off` | jmux renders its own toolbar with window tabs |
 
 If you bind `n` to something in `~/.tmux.conf`, jmux's core will override it. All other keys are yours.
 
@@ -102,6 +93,9 @@ These are intercepted by jmux's input router before reaching tmux. They cannot b
 | `Ctrl-Shift-Up` | Switch to previous session |
 | `Ctrl-Shift-Down` | Switch to next session |
 | Mouse clicks in sidebar | Switch to that session |
+| Mouse clicks on toolbar tabs | Switch to that window |
+| Mouse clicks on toolbar buttons | New window, split, Claude, settings |
+| Mouse hover (sidebar/toolbar) | Visual highlight |
 
 Everything else passes through to tmux normally.
 

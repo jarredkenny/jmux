@@ -93,6 +93,6 @@ config/defaults.conf      <- jmux defaults (baseline)
 config/core.conf          <- jmux core (always wins)
 ```
 
-Override any default in your `~/.tmux.conf` — prefix key, colors, keybindings, plugins. Only a few core settings are enforced: `detach-on-destroy off`, `mouse on`, the `prefix + n` binding, and empty `status-left`.
+Override any default in your `~/.tmux.conf` — prefix key, colors, keybindings, plugins. Only a few core settings are enforced: `detach-on-destroy off`, `mouse on`, the `prefix + n` binding, and `status off` (jmux renders its own toolbar).
 
 See [configuration.md](configuration.md) for the full guide.
