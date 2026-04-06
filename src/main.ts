@@ -575,11 +575,200 @@ function closePalette(): void {
 }
 
 function buildPaletteCommands(): import("./types").PaletteCommand[] {
-  return [];
+  const commands: import("./types").PaletteCommand[] = [];
+
+  // Dynamic: switch to session (excluding current)
+  for (const session of currentSessions) {
+    if (session.id === currentSessionId) continue;
+    commands.push({
+      id: `switch-session:${session.id}`,
+      label: `Switch to ${session.name}`,
+      category: "session",
+    });
+  }
+
+  // Dynamic: switch to window (excluding active)
+  for (const win of currentWindows) {
+    if (win.active) continue;
+    commands.push({
+      id: `switch-window:${win.windowId}`,
+      label: `Switch to ${win.name}`,
+      category: "window",
+    });
+  }
+
+  // Static commands
+  commands.push(
+    { id: "new-session", label: "New session", category: "session" },
+    { id: "kill-session", label: "Kill session", category: "session" },
+    { id: "rename-session", label: "Rename session", category: "session" },
+    { id: "new-window", label: "New window", category: "window" },
+    { id: "close-window", label: "Close window", category: "window" },
+    { id: "move-window", label: "Move window to session", category: "window" },
+    { id: "split-h", label: "Split horizontal", category: "pane" },
+    { id: "split-v", label: "Split vertical", category: "pane" },
+    { id: "zoom-pane", label: "Zoom pane", category: "pane" },
+    { id: "close-pane", label: "Close pane", category: "pane" },
+    { id: "window-picker", label: "Window picker", category: "other" },
+    { id: "open-claude", label: "Open Claude", category: "other" },
+  );
+
+  // Settings with sub-lists
+  commands.push({
+    id: "setting-sidebar-width",
+    label: "Sidebar width",
+    category: "setting",
+    sublist: [20, 22, 24, 26, 28, 30, 34].map((w) => ({
+      id: String(w),
+      label: String(w),
+      current: w === sidebarWidth,
+    })),
+  });
+
+  commands.push({
+    id: "setting-claude-command",
+    label: "Claude command",
+    category: "setting",
+    sublist: [
+      { id: "claude", label: "claude", current: claudeCommand === "claude" },
+      { id: "claude --dangerously-skip-permissions", label: "claude --dangerously-skip-permissions", current: claudeCommand === "claude --dangerously-skip-permissions" },
+    ],
+  });
+
+  // Project directories — falls back to settings popup
+  commands.push({
+    id: "setting-project-dirs",
+    label: "Project directories",
+    category: "setting",
+  });
+
+  return commands;
+}
+
+async function applySetting(key: string, value: string | number, type: string): Promise<void> {
+  const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+  try {
+    let config: Record<string, any> = {};
+    if (existsSync(cfgPath)) {
+      config = JSON.parse(readFileSync(cfgPath, "utf-8"));
+    }
+    if (type === "number") {
+      config[key] = typeof value === "number" ? value : parseInt(String(value), 10);
+    } else {
+      config[key] = value;
+    }
+    const dir = dirname(cfgPath);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
+  } catch {
+    // Non-critical
+  }
 }
 
 async function handlePaletteAction(result: import("./types").PaletteResult): Promise<void> {
-  // Dispatch actions — implemented in Task 7
+  const { commandId, sublistOptionId } = result;
+
+  // Dynamic: switch to session
+  if (commandId.startsWith("switch-session:")) {
+    const sessionId = commandId.slice("switch-session:".length);
+    await switchSession(sessionId);
+    return;
+  }
+
+  // Dynamic: switch to window
+  if (commandId.startsWith("switch-window:")) {
+    const windowId = commandId.slice("switch-window:".length);
+    await handleTabClick(windowId);
+    return;
+  }
+
+  // Settings with sub-list values
+  if (commandId === "setting-sidebar-width" && sublistOptionId) {
+    const newWidth = parseInt(sublistOptionId, 10);
+    if (!isNaN(newWidth)) {
+      await applySetting("sidebarWidth", newWidth, "number");
+    }
+    return;
+  }
+  if (commandId === "setting-claude-command" && sublistOptionId) {
+    await applySetting("claudeCommand", sublistOptionId, "string");
+    return;
+  }
+
+  // Static commands — many reuse existing handlers
+  if (!ptyClientName) await resolveClientName();
+  if (!ptyClientName) return;
+
+  switch (commandId) {
+    case "new-session": {
+      const args = ["tmux"];
+      if (socketName) args.push("-L", socketName);
+      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "60%", "-h", "70%",
+        "-b", "heavy", "-S", "fg=#4f565d", resolve(jmuxDir, "config", "new-session.sh"));
+      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+      return;
+    }
+    case "kill-session":
+      await control.sendCommand(`kill-session -t '${currentSessionId}'`);
+      return;
+    case "rename-session": {
+      const args = ["tmux"];
+      if (socketName) args.push("-L", socketName);
+      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "40%", "-h", "8",
+        "-b", "heavy", "-S", "fg=#4f565d", resolve(jmuxDir, "config", "rename-session.sh"));
+      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+      return;
+    }
+    case "new-window":
+      await handleToolbarAction("new-window");
+      return;
+    case "close-window":
+      await control.sendCommand("kill-window");
+      fetchWindows();
+      return;
+    case "move-window": {
+      const args = ["tmux"];
+      if (socketName) args.push("-L", socketName);
+      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "40%", "-h", "50%",
+        "-b", "heavy", "-S", "fg=#4f565d", resolve(jmuxDir, "config", "move-window.sh"));
+      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+      return;
+    }
+    case "split-h":
+      await handleToolbarAction("split-h");
+      return;
+    case "split-v":
+      await handleToolbarAction("split-v");
+      return;
+    case "zoom-pane":
+      await control.sendCommand("resize-pane -Z");
+      fetchWindows();
+      return;
+    case "close-pane":
+      await control.sendCommand("kill-pane");
+      return;
+    case "window-picker": {
+      const args = ["tmux"];
+      if (socketName) args.push("-L", socketName);
+      args.push("display-popup", "-c", ptyClientName, "-E", "-x", "0", "-y", "0", "-w", "30%", "-h", "100%",
+        "-b", "heavy", "-S", "fg=#4f565d",
+        "sh", "-c", "tmux list-windows -F '#I: #W#{?window_active, *, }' | fzf --reverse --no-info --prompt=' Window> ' --pointer='▸' --color='bg:#0c1117,fg:#6b7280,hl:#fbd4b8,fg+:#b5bcc9,hl+:#fbd4b8,pointer:#9fe8c3,prompt:#9fe8c3' | cut -d: -f1 | xargs -I{} tmux select-window -t :{}");
+      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+      return;
+    }
+    case "open-claude":
+      await handleToolbarAction("claude");
+      return;
+    case "setting-project-dirs": {
+      // Complex setting — fall back to settings popup
+      const args = ["tmux"];
+      if (socketName) args.push("-L", socketName);
+      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "50%", "-h", "40%",
+        "-b", "heavy", "-S", "fg=#4f565d", resolve(jmuxDir, "config", "settings.sh"));
+      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+      return;
+    }
+  }
 }
 
 // --- Toolbar actions ---
