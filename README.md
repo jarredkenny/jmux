@@ -11,7 +11,7 @@ Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are
 [![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
 [![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)
 
-![jmux with sidebar sessions, window tabs toolbar, and Claude Code](docs/screenshots/hero.png)
+![jmux with sidebar sessions, window tabs toolbar, and Claude Code](docs/screenshots/hero.png?v=2)
 
 </div>
 
