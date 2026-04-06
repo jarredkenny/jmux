@@ -112,27 +112,27 @@ describe("compositeGrids", () => {
 });
 
 describe("getPalettePosition", () => {
-  test("centers palette horizontally in main area", () => {
+  test("centers palette horizontally accounting for border and shadow", () => {
     const pos = getPalettePosition(80, 24, 60, 6, 1);
-    expect(pos.startCol).toBe(10); // (80 - 60) / 2
+    // totalW = 60 + 3 = 63, startCol = max(1, floor((80-63)/2) + 1) = max(1, 8+1) = 9
+    expect(pos.startCol).toBe(9);
   });
 
   test("positions palette in upper third vertically", () => {
     const pos = getPalettePosition(80, 24, 60, 6, 1);
-    // startRow = 1 (toolbar) + max(1, floor((24 - 6) / 3)) = 1 + 6 = 7
+    // totalH = 6+3=9, startRow = 1 + max(2, floor((24-9)/3)+1) = 1 + max(2, 5+1) = 1+6 = 7
     expect(pos.startRow).toBe(7);
   });
 
-  test("minimum startRow is toolbarRows + 1", () => {
-    // Very tall palette relative to main area
+  test("minimum startRow leaves room for top border", () => {
     const pos = getPalettePosition(80, 6, 60, 6, 1);
-    // floor((6 - 6) / 3) = 0, max(1, 0) = 1, so startRow = 1 + 1 = 2
-    expect(pos.startRow).toBe(2);
+    // totalH=9, floor((6-9)/3)+1 = -1+1=0, max(2,0)=2, startRow = 1+2 = 3
+    expect(pos.startRow).toBe(3);
   });
 });
 
 describe("compositeGrids with palette overlay", () => {
-  test("palette is centered over main content, toolbar still visible", () => {
+  test("palette is centered with box border, toolbar still visible", () => {
     const sidebar = createGrid(4, 14);
     const main = createGrid(20, 12);
     writeString(main, 0, 0, "main content here!!!");
@@ -143,28 +143,30 @@ describe("compositeGrids with palette overlay", () => {
       tabs: [],
     };
 
-    // Small palette: 10 cols wide, 3 rows tall
-    const palette = createGrid(10, 3);
+    // Small palette: 10 cols wide, 2 rows tall (input + 1 result)
+    const palette = createGrid(10, 2);
     writeString(palette, 0, 0, "▷ query   ");
     writeString(palette, 1, 0, " result   ");
-    writeString(palette, 2, 0, "──────────");
 
     const result = compositeGrids(main, sidebar, toolbar, palette);
-    // Toolbar row should still be intact (not replaced)
-    // The ＋ button should be rendered somewhere in row 0
     expect(result.rows).toBe(13); // 12 main + 1 toolbar
 
-    // Palette is centered: startCol = (20 - 10) / 2 = 5
-    // startRow = 1 + max(1, floor((12 - 3) / 3)) = 1 + 3 = 4
-    // So palette row 0 is at grid row 4, starting at sidebar(4) + border(1) + 5 = col 10
-    const pos = getPalettePosition(20, 12, 10, 3, 1);
+    const pos = getPalettePosition(20, 12, 10, 2, 1);
     const gridCol = 4 + 1 + pos.startCol; // sidebar + border + startCol
+
+    // Box border: ┌ at top-left
+    expect(result.cells[pos.startRow - 1][gridCol - 1].char).toBe("┌");
+    // Box border: ┐ at top-right
+    expect(result.cells[pos.startRow - 1][gridCol + 10].char).toBe("┐");
+    // Palette content inside border
     expect(result.cells[pos.startRow][gridCol].char).toBe("▷");
-    expect(result.cells[pos.startRow + 1][gridCol + 1].char).toBe("r");
-    expect(result.cells[pos.startRow + 2][gridCol].char).toBe("─");
+    // Box border: └ at bottom-left
+    expect(result.cells[pos.startRow + 2][gridCol - 1].char).toBe("└");
+    // Side border: │ on left
+    expect(result.cells[pos.startRow][gridCol - 1].char).toBe("│");
   });
 
-  test("main content visible outside palette area", () => {
+  test("main content is dimmed when palette is open", () => {
     const sidebar = createGrid(4, 14);
     const main = createGrid(20, 12);
     writeString(main, 0, 0, "visible row zero");
@@ -175,15 +177,44 @@ describe("compositeGrids with palette overlay", () => {
       tabs: [],
     };
 
-    const palette = createGrid(10, 3);
+    const palette = createGrid(10, 2);
     writeString(palette, 0, 0, "palette   ");
 
     const result = compositeGrids(main, sidebar, toolbar, palette);
-    // Row 1 (main row 0) should have main content since palette starts lower
-    expect(result.cells[1][5].char).toBe("v"); // "visible" at col 0 of main = col 5 of grid
+    // Main content at row 1 (below toolbar) should be dimmed
+    expect(result.cells[1][5].dim).toBe(true); // "v" from "visible"
   });
 
-  test("palette null falls back to normal toolbar", () => {
+  test("shadow appears on right and bottom edges", () => {
+    const sidebar = createGrid(4, 20);
+    const main = createGrid(30, 18);
+
+    const toolbar = {
+      buttons: [],
+      mainCols: 30,
+      tabs: [],
+    };
+
+    const palette = createGrid(10, 2);
+    const result = compositeGrids(main, sidebar, toolbar, palette);
+
+    const pos = getPalettePosition(30, 18, 10, 2, 1);
+    const bRight = 4 + 1 + pos.startCol + 10; // sidebar + border + startCol + paletteWidth
+    const bBottom = pos.startRow + 2; // startRow + paletteHeight
+
+    // Shadow cell to the right of the border
+    const shadowX = bRight + 1;
+    if (shadowX < result.cols) {
+      expect(result.cells[pos.startRow][shadowX].dim).toBe(true);
+    }
+    // Shadow cell below the border
+    const shadowY = bBottom + 1;
+    if (shadowY < result.rows) {
+      expect(result.cells[shadowY][4 + 1 + pos.startCol].dim).toBe(true);
+    }
+  });
+
+  test("palette null falls back to normal toolbar, no dimming", () => {
     const sidebar = createGrid(4, 3);
     const main = createGrid(10, 2);
 
@@ -195,5 +226,7 @@ describe("compositeGrids with palette overlay", () => {
 
     const result = compositeGrids(main, sidebar, toolbar, null);
     expect(result.rows).toBe(3);
+    // No dimming when palette is null
+    expect(result.cells[1][5].dim).toBe(false);
   });
 });

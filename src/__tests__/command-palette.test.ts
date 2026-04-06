@@ -231,22 +231,22 @@ describe("CommandPalette", () => {
 });
 
 describe("CommandPalette rendering", () => {
-  test("getHeight returns input row + result rows + border row", () => {
+  test("getHeight returns input row + result rows", () => {
     const palette = new CommandPalette();
     palette.open(testCommands);
-    // 4 commands + 1 input row + 1 border row = 6
-    expect(palette.getHeight()).toBe(6);
+    // 1 input row + 4 results = 5
+    expect(palette.getHeight()).toBe(5);
   });
 
-  test("getHeight caps at MAX_VISIBLE_RESULTS + 2", () => {
+  test("getHeight caps at MAX_VISIBLE_RESULTS + 1", () => {
     const manyCommands: PaletteCommand[] = [];
     for (let i = 0; i < 20; i++) {
       manyCommands.push({ id: `cmd-${i}`, label: `Command ${i}`, category: "other" });
     }
     const palette = new CommandPalette();
     palette.open(manyCommands);
-    // 10 visible + 1 input + 1 border = 12
-    expect(palette.getHeight()).toBe(12);
+    // 1 input + 10 visible = 11
+    expect(palette.getHeight()).toBe(11);
   });
 
   test("getGrid returns grid with correct dimensions", () => {
@@ -289,14 +289,6 @@ describe("CommandPalette rendering", () => {
     expect(grid.cells[1][58].char).toBe("e");
   });
 
-  test("getGrid border row shows horizontal line", () => {
-    const palette = new CommandPalette();
-    palette.open(testCommands);
-    const grid = palette.getGrid(60);
-    const borderRow = palette.getHeight() - 1;
-    expect(grid.cells[borderRow][0].char).toBe("─");
-  });
-
   test("getGrid sublist shows breadcrumb in input row", () => {
     const palette = new CommandPalette();
     palette.open(testCommands);
@@ -318,8 +310,8 @@ describe("CommandPalette rendering", () => {
     palette.handleInput("z");
     palette.handleInput("z");
     const grid = palette.getGrid(60);
-    // Should show "No matches" in results area — height is input + 1 result row + border = 3
-    expect(palette.getHeight()).toBe(3);
+    // Should show "No matches" in results area — height is input + 1 result row = 2
+    expect(palette.getHeight()).toBe(2);
     // Row 1 should contain "No matches"
     const row1text = grid.cells[1].map(c => c.char).join("").trim();
     expect(row1text).toContain("No matches");

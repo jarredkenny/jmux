@@ -320,7 +320,7 @@ export class CommandPalette {
   }
 
   getHeight(): number {
-    return 1 + Math.min(this.filtered.length || 1, MAX_VISIBLE_RESULTS) + 1;
+    return 1 + Math.min(this.filtered.length || 1, MAX_VISIBLE_RESULTS);
   }
 
   getGrid(width: number): CellGrid {
@@ -393,10 +393,6 @@ export class CommandPalette {
         }
       }
     }
-
-    // Last row: border
-    const borderRow = height - 1;
-    writeString(grid, borderRow, 0, "─".repeat(width), BORDER_ATTRS);
 
     return grid;
   }
