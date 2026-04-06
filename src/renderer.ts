@@ -114,7 +114,8 @@ export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string;
 
   for (let i = 0; i < tabs.length; i++) {
     const tab = tabs[i];
-    const width = stringDisplayWidth(tab.name) + 2; // " name "
+    const zoomSuffix = tab.zoomed ? " ⤢" : "";
+    const width = stringDisplayWidth(tab.name + zoomSuffix) + 2; // " name [Z] "
     const sepWidth = i < tabs.length - 1 ? 3 : 0; // " │ " separator after non-last tabs
     if (col + width > maxCol) break; // no room
     ranges.push({ id: tab.windowId, startCol: col, endCol: col + width - 1, tab });
@@ -127,6 +128,7 @@ export function compositeGrids(
   main: CellGrid,
   sidebar: CellGrid | null,
   toolbar?: ToolbarConfig | null,
+  paletteOverlay?: CellGrid | null,
 ): CellGrid {
   if (!sidebar) return main;
 
@@ -150,99 +152,114 @@ export function compositeGrids(
     };
 
     if (toolbar && y === 0) {
-      // Toolbar row — tabs left-aligned, buttons right-aligned
-      const hoverBg = (0x2a << 16) | (0x2f << 8) | 0x38;
-      const activeBg = (0x1e << 16) | (0x2a << 8) | 0x35;
+      if (paletteOverlay) {
+        // Palette row 0 replaces toolbar
+        for (let x = 0; x < paletteOverlay.cols && borderCol + 1 + x < totalCols; x++) {
+          grid.cells[y][borderCol + 1 + x] = { ...paletteOverlay.cells[0][x] };
+        }
+      } else {
+        // Toolbar row — tabs left-aligned, buttons right-aligned
+        const hoverBg = (0x2a << 16) | (0x2f << 8) | 0x38;
+        const activeBg = (0x1e << 16) | (0x2a << 8) | 0x35;
 
-      // Render window tabs (left side)
-      // Peach accent for active tab — matches pane border and old status bar design
-      const peachFg = (0xfb << 16) | (0xd4 << 8) | 0xb8;
-      const tabRanges = getToolbarTabRanges(toolbar);
-      for (let ti = 0; ti < tabRanges.length; ti++) {
-        const { id, startCol, endCol, tab } = tabRanges[ti];
-        const isActive = tab.active;
-        const isHovered = !isActive && toolbar.hoveredTabId === id;
-        const label = ` ${tab.name} `;
-        let col = 0;
-        for (const ch of label) {
-          const c = borderCol + 1 + startCol + col;
-          const w = charDisplayWidth(ch);
-          const hasBg = isActive || isHovered;
-          const bg = isActive ? activeBg : hoverBg;
-          if (c < totalCols) {
-            grid.cells[0][c] = {
-              ...DEFAULT_CELL,
-              char: ch,
-              width: w,
-              fg: tab.bell ? 3 : isActive ? peachFg : 8,
-              fgMode: tab.bell ? ColorMode.Palette : isActive ? ColorMode.RGB : ColorMode.Palette,
-              bold: isActive || tab.bell,
-              bg: hasBg ? bg : 0,
-              bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
-            };
-            if (w === 2 && c + 1 < totalCols) {
-              grid.cells[0][c + 1] = {
-                ...DEFAULT_CELL, char: "", width: 0,
+        // Render window tabs (left side)
+        // Peach accent for active tab — matches pane border and old status bar design
+        const peachFg = (0xfb << 16) | (0xd4 << 8) | 0xb8;
+        const tabRanges = getToolbarTabRanges(toolbar);
+        for (let ti = 0; ti < tabRanges.length; ti++) {
+          const { id, startCol, endCol, tab } = tabRanges[ti];
+          const isActive = tab.active;
+          const isHovered = !isActive && toolbar.hoveredTabId === id;
+          const label = ` ${tab.name}${tab.zoomed ? " ⤢" : ""} `;
+          let col = 0;
+          for (const ch of label) {
+            const c = borderCol + 1 + startCol + col;
+            const w = charDisplayWidth(ch);
+            const hasBg = isActive || isHovered;
+            const bg = isActive ? activeBg : hoverBg;
+            if (c < totalCols) {
+              grid.cells[0][c] = {
+                ...DEFAULT_CELL,
+                char: ch,
+                width: w,
+                fg: tab.bell ? 3 : isActive ? peachFg : 8,
+                fgMode: tab.bell ? ColorMode.Palette : isActive ? ColorMode.RGB : ColorMode.Palette,
+                bold: isActive || tab.bell,
                 bg: hasBg ? bg : 0,
                 bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
               };
+              if (w === 2 && c + 1 < totalCols) {
+                grid.cells[0][c + 1] = {
+                  ...DEFAULT_CELL, char: "", width: 0,
+                  bg: hasBg ? bg : 0,
+                  bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
+                };
+              }
             }
+            col += w;
           }
-          col += w;
-        }
-        // Separator after non-last tabs
-        if (ti < tabRanges.length - 1) {
-          const sepCol = borderCol + 1 + endCol + 2; // 1 space + separator
-          if (sepCol < totalCols) {
-            grid.cells[0][sepCol] = {
-              ...DEFAULT_CELL,
-              char: "\u2502", // │
-              fg: 8,
-              fgMode: ColorMode.Palette,
-              dim: true,
-            };
-          }
-        }
-      }
-
-      // Render action buttons (right side)
-      const ranges = getToolbarButtonRanges(toolbar);
-      for (const { id, startCol } of ranges) {
-        const btn = toolbar.buttons.find(b => b.id === id)!;
-        const isHovered = toolbar.hoveredButton === id;
-        const label = ` ${btn.label} `;
-        let col = 0;
-        for (const ch of label) {
-          const c = borderCol + 1 + startCol + col;
-          const w = charDisplayWidth(ch);
-          const isIcon = ch !== " ";
-          if (c < totalCols) {
-            grid.cells[0][c] = {
-              ...DEFAULT_CELL,
-              char: ch,
-              width: w,
-              fg: isIcon ? (btn.fg ?? 8) : 8,
-              fgMode: isIcon ? (btn.fgMode ?? ColorMode.Palette) : ColorMode.Palette,
-              bg: isHovered ? hoverBg : 0,
-              bgMode: isHovered ? ColorMode.RGB : ColorMode.Default,
-            };
-            if (w === 2 && c + 1 < totalCols) {
-              grid.cells[0][c + 1] = {
-                ...DEFAULT_CELL, char: "", width: 0,
-                bg: isHovered ? hoverBg : 0,
-                bgMode: isHovered ? ColorMode.RGB : ColorMode.Default,
+          // Separator after non-last tabs
+          if (ti < tabRanges.length - 1) {
+            const sepCol = borderCol + 1 + endCol + 2; // 1 space + separator
+            if (sepCol < totalCols) {
+              grid.cells[0][sepCol] = {
+                ...DEFAULT_CELL,
+                char: "\u2502", // │
+                fg: 8,
+                fgMode: ColorMode.Palette,
+                dim: true,
               };
             }
           }
-          col += w;
+        }
+
+        // Render action buttons (right side)
+        const ranges = getToolbarButtonRanges(toolbar);
+        for (const { id, startCol } of ranges) {
+          const btn = toolbar.buttons.find(b => b.id === id)!;
+          const isHovered = toolbar.hoveredButton === id;
+          const label = ` ${btn.label} `;
+          let col = 0;
+          for (const ch of label) {
+            const c = borderCol + 1 + startCol + col;
+            const w = charDisplayWidth(ch);
+            const isIcon = ch !== " ";
+            if (c < totalCols) {
+              grid.cells[0][c] = {
+                ...DEFAULT_CELL,
+                char: ch,
+                width: w,
+                fg: isIcon ? (btn.fg ?? 8) : 8,
+                fgMode: isIcon ? (btn.fgMode ?? ColorMode.Palette) : ColorMode.Palette,
+                bg: isHovered ? hoverBg : 0,
+                bgMode: isHovered ? ColorMode.RGB : ColorMode.Default,
+              };
+              if (w === 2 && c + 1 < totalCols) {
+                grid.cells[0][c + 1] = {
+                  ...DEFAULT_CELL, char: "", width: 0,
+                  bg: isHovered ? hoverBg : 0,
+                  bgMode: isHovered ? ColorMode.RGB : ColorMode.Default,
+                };
+              }
+            }
+            col += w;
+          }
         }
       }
     } else {
       // Main content — offset by toolbar row
       const mainY = toolbar ? y - 1 : y;
       if (mainY >= 0 && mainY < main.rows) {
-        for (let x = 0; x < main.cols; x++) {
-          grid.cells[y][borderCol + 1 + x] = { ...main.cells[mainY][x] };
+        if (paletteOverlay && toolbar && y < paletteOverlay.rows) {
+          // Palette overlay rows replace main content rows
+          for (let x = 0; x < paletteOverlay.cols && borderCol + 1 + x < totalCols; x++) {
+            grid.cells[y][borderCol + 1 + x] = { ...paletteOverlay.cells[y][x] };
+          }
+        } else {
+          // Normal main content
+          for (let x = 0; x < main.cols; x++) {
+            grid.cells[y][borderCol + 1 + x] = { ...main.cells[mainY][x] };
+          }
         }
       }
     }
@@ -272,8 +289,10 @@ export class Renderer {
     cursor: CursorPosition,
     sidebar: CellGrid | null,
     toolbar?: ToolbarConfig | null,
+    paletteOverlay?: CellGrid | null,
+    paletteCursorCol?: number | null,
   ): void {
-    const grid = compositeGrids(main, sidebar, toolbar);
+    const grid = compositeGrids(main, sidebar, toolbar, paletteOverlay);
     const cursorOffset = sidebar ? sidebar.cols + 1 : 0;
     const buf: string[] = [];
 
@@ -301,9 +320,14 @@ export class Renderer {
     // Reset attributes, position cursor
     const cursorRowOffset = toolbar ? 1 : 0;
     buf.push("\x1b[0m");
-    buf.push(
-      `\x1b[${cursor.y + cursorRowOffset + 1};${cursor.x + cursorOffset + 1}H`,
-    );
+    if (paletteCursorCol != null) {
+      // Palette cursor: row 1 (screen row 1), column offset by sidebar
+      buf.push(`\x1b[1;${paletteCursorCol + cursorOffset + 1}H`);
+    } else {
+      buf.push(
+        `\x1b[${cursor.y + cursorRowOffset + 1};${cursor.x + cursorOffset + 1}H`,
+      );
+    }
 
     process.stdout.write(buf.join(""));
   }

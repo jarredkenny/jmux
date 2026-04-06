@@ -110,3 +110,67 @@ describe("compositeGrids", () => {
     expect(result.cells[0][10].char).toBe("!");
   });
 });
+
+describe("compositeGrids with palette overlay", () => {
+  test("palette replaces toolbar row", () => {
+    const sidebar = createGrid(4, 4);
+    const main = createGrid(10, 3);
+    writeString(main, 0, 0, "main line1");
+
+    const toolbar = {
+      buttons: [],
+      mainCols: 10,
+      tabs: [],
+    };
+
+    // Palette grid: 2 rows (input + border), 10 cols
+    const palette = createGrid(10, 2);
+    writeString(palette, 0, 0, "▷ query");
+    writeString(palette, 1, 0, "──────────");
+
+    const result = compositeGrids(main, sidebar, toolbar, palette);
+    // Row 0: sidebar + border + palette row 0
+    expect(result.cells[0][5].char).toBe("▷");
+  });
+
+  test("palette overlays main content rows", () => {
+    const sidebar = createGrid(4, 5);
+    const main = createGrid(10, 4);
+    writeString(main, 0, 0, "visible");
+    writeString(main, 1, 0, "covered");
+
+    const toolbar = {
+      buttons: [],
+      mainCols: 10,
+      tabs: [],
+    };
+
+    // 3-row palette: input + 1 result + border
+    const palette = createGrid(10, 3);
+    writeString(palette, 0, 0, "▷ input");
+    writeString(palette, 1, 0, " result");
+    writeString(palette, 2, 0, "──────────");
+
+    const result = compositeGrids(main, sidebar, toolbar, palette);
+    // Row 0 (toolbar) → palette row 0
+    expect(result.cells[0][5].char).toBe("▷");
+    // Row 1 (main row 0) → palette row 1 (overlaid)
+    expect(result.cells[1][6].char).toBe("r");
+    // Row 2 (main row 1) → palette row 2 (border)
+    expect(result.cells[2][5].char).toBe("─");
+  });
+
+  test("palette null falls back to normal toolbar", () => {
+    const sidebar = createGrid(4, 3);
+    const main = createGrid(10, 2);
+
+    const toolbar = {
+      buttons: [{ label: "＋", id: "new" }],
+      mainCols: 10,
+      tabs: [],
+    };
+
+    const result = compositeGrids(main, sidebar, toolbar, null);
+    expect(result.rows).toBe(3);
+  });
+});
