@@ -66,6 +66,28 @@
       transform: translateY(-3px);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     }
+    .hero-glow {
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-glow::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 600px;
+      height: 300px;
+      border-radius: 50%;
+      background: rgba(74, 222, 128, 0.15);
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .hero-glow > * {
+      position: relative;
+      z-index: 1;
+    }
   </style>
 </head>
 <body>
@@ -89,7 +111,7 @@
   </nav>
 
   <!-- Hero -->
-  <section class="text-center px-6 md:px-12 pt-20 md:pt-28 pb-10">
+  <section class="text-center px-6 md:px-12 pt-20 md:pt-28 pb-10 hero-glow">
     <p class="font-mono text-xs md:text-sm text-accent tracking-[0.2em] uppercase mb-4">Parallel Development Environment</p>
     <h1 class="text-3xl md:text-5xl font-extrabold leading-tight max-w-2xl mx-auto mb-6 tracking-tight">
       Run 10 agents in parallel.<br>
