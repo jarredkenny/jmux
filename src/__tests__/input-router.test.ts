@@ -111,3 +111,108 @@ describe("passthrough", () => {
     expect(ptyData).toBe("hello");
   });
 });
+
+describe("palette mode", () => {
+  test("routes keyboard input to onPaletteInput when palette is open", () => {
+    let paletteData = "";
+    let ptyData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onPaletteInput: (d) => { paletteData += d; },
+      },
+      true,
+    );
+    router.setPaletteOpen(true);
+    router.handleInput("hello");
+    expect(paletteData).toBe("hello");
+    expect(ptyData).toBe("");
+  });
+
+  test("still sends Ctrl-Shift arrows to session handlers when palette is open", () => {
+    let prevCalled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onPaletteInput: () => {},
+        onSessionPrev: () => { prevCalled = true; },
+      },
+      true,
+    );
+    router.setPaletteOpen(true);
+    router.handleInput("\x1b[1;6A");
+    expect(prevCalled).toBe(true);
+  });
+
+  test("sidebar clicks still work when palette is open", () => {
+    let clickedRow = -1;
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: (row) => { clickedRow = row; },
+        onPaletteInput: () => {},
+      },
+      true,
+    );
+    router.setPaletteOpen(true);
+    router.handleInput("\x1b[<0;5;3M");
+    expect(clickedRow).toBe(2);
+  });
+
+  test("toolbar clicks are ignored when palette is open", () => {
+    let toolbarClicked = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onPaletteInput: () => {},
+        onToolbarClick: () => { toolbarClicked = true; },
+      },
+      true,
+    );
+    router.setPaletteOpen(true);
+    router.handleInput("\x1b[<0;30;1M");
+    expect(toolbarClicked).toBe(false);
+  });
+
+  test("main area mouse events are ignored when palette is open", () => {
+    let ptyData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onPaletteInput: () => {},
+      },
+      true,
+    );
+    router.setPaletteOpen(true);
+    router.handleInput("\x1b[<0;30;5M");
+    expect(ptyData).toBe("");
+  });
+
+  test("routes to PTY when palette is closed", () => {
+    let ptyData = "";
+    let paletteData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onPaletteInput: (d) => { paletteData += d; },
+      },
+      true,
+    );
+    router.setPaletteOpen(true);
+    router.setPaletteOpen(false);
+    router.handleInput("hello");
+    expect(ptyData).toBe("hello");
+    expect(paletteData).toBe("");
+  });
+});

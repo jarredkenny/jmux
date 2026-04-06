@@ -36,6 +36,7 @@ export interface InputRouterOptions {
   onSidebarScroll?: (delta: number) => void;
   onToolbarClick?: (col: number) => void;
   onHover?: (target: { area: "sidebar"; row: number } | { area: "toolbar"; col: number } | null) => void;
+  onPaletteInput?: (data: string) => void;
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
 }
@@ -43,6 +44,7 @@ export interface InputRouterOptions {
 export class InputRouter {
   private opts: InputRouterOptions;
   private sidebarVisible: boolean;
+  private paletteOpen = false;
   constructor(opts: InputRouterOptions, sidebarVisible: boolean) {
     this.opts = opts;
     this.sidebarVisible = sidebarVisible;
@@ -50,6 +52,10 @@ export class InputRouter {
 
   setSidebarVisible(visible: boolean): void {
     this.sidebarVisible = visible;
+  }
+
+  setPaletteOpen(open: boolean): void {
+    this.paletteOpen = open;
   }
 
   handleInput(data: string): void {
@@ -93,6 +99,10 @@ export class InputRouter {
         }
         return; // Consume sidebar mouse events
       }
+
+      // When palette is open, ignore all non-sidebar mouse events
+      if (this.paletteOpen) return;
+
       // Toolbar click — row 1 in main area
       if (mouse.y === 1 && !mouse.release && !isMotion && !isWheel) {
         const mainCol = mouse.x - this.opts.sidebarCols - 1; // 0-indexed in main area
@@ -112,6 +122,12 @@ export class InputRouter {
           this.opts.onPtyData(`\x1b[<${match[1]};${newX};${newY}${match[4]}`);
         }
       }
+      return;
+    }
+
+    // When palette is open, route keyboard input to palette callback
+    if (this.paletteOpen) {
+      this.opts.onPaletteInput?.(data);
       return;
     }
 
