@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>jmux — The terminal workspace for agentic development</title>
-  <meta name="description" content="Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are working, which finished, and which need your review. No Electron. No lock-in. Just your terminal.">
+  <meta name="description" content="Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are working, which finished, and which need your review. Bring your own editor, your own Git workflow, any agent.">
   <link rel="canonical" href="https://jmux.dev">
   <!-- Open Graph -->
   <meta property="og:title" content="jmux — The terminal workspace for agentic development">
-  <meta property="og:description" content="Agents, editors, servers, logs. All running. All visible. One terminal.">
+  <meta property="og:description" content="Run AI coding agents in parallel. See which are working, which finished, which need review — all from your terminal.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://jmux.dev">
   <meta property="og:site_name" content="jmux">
@@ -18,7 +18,7 @@
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="jmux — The terminal workspace for agentic development">
-  <meta name="twitter:description" content="Agents, editors, servers, logs. All running. All visible. One terminal.">
+  <meta name="twitter:description" content="Run AI coding agents in parallel. See which are working, which finished, which need review — all from your terminal.">
   <meta name="twitter:image" content="https://jmux.dev/assets/hero.png">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>▎</text></svg>">
   <!-- Privacy-friendly analytics by Plausible -->
@@ -74,12 +74,12 @@
   <section class="text-center px-6 md:px-12 pt-20 md:pt-28 pb-10">
     <p class="font-mono text-xs md:text-sm text-accent tracking-[0.2em] uppercase mb-4">Parallel Development Environment</p>
     <h1 class="text-3xl md:text-5xl font-extrabold leading-tight max-w-2xl mx-auto mb-6 tracking-tight">
-      Agents, editors, servers, logs.<br>
-      <span class="text-[#71717a]">All running. All visible.<br>One terminal.</span>
+      Run 10 agents in parallel.<br>
+      <span class="text-[#71717a]">Know exactly what each one is doing.</span>
     </h1>
     <p class="text-base md:text-lg text-[#a1a1aa] max-w-xl mx-auto mb-9 leading-relaxed">
       Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are working,
-      which finished, and which need your review. No Electron. No lock-in. Just your terminal.
+      which finished, and which need your review. Bring your own editor, your own Git workflow, any agent.
     </p>
 
     <!-- Install command -->
@@ -101,63 +101,33 @@
     </div>
   </section>
 
-  <!-- Comparison -->
+  <!-- Why -->
   <section class="px-6 md:px-12 py-16 md:py-24 border-t border-border">
     <div class="text-center mb-10">
-      <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">The Difference</p>
-      <h2 class="text-2xl md:text-3xl font-bold tracking-tight">
-        Run Claude Code in 10 sessions at once.<br>
-        <span class="text-[#71717a]">Without 10 tabs of Electron.</span>
+      <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">Why jmux</p>
+      <h2 class="text-2xl md:text-3xl font-bold tracking-tight max-w-xl mx-auto">
+        Your workflow shouldn't change<br>
+        <span class="text-[#71717a]">because you added an orchestrator.</span>
       </h2>
     </div>
 
-    <div class="max-w-2xl mx-auto overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-border">
-            <th class="text-left py-3 px-4 text-[#52525b] font-medium w-1/4"></th>
-            <th class="text-left py-3 px-4 text-accent font-semibold font-mono">jmux</th>
-            <th class="text-left py-3 px-4 text-[#52525b] font-medium">GUI Orchestrators</th>
-          </tr>
-        </thead>
-        <tbody class="text-sm">
-          <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-[#71717a]">Size</td>
-            <td class="py-3 px-4 text-white font-mono">~0.3 MB</td>
-            <td class="py-3 px-4 text-[#71717a]">100+ MB</td>
-          </tr>
-          <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-[#71717a]">Platform</td>
-            <td class="py-3 px-4 text-white">Anywhere tmux runs</td>
-            <td class="py-3 px-4 text-[#71717a]">macOS only</td>
-          </tr>
-          <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-[#71717a]">Editor</td>
-            <td class="py-3 px-4 text-white">Yours</td>
-            <td class="py-3 px-4 text-[#71717a]">Built-in</td>
-          </tr>
-          <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-[#71717a]">Agents</td>
-            <td class="py-3 px-4 text-white">Claude Code, Codex, aider, any</td>
-            <td class="py-3 px-4 text-[#71717a]">Bundled subset</td>
-          </tr>
-          <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-[#71717a]">Integration</td>
-            <td class="py-3 px-4 text-white">No SDK — run agents directly</td>
-            <td class="py-3 px-4 text-[#71717a]">API wrappers, custom protocols</td>
-          </tr>
-          <tr class="border-b border-border/50">
-            <td class="py-3 px-4 text-[#71717a]">Lock-in</td>
-            <td class="py-3 px-4 text-white">None — it's tmux</td>
-            <td class="py-3 px-4 text-[#71717a]">Proprietary</td>
-          </tr>
-          <tr>
-            <td class="py-3 px-4 text-[#71717a]">Cost</td>
-            <td class="py-3 px-4 text-white">Free, forever</td>
-            <td class="py-3 px-4 text-[#71717a] italic">Free today</td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-3xl mx-auto">
+
+      <div class="bg-surface border border-border rounded-xl p-6">
+        <h3 class="text-base font-semibold mb-2 text-white">Use any tool</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">jmux doesn't bundle an editor, a diff viewer, or a Git GUI. You bring vim, VS Code, lazygit, whatever you already use. Any agent that runs in a terminal works in jmux.</p>
+      </div>
+
+      <div class="bg-surface border border-border rounded-xl p-6">
+        <h3 class="text-base font-semibold mb-2 text-white">Work anywhere</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">jmux runs in any terminal — local, SSH, containers, devboxes. Your workspace follows you because it's terminal-native, not because it syncs to a cloud.</p>
+      </div>
+
+      <div class="bg-surface border border-border rounded-xl p-6">
+        <h3 class="text-base font-semibold mb-2 text-white">No lock-in</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">Under the hood, jmux orchestrates tmux sessions. If you stop using jmux, your sessions are still there. Your tools are still your tools. Nothing is proprietary.</p>
+      </div>
+
     </div>
   </section>
 

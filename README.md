@@ -4,9 +4,7 @@
 
 **The terminal workspace for agentic development.**
 
-Agents, editors, servers, logs. All running. All visible. One terminal.
-
-Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are working, which finished, and which need your review. No Electron. No lock-in. Just your terminal.
+Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are working, which finished, and which need your review. Bring your own editor, your own Git workflow, any agent. Everything stays in your terminal.
 
 [![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
 [![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)
@@ -30,19 +28,15 @@ New to tmux? See the **[Getting Started guide](docs/getting-started.md)** — no
 
 ## Why
 
-GUI agent orchestrators are 100MB+ Electron apps that lock you into their editor, their diff viewer, their Git workflow. They work on one platform. They'll charge you eventually.
+AI coding agents work best when you can run many of them at once — different features on different branches, all in parallel. But switching between 10 terminal tabs to figure out which agent finished, which is stuck, and which needs your input is a workflow problem that most tools ignore.
 
-jmux takes the opposite approach: it's a thin orchestration layer over tmux — the tool you already know. Your editor, your Git workflow, your shell, your tools. jmux just makes them visible and navigable when you're running 10+ agents in parallel.
+jmux solves this. A persistent sidebar shows every session at a glance with real-time status indicators. An orange `!` appears when an agent finishes and needs review. Click to switch. Review the work. Move on.
 
-| | jmux | GUI orchestrators |
-|---|---|---|
-| **Size** | ~0.3 MB | ~100+ MB |
-| **Platform** | Anywhere tmux runs (macOS, Linux, SSH, containers) | macOS only |
-| **Editor** | Yours (vim, emacs, VS Code, whatever) | Built-in (take it or leave it) |
-| **Git** | `git`, `gh`, lazygit, [wtm](https://github.com/jarredkenny/worktree-manager), your workflow | Built-in GUI (their workflow) |
-| **Agents** | Any (Claude Code, Codex, aider, custom) | Bundled subset |
-| **Lock-in** | None — it's tmux underneath | Proprietary workspace format |
-| **Cost** | Free, open source | Free today, VC-funded |
+**Use any tool.** jmux doesn't bundle an editor, a diff viewer, or a Git GUI. You bring vim, VS Code, lazygit, whatever you already use. This is a design choice, not a limitation — your workflow shouldn't change because you added an orchestrator.
+
+**Work anywhere.** jmux runs in any terminal — local, SSH, containers, devboxes. Your workspace follows you because it's terminal-native, not because it syncs to a cloud.
+
+**No lock-in.** Under the hood, jmux orchestrates tmux sessions. If you stop using jmux, your sessions are still there. Your tools are still your tools. Nothing is proprietary.
 
 ## Features
 
