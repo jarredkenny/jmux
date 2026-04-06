@@ -4,6 +4,7 @@ import { ScreenBridge } from "./screen-bridge";
 import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
+import { CommandPalette } from "./command-palette";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo, WindowTab } from "./types";
 import { resolve, dirname } from "path";
@@ -41,9 +42,11 @@ Examples:
 Keybindings:
   Ctrl-Shift-Up/Down       Switch sessions
   Ctrl-a n                 New session / worktree
-  Ctrl-a i                 Settings
-  Ctrl-a j                 Window picker (fzf)
   Ctrl-a c                 New window
+  Ctrl-a z                 Toggle pane zoom
+  Ctrl-a Arrows            Resize panes
+  Ctrl-a j                 Window picker (fzf)
+  Ctrl-a i                 Settings
   Click sidebar            Switch to session
 
 https://github.com/jarredkenny/jmux`;
@@ -397,7 +400,15 @@ function renderFrame(): void {
   const grid = bridge.getGrid();
   const cursor = bridge.getCursor();
   const tb = toolbarEnabled ? makeToolbar() : null;
-  renderer.render(grid, cursor, sidebarShown ? sidebar.getGrid() : null, tb);
+  const paletteGrid = palette.isOpen() ? palette.getGrid(mainCols) : null;
+  const paletteCursorCol = palette.isOpen() ? palette.getCursorCol() : null;
+  renderer.render(
+    grid, cursor,
+    sidebarShown ? sidebar.getGrid() : null,
+    tb,
+    paletteGrid,
+    paletteCursorCol,
+  );
 }
 
 function scheduleRender(): void {
@@ -518,11 +529,58 @@ const inputRouter = new InputRouter(
       }
       if (changed) scheduleRender();
     },
+    onPaletteInput: (data) => {
+      if (!palette.isOpen()) return;
+      const action = palette.handleInput(data);
+      switch (action.type) {
+        case "consumed":
+          scheduleRender();
+          break;
+        case "closed":
+          closePalette();
+          break;
+        case "execute":
+          closePalette();
+          handlePaletteAction(action.result);
+          break;
+      }
+    },
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),
   },
   sidebarShown,
 );
+
+const palette = new CommandPalette();
+
+function togglePalette(): void {
+  if (palette.isOpen()) {
+    closePalette();
+  } else {
+    openPalette();
+  }
+}
+
+function openPalette(): void {
+  const commands = buildPaletteCommands();
+  palette.open(commands);
+  inputRouter.setPaletteOpen(true);
+  renderFrame();
+}
+
+function closePalette(): void {
+  palette.close();
+  inputRouter.setPaletteOpen(false);
+  renderFrame();
+}
+
+function buildPaletteCommands(): import("./types").PaletteCommand[] {
+  return [];
+}
+
+async function handlePaletteAction(result: import("./types").PaletteResult): Promise<void> {
+  // Dispatch actions — implemented in Task 7
+}
 
 // --- Toolbar actions ---
 
@@ -630,6 +688,9 @@ process.stdin.on("data", (data: Buffer) => {
 // --- Resize ---
 
 process.on("SIGWINCH", () => {
+  if (palette.isOpen()) {
+    closePalette();
+  }
   const newCols = process.stdout.columns || 80;
   const newRows = process.stdout.rows || 24;
   const newSidebarVisible = newCols >= 80;
@@ -659,6 +720,7 @@ try {
     const needsResize = newWidth !== sidebarWidth;
 
     if (needsResize) {
+      sidebarWidth = newWidth;
       const cols = process.stdout.columns || 80;
       const rows = process.stdout.rows || 24;
       const newSidebarVisible = cols >= 80;
@@ -822,18 +884,19 @@ async function fetchWindows(): Promise<void> {
   try {
     const target = currentSessionId ? `-t '${currentSessionId}'` : "";
     const lines = await control.sendCommand(
-      `list-windows ${target} -F '#{window_id}:#{window_index}:#{window_name}:#{window_active}:#{window_bell_flag}'`,
+      `list-windows ${target} -F '#{window_id}:#{window_index}:#{window_name}:#{window_active}:#{window_bell_flag}:#{window_zoomed_flag}'`,
     );
     currentWindows = lines
       .filter((l) => l.length > 0)
       .map((line) => {
-        const [windowId, index, name, active, bell] = line.split(":");
+        const [windowId, index, name, active, bell, zoomed] = line.split(":");
         return {
           windowId,
           index: parseInt(index, 10),
           name,
           active: active === "1",
           bell: bell === "1",
+          zoomed: zoomed === "1",
         };
       });
     scheduleRender();
@@ -871,6 +934,7 @@ async function start(): Promise<void> {
   // Re-apply our config to the running server
   await control.sendCommand(`set-environment -g JMUX_DIR ${jmuxDir}`);
   await control.sendCommand("set-environment -g JMUX 1");
+  await control.sendCommand(`set-environment -g JMUX_PID ${process.pid}`);
   await control.sendCommand(`source-file ${configFile}`);
 
   // Resolve client and session — retry until the PTY client registers
@@ -917,7 +981,7 @@ async function start(): Promise<void> {
   await control.registerSubscription(
     "windows",
     1,
-    "#{session_windows} #{window_index} #{window_name}",
+    "#{session_windows} #{window_index} #{window_name} #{window_zoomed_flag}",
   );
 }
 
@@ -940,6 +1004,9 @@ function cleanup(): void {
 pty.onExit(() => cleanup());
 process.on("SIGINT", () => cleanup());
 process.on("SIGTERM", () => cleanup());
+process.on("SIGUSR1", () => {
+  togglePalette();
+});
 
 // --- Go ---
 
