@@ -6,7 +6,7 @@ import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { CommandPalette } from "./command-palette";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
-import type { SessionInfo, WindowTab } from "./types";
+import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
@@ -575,8 +575,8 @@ function closePalette(): void {
   renderFrame();
 }
 
-function buildPaletteCommands(): import("./types").PaletteCommand[] {
-  const commands: import("./types").PaletteCommand[] = [];
+function buildPaletteCommands(): PaletteCommand[] {
+  const commands: PaletteCommand[] = [];
 
   // Dynamic: switch to session (excluding current)
   for (const session of currentSessions) {
@@ -666,7 +666,7 @@ async function applySetting(key: string, value: string | number, type: string): 
   }
 }
 
-async function handlePaletteAction(result: import("./types").PaletteResult): Promise<void> {
+async function handlePaletteAction(result: PaletteResult): Promise<void> {
   const { commandId, sublistOptionId } = result;
 
   // Dynamic: switch to session
@@ -701,25 +701,15 @@ async function handlePaletteAction(result: import("./types").PaletteResult): Pro
   if (!ptyClientName) return;
 
   switch (commandId) {
-    case "new-session": {
-      const args = ["tmux"];
-      if (socketName) args.push("-L", socketName);
-      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "60%", "-h", "70%",
-        "-b", "heavy", "-S", "fg=#4f565d", resolve(jmuxDir, "config", "new-session.sh"));
-      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+    case "new-session":
+      spawnTmuxPopup({ w: "60%", h: "70%" }, resolve(jmuxDir, "config", "new-session.sh"));
       return;
-    }
     case "kill-session":
       await control.sendCommand(`kill-session -t '${currentSessionId}'`);
       return;
-    case "rename-session": {
-      const args = ["tmux"];
-      if (socketName) args.push("-L", socketName);
-      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "40%", "-h", "8",
-        "-b", "heavy", "-S", "fg=#4f565d", resolve(jmuxDir, "config", "rename-session.sh"));
-      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+    case "rename-session":
+      spawnTmuxPopup({ w: "40%", h: "8" }, resolve(jmuxDir, "config", "rename-session.sh"));
       return;
-    }
     case "new-window":
       await handleToolbarAction("new-window");
       return;
@@ -727,14 +717,9 @@ async function handlePaletteAction(result: import("./types").PaletteResult): Pro
       await control.sendCommand("kill-window");
       fetchWindows();
       return;
-    case "move-window": {
-      const args = ["tmux"];
-      if (socketName) args.push("-L", socketName);
-      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "40%", "-h", "50%",
-        "-b", "heavy", "-S", "fg=#4f565d", resolve(jmuxDir, "config", "move-window.sh"));
-      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+    case "move-window":
+      spawnTmuxPopup({ w: "40%", h: "50%" }, resolve(jmuxDir, "config", "move-window.sh"));
       return;
-    }
     case "split-h":
       await handleToolbarAction("split-h");
       return;
@@ -748,28 +733,27 @@ async function handlePaletteAction(result: import("./types").PaletteResult): Pro
     case "close-pane":
       await control.sendCommand("kill-pane");
       return;
-    case "window-picker": {
-      const args = ["tmux"];
-      if (socketName) args.push("-L", socketName);
-      args.push("display-popup", "-c", ptyClientName, "-E", "-x", "0", "-y", "0", "-w", "30%", "-h", "100%",
-        "-b", "heavy", "-S", "fg=#4f565d",
+    case "window-picker":
+      spawnTmuxPopup({ w: "30%", h: "100%", x: "0", y: "0" },
         "sh", "-c", "tmux list-windows -F '#I: #W#{?window_active, *, }' | fzf --reverse --no-info --prompt=' Window> ' --pointer='▸' --color='bg:#0c1117,fg:#6b7280,hl:#fbd4b8,fg+:#b5bcc9,hl+:#fbd4b8,pointer:#9fe8c3,prompt:#9fe8c3' | cut -d: -f1 | xargs -I{} tmux select-window -t :{}");
-      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
       return;
-    }
     case "open-claude":
       await handleToolbarAction("claude");
       return;
-    case "setting-project-dirs": {
-      // Complex setting — fall back to settings popup
-      const args = ["tmux"];
-      if (socketName) args.push("-L", socketName);
-      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "50%", "-h", "40%",
-        "-b", "heavy", "-S", "fg=#4f565d", resolve(jmuxDir, "config", "settings.sh"));
-      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+    case "setting-project-dirs":
+      spawnTmuxPopup({ w: "50%", h: "40%" }, resolve(jmuxDir, "config", "settings.sh"));
       return;
-    }
   }
+}
+
+function spawnTmuxPopup(opts: { w: string; h: string; x?: string; y?: string }, ...cmd: string[]): void {
+  const args = ["tmux"];
+  if (socketName) args.push("-L", socketName);
+  args.push("display-popup", "-c", ptyClientName!, "-E");
+  if (opts.x !== undefined) args.push("-x", opts.x);
+  if (opts.y !== undefined) args.push("-y", opts.y);
+  args.push("-w", opts.w, "-h", opts.h, "-b", "heavy", "-S", "fg=#4f565d", ...cmd);
+  Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
 }
 
 // --- Toolbar actions ---
@@ -795,19 +779,14 @@ async function handleToolbarAction(id: string): Promise<void> {
       return;
   }
 
-  // Non-window actions still use Bun.spawn (popups need a real PTY)
-  const args = ["tmux"];
-  if (socketName) args.push("-L", socketName);
+  // Non-window actions — popups need a real PTY
   switch (id) {
-    case "settings": {
-      const settingsScript = resolve(jmuxDir, "config", "settings.sh");
-      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "50%", "-h", "40%", "-b", "heavy", "-S", "fg=#4f565d", settingsScript);
-      break;
-    }
+    case "settings":
+      spawnTmuxPopup({ w: "50%", h: "40%" }, resolve(jmuxDir, "config", "settings.sh"));
+      return;
     default:
       return;
   }
-  Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
 }
 
 // --- PTY output pipeline ---
