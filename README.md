@@ -121,7 +121,7 @@ When Claude Code finishes a response, the orange `!` appears on that session in 
 | `Ctrl-a -` | Split vertical |
 | `Shift-Left/Right/Up/Down` | Navigate panes (vim-aware) |
 | `Ctrl-a Left/Right/Up/Down` | Resize panes |
-| `Ctrl-a P` | Toggle pane border titles |
+
 
 ### Utilities
 

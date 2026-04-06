@@ -61,13 +61,19 @@ while true; do
         console.log(dirs.join(', '));
     " 2>/dev/null || echo "~/Code, ~/Projects, ~/src, ~/work, ~/dev")
     WTM_ENABLED=$(get_value "$CONFIG" "wtmIntegration" "true")
+    TOOLBAR_ENABLED=$(get_value "$CONFIG" "toolbar" "true")
+    CLAUDE_CMD=$(get_value "$CONFIG" "claudeCommand" "claude")
 
     # Format display
     WTM_DISPLAY="on"
     [ "$WTM_ENABLED" = "false" ] && WTM_DISPLAY="off"
+    TOOLBAR_DISPLAY="on"
+    [ "$TOOLBAR_ENABLED" = "false" ] && TOOLBAR_DISPLAY="off"
 
-    SELECTION=$(printf "%s\n%s\n%s" \
+    SELECTION=$(printf "%s\n%s\n%s\n%s\n%s" \
         "Sidebar Width            $SIDEBAR_WIDTH" \
+        "Toolbar                  $TOOLBAR_DISPLAY" \
+        "Claude Command           $CLAUDE_CMD" \
         "Project Directories      $PROJECT_DIRS_RAW" \
         "wtm Integration          $WTM_DISPLAY" \
         | fzf \
@@ -123,6 +129,36 @@ while true; do
 
             if [ -n "$NEW_DIRS" ]; then
                 CONFIG=$(set_value "$CONFIG" "projectDirs" "$NEW_DIRS" "array")
+                write_config "$CONFIG"
+            fi
+            ;;
+
+        "Toolbar"*)
+            if [ "$TOOLBAR_ENABLED" = "true" ]; then
+                CONFIG=$(set_value "$CONFIG" "toolbar" "false" "bool")
+            else
+                CONFIG=$(set_value "$CONFIG" "toolbar" "true" "bool")
+            fi
+            write_config "$CONFIG"
+            ;;
+
+        "Claude Command"*)
+            NEW_CMD=$(echo "" | fzf --print-query \
+                --height=100% \
+                --layout=reverse \
+                --border=rounded \
+                --border-label=" Claude Command " \
+                --header="Command to launch Claude Code from toolbar" \
+                --header-first \
+                --prompt="Cmd: " \
+                --query="$CLAUDE_CMD" \
+                --pointer="" \
+                --no-info \
+                --color="$FZF_COLORS" \
+                | head -1)
+
+            if [ -n "$NEW_CMD" ]; then
+                CONFIG=$(set_value "$CONFIG" "claudeCommand" "$NEW_CMD" "string")
                 write_config "$CONFIG"
             fi
             ;;

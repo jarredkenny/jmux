@@ -1,7 +1,7 @@
 import { $ } from "bun";
 import { TmuxPty } from "./tmux-pty";
 import { ScreenBridge } from "./screen-bridge";
-import { Renderer } from "./renderer";
+import { Renderer, getToolbarButtonRanges, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
@@ -12,7 +12,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.6.0";
+const VERSION = "0.7.0";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -142,6 +142,8 @@ const userConfig = loadUserConfig();
 let sidebarWidth = (userConfig.sidebarWidth as number) || 26;
 const BORDER_WIDTH = 1;
 function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
+let toolbarEnabled = userConfig.toolbar !== false; // default on
+let claudeCommand = (userConfig.claudeCommand as string) || "claude";
 
 // Resolve paths relative to source
 const jmuxDir = resolve(dirname(import.meta.dir));
@@ -233,6 +235,20 @@ const cols = process.stdout.columns || 80;
 const rows = process.stdout.rows || 24;
 const sidebarVisible = cols >= 80;
 const mainCols = sidebarVisible ? cols - sidebarTotal() : cols;
+const ptyRows = toolbarEnabled ? rows - 1 : rows;
+
+// Toolbar buttons
+function makeToolbar(): ToolbarConfig {
+  return {
+    buttons: [
+      { label: "⬒", id: "split-v" },
+      { label: "⬓", id: "split-h" },
+      { label: "◈", id: "claude", fg: (0xE8 << 16) | (0xA0 << 8) | 0xB4, fgMode: 2 },
+      { label: "⚙", id: "settings" },
+    ],
+    mainCols,
+  };
+}
 
 // Enter alternate screen, raw mode, enable mouse tracking
 process.stdout.write("\x1b[?1049h");
@@ -246,8 +262,8 @@ if (process.stdin.setRawMode) {
 process.stdin.resume();
 
 // Core components
-const pty = new TmuxPty({ sessionName, socketName, configFile, jmuxDir, cols: mainCols, rows });
-const bridge = new ScreenBridge(mainCols, rows);
+const pty = new TmuxPty({ sessionName, socketName, configFile, jmuxDir, cols: mainCols, rows: ptyRows });
+const bridge = new ScreenBridge(mainCols, ptyRows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, rows);
 const control = new TmuxControl();
@@ -364,7 +380,8 @@ let renderTimer: ReturnType<typeof setTimeout> | null = null;
 function renderFrame(): void {
   const grid = bridge.getGrid();
   const cursor = bridge.getCursor();
-  renderer.render(grid, cursor, sidebarShown ? sidebar.getGrid() : null);
+  const tb = toolbarEnabled ? makeToolbar() : null;
+  renderer.render(grid, cursor, sidebarShown ? sidebar.getGrid() : null, tb);
 }
 
 function scheduleRender(): void {
@@ -416,11 +433,51 @@ const inputRouter = new InputRouter(
       sidebar.scrollBy(delta);
       scheduleRender();
     },
+    onToolbarClick: (col) => {
+      if (!toolbarEnabled) return;
+      const tb = makeToolbar();
+      const ranges = getToolbarButtonRanges(tb);
+      for (const { id, startCol, endCol } of ranges) {
+        if (col >= startCol && col <= endCol) {
+          handleToolbarAction(id);
+          return;
+        }
+      }
+    },
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),
   },
   sidebarShown,
+  toolbarEnabled,
 );
+
+// --- Toolbar actions ---
+
+async function handleToolbarAction(id: string): Promise<void> {
+  if (!ptyClientName) await resolveClientName();
+  if (!ptyClientName) return;
+  const args = ["tmux"];
+  if (socketName) args.push("-L", socketName);
+  switch (id) {
+    case "split-v":
+      args.push("split-window", "-t", ptyClientName, "-h", "-c", "#{pane_current_path}");
+      break;
+    case "split-h":
+      args.push("split-window", "-t", ptyClientName, "-v", "-c", "#{pane_current_path}");
+      break;
+    case "claude":
+      args.push("split-window", "-t", ptyClientName, "-h", "-c", "#{pane_current_path}", claudeCommand);
+      break;
+    case "settings": {
+      const settingsScript = resolve(jmuxDir, "config", "settings.sh");
+      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "50%", "-h", "40%", "-b", "heavy", "-S", "fg=#4f565d", settingsScript);
+      break;
+    }
+    default:
+      return;
+  }
+  Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+}
 
 // --- PTY output pipeline ---
 
@@ -494,11 +551,12 @@ process.on("SIGWINCH", () => {
   const newRows = process.stdout.rows || 24;
   const newSidebarVisible = newCols >= 80;
   const newMainCols = newSidebarVisible ? newCols - sidebarTotal() : newCols;
+  const newPtyRows = toolbarEnabled ? newRows - 1 : newRows;
 
   sidebarShown = newSidebarVisible;
   inputRouter.setSidebarVisible(newSidebarVisible);
-  pty.resize(newMainCols, newRows);
-  bridge.resize(newMainCols, newRows);
+  pty.resize(newMainCols, newPtyRows);
+  bridge.resize(newMainCols, newPtyRows);
   sidebar.resize(sidebarWidth, newRows);
 });
 
@@ -510,17 +568,26 @@ try {
   watch(configPath, () => {
     const updated = loadUserConfig();
     const newWidth = (updated.sidebarWidth as number) || 26;
-    if (newWidth !== sidebarWidth) {
-      sidebarWidth = newWidth;
+    const newToolbar = updated.toolbar !== false;
+    const newClaudeCmd = (updated.claudeCommand as string) || "claude";
+    claudeCommand = newClaudeCmd;
+
+    const needsResize = newWidth !== sidebarWidth || newToolbar !== toolbarEnabled;
+    sidebarWidth = newWidth;
+    toolbarEnabled = newToolbar;
+    inputRouter.setToolbarEnabled(newToolbar);
+
+    if (needsResize) {
       const cols = process.stdout.columns || 80;
       const rows = process.stdout.rows || 24;
       const newSidebarVisible = cols >= 80;
       const newMainCols = newSidebarVisible ? cols - sidebarTotal() : cols;
+      const newPtyRows = toolbarEnabled ? rows - 1 : rows;
 
       sidebarShown = newSidebarVisible;
       inputRouter.setSidebarVisible(newSidebarVisible);
-      pty.resize(newMainCols, rows);
-      bridge.resize(newMainCols, rows);
+      pty.resize(newMainCols, newPtyRows);
+      bridge.resize(newMainCols, newPtyRows);
       sidebar.resize(sidebarWidth, rows);
     }
   });
@@ -556,7 +623,7 @@ async function showVersionInfo(): Promise<void> {
   // Use tmux CLI directly — confirmed working from terminal tests
   const args = ["tmux"];
   if (socketName) args.push("-L", socketName);
-  args.push("display-popup", "-c", ptyClientName, "-E", "-w", "70%", "-h", "40%", "-b", "heavy", "-S", "fg=#4f565d", "sh", "-c", cmd);
+  args.push("display-popup", "-c", ptyClientName, "-E", "-w", "70%", "-h", "80%", "-b", "heavy", "-S", "fg=#4f565d", "sh", "-c", cmd);
   Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
 }
 

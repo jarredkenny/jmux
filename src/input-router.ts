@@ -34,6 +34,7 @@ export interface InputRouterOptions {
   onPtyData: (data: string) => void;
   onSidebarClick: (row: number) => void;
   onSidebarScroll?: (delta: number) => void;
+  onToolbarClick?: (col: number) => void;
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
 }
@@ -41,14 +42,20 @@ export interface InputRouterOptions {
 export class InputRouter {
   private opts: InputRouterOptions;
   private sidebarVisible: boolean;
+  private toolbarEnabled: boolean;
 
-  constructor(opts: InputRouterOptions, sidebarVisible: boolean) {
+  constructor(opts: InputRouterOptions, sidebarVisible: boolean, toolbarEnabled: boolean = false) {
     this.opts = opts;
     this.sidebarVisible = sidebarVisible;
+    this.toolbarEnabled = toolbarEnabled;
   }
 
   setSidebarVisible(visible: boolean): void {
     this.sidebarVisible = visible;
+  }
+
+  setToolbarEnabled(enabled: boolean): void {
+    this.toolbarEnabled = enabled;
   }
 
   handleInput(data: string): void {
@@ -78,10 +85,22 @@ export class InputRouter {
         }
         return; // Consume sidebar mouse events
       }
-      // Mouse in main area — translate X coordinate
-      const translated = translateMouseX(data, this.opts.sidebarCols + 1);
-      if (translated) {
-        this.opts.onPtyData(translated);
+      // Toolbar click — row 0 or 1 (mouse.y === 1 or 2) in main area
+      if (this.toolbarEnabled && mouse.y === 1 && !mouse.release && (mouse.button & 32) === 0 && (mouse.button & 64) === 0) {
+        const mainCol = mouse.x - this.opts.sidebarCols - 1; // 0-indexed in main area
+        this.opts.onToolbarClick?.(mainCol);
+        return;
+      }
+      // Mouse in main area — translate X coordinate and Y (offset by toolbar)
+      const offset = this.opts.sidebarCols + 1;
+      const yOffset = this.toolbarEnabled ? 1 : 0;
+      const match = data.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
+      if (match) {
+        const newX = parseInt(match[2], 10) - offset;
+        const newY = parseInt(match[3], 10) - yOffset;
+        if (newX > 0 && newY > 0) {
+          this.opts.onPtyData(`\x1b[<${match[1]};${newX};${newY}${match[4]}`);
+        }
       }
       return;
     }

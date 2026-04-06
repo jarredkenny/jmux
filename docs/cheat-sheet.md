@@ -55,7 +55,7 @@ The sidebar shows all sessions with:
 | `Ctrl-a -` | Split vertically |
 | `Shift-Left/Right/Up/Down` | Navigate between panes |
 | `Ctrl-a Left/Right/Up/Down` | Resize pane (repeatable) |
-| `Ctrl-a P` | Toggle pane border titles |
+
 
 Pane borders auto-show when a window has multiple panes and hide for single-pane windows.
 
