@@ -146,6 +146,7 @@ export class CommandPalette {
   private _open = false;
   private query = "";
   private selectedIndex = 0;
+  private scrollOffset = 0;
   private commands: PaletteCommand[] = [];
   private filtered: FilteredItem[] = [];
   private ctrlABuffered = false;
@@ -160,6 +161,7 @@ export class CommandPalette {
     this.commands = commands;
     this.query = "";
     this.selectedIndex = 0;
+    this.scrollOffset = 0;
     this.ctrlABuffered = false;
     this.sublistParent = null;
     this.savedQuery = "";
@@ -171,6 +173,7 @@ export class CommandPalette {
     this._open = false;
     this.query = "";
     this.selectedIndex = 0;
+    this.scrollOffset = 0;
     this.commands = [];
     this.filtered = [];
     this.ctrlABuffered = false;
@@ -279,6 +282,7 @@ export class CommandPalette {
     if (data === "\x1b[B") {
       if (this.filtered.length > 0) {
         this.selectedIndex = (this.selectedIndex + 1) % this.filtered.length;
+        this.adjustScroll();
       }
       return CONSUMED;
     }
@@ -288,6 +292,7 @@ export class CommandPalette {
       if (this.filtered.length > 0) {
         this.selectedIndex =
           (this.selectedIndex - 1 + this.filtered.length) % this.filtered.length;
+        this.adjustScroll();
       }
       return CONSUMED;
     }
@@ -343,14 +348,16 @@ export class CommandPalette {
       writeString(grid, 0, 2, this.query, QUERY_ATTRS);
     }
 
-    // Rows 1..N: results
+    // Rows 1..N: results (scrolled)
     const visibleCount = Math.min(this.filtered.length, MAX_VISIBLE_RESULTS);
     if (this.filtered.length === 0) {
       writeString(grid, 1, 3, "No matches", NO_MATCHES_ATTRS);
     } else {
-      for (let i = 0; i < visibleCount; i++) {
-        const row = i + 1;
+      for (let vi = 0; vi < visibleCount; vi++) {
+        const i = this.scrollOffset + vi;
+        const row = vi + 1;
         const item = this.filtered[i];
+        if (!item) break;
         const isSelected = i === this.selectedIndex;
         const baseAttrs = isSelected ? SELECTED_RESULT_ATTRS : RESULT_ATTRS;
 
@@ -423,11 +430,26 @@ export class CommandPalette {
       this.filtered = scored;
     }
 
-    // Clamp selection
+    // Clamp selection and reset scroll
     if (this.filtered.length === 0) {
       this.selectedIndex = 0;
     } else if (this.selectedIndex >= this.filtered.length) {
       this.selectedIndex = this.filtered.length - 1;
+    }
+    this.scrollOffset = 0;
+    this.adjustScroll();
+  }
+
+  private adjustScroll(): void {
+    const maxVisible = Math.min(this.filtered.length, MAX_VISIBLE_RESULTS);
+    if (maxVisible === 0) {
+      this.scrollOffset = 0;
+      return;
+    }
+    if (this.selectedIndex < this.scrollOffset) {
+      this.scrollOffset = this.selectedIndex;
+    } else if (this.selectedIndex >= this.scrollOffset + maxVisible) {
+      this.scrollOffset = this.selectedIndex - maxVisible + 1;
     }
   }
 }

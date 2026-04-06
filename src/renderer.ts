@@ -124,20 +124,18 @@ export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string;
   return ranges;
 }
 
-// Returns the position of palette content within the main content area.
-// startCol is relative to the main area (not the full grid).
-// startRow is the absolute grid row.
+// Returns the absolute grid position for palette content.
+// Centered over the entire terminal (not just the main area).
 // Accounts for border (1 cell each side) and shadow (1 cell right/bottom).
 export function getPalettePosition(
-  mainCols: number, mainRows: number,
+  totalGridCols: number, totalGridRows: number,
   paletteWidth: number, paletteHeight: number,
-  toolbarRows: number,
 ): { startCol: number; startRow: number } {
   const totalW = paletteWidth + 3; // border left + content + border right + shadow
   const totalH = paletteHeight + 3; // border top + content + border bottom + shadow
   return {
-    startCol: Math.max(1, Math.floor((mainCols - totalW) / 2) + 1),
-    startRow: toolbarRows + Math.max(2, Math.floor((mainRows - totalH) / 3) + 1),
+    startCol: Math.max(2, Math.floor((totalGridCols - totalW) / 2) + 1),
+    startRow: Math.max(2, Math.floor((totalGridRows - totalH) / 3) + 1),
   };
 }
 
@@ -266,25 +264,24 @@ export function compositeGrids(
     }
   }
 
-  // Overlay palette centered in the main area with border, shadow, and dimmed background
+  // Overlay palette centered over entire terminal with border, shadow, and dimmed background
   if (paletteOverlay) {
-    const sidebarBorderCol = sidebar.cols;
-    const mainStart = sidebarBorderCol + 1;
-    const pos = getPalettePosition(mainCols, main.rows, paletteOverlay.cols, paletteOverlay.rows, toolbarRows);
+    const pos = getPalettePosition(totalCols, totalRows, paletteOverlay.cols, paletteOverlay.rows);
 
-    // Dim all main content cells behind the palette
-    for (let y = toolbarRows; y < totalRows; y++) {
+    // Dim all content cells behind the palette (main area + toolbar, not sidebar)
+    const mainStart = sidebar.cols + 1;
+    for (let y = 0; y < totalRows; y++) {
       for (let x = mainStart; x < totalCols; x++) {
         grid.cells[y][x].dim = true;
       }
     }
 
-    // Border positions (in grid coordinates)
+    // Border positions (absolute grid coordinates)
     const paletteBg = (0x16 << 16) | (0x1b << 8) | 0x22; // #161b22
     const shadowBg = (0x06 << 16) | (0x08 << 8) | 0x0c; // very dark
     const bTop = pos.startRow - 1;
-    const bLeft = mainStart + pos.startCol - 1;
-    const bRight = mainStart + pos.startCol + paletteOverlay.cols;
+    const bLeft = pos.startCol - 1;
+    const bRight = pos.startCol + paletteOverlay.cols;
     const bBottom = pos.startRow + paletteOverlay.rows;
     const borderCell = (ch: string) => ({
       ...DEFAULT_CELL, char: ch, fg: 8, fgMode: ColorMode.Palette as number,
@@ -306,7 +303,7 @@ export function compositeGrids(
       if (gy >= totalRows) break;
       if (bLeft >= 0 && bLeft < totalCols) grid.cells[gy][bLeft] = borderCell("│");
       for (let px = 0; px < paletteOverlay.cols; px++) {
-        const gx = mainStart + pos.startCol + px;
+        const gx = pos.startCol + px;
         if (gx >= totalCols) break;
         grid.cells[gy][gx] = { ...paletteOverlay.cells[py][px] };
       }
@@ -322,7 +319,7 @@ export function compositeGrids(
       if (bRight < totalCols) grid.cells[bBottom][bRight] = borderCell("┘");
     }
 
-    // Shadow: right edge (1 col right of border, offset 1 row down from top)
+    // Shadow: right edge
     const shadowX = bRight + 1;
     if (shadowX < totalCols) {
       for (let y = bTop + 1; y <= bBottom + 1 && y < totalRows; y++) {
@@ -332,7 +329,7 @@ export function compositeGrids(
         cell.dim = true;
       }
     }
-    // Shadow: bottom edge (1 row below border, offset 1 col right from left)
+    // Shadow: bottom edge
     const shadowY = bBottom + 1;
     if (shadowY < totalRows) {
       for (let x = bLeft + 1; x <= bRight + 1 && x < totalCols; x++) {
@@ -400,7 +397,8 @@ export class Renderer {
     const cursorRowOffset = toolbar ? 1 : 0;
     buf.push("\x1b[0m");
     if (paletteCursor != null) {
-      buf.push(`\x1b[${paletteCursor.row + 1};${paletteCursor.col + cursorOffset + 1}H`);
+      // Palette cursor is in absolute grid coordinates
+      buf.push(`\x1b[${paletteCursor.row + 1};${paletteCursor.col + 1}H`);
     } else {
       buf.push(
         `\x1b[${cursor.y + cursorRowOffset + 1};${cursor.x + cursorOffset + 1}H`,

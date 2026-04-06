@@ -112,82 +112,64 @@ describe("compositeGrids", () => {
 });
 
 describe("getPalettePosition", () => {
-  test("centers palette horizontally accounting for border and shadow", () => {
-    const pos = getPalettePosition(80, 24, 60, 6, 1);
-    // totalW = 60 + 3 = 63, startCol = max(1, floor((80-63)/2) + 1) = max(1, 8+1) = 9
-    expect(pos.startCol).toBe(9);
+  test("centers palette horizontally over entire terminal", () => {
+    const pos = getPalettePosition(100, 30, 60, 6);
+    // totalW = 63, startCol = max(2, floor((100-63)/2) + 1) = max(2, 18+1) = 19
+    expect(pos.startCol).toBe(19);
   });
 
   test("positions palette in upper third vertically", () => {
-    const pos = getPalettePosition(80, 24, 60, 6, 1);
-    // totalH = 6+3=9, startRow = 1 + max(2, floor((24-9)/3)+1) = 1 + max(2, 5+1) = 1+6 = 7
-    expect(pos.startRow).toBe(7);
+    const pos = getPalettePosition(100, 30, 60, 6);
+    // totalH = 9, startRow = max(2, floor((30-9)/3)+1) = max(2, 7+1) = 8
+    expect(pos.startRow).toBe(8);
   });
 
-  test("minimum startRow leaves room for top border", () => {
-    const pos = getPalettePosition(80, 6, 60, 6, 1);
-    // totalH=9, floor((6-9)/3)+1 = -1+1=0, max(2,0)=2, startRow = 1+2 = 3
-    expect(pos.startRow).toBe(3);
+  test("minimum startRow and startCol leave room for border", () => {
+    const pos = getPalettePosition(20, 6, 18, 5);
+    // Very tight — startCol = max(2, ...) = 2, startRow = max(2, ...) = 2
+    expect(pos.startCol).toBeGreaterThanOrEqual(2);
+    expect(pos.startRow).toBeGreaterThanOrEqual(2);
   });
 });
 
 describe("compositeGrids with palette overlay", () => {
-  test("palette is centered with box border, toolbar still visible", () => {
-    const sidebar = createGrid(4, 14);
-    const main = createGrid(20, 12);
-    writeString(main, 0, 0, "main content here!!!");
-
-    const toolbar = {
-      buttons: [{ label: "＋", id: "new" }],
-      mainCols: 20,
-      tabs: [],
-    };
-
-    // Small palette: 10 cols wide, 2 rows tall (input + 1 result)
-    const palette = createGrid(10, 2);
-    writeString(palette, 0, 0, "▷ query   ");
-    writeString(palette, 1, 0, " result   ");
-
-    const result = compositeGrids(main, sidebar, toolbar, palette);
-    expect(result.rows).toBe(13); // 12 main + 1 toolbar
-
-    const pos = getPalettePosition(20, 12, 10, 2, 1);
-    const gridCol = 4 + 1 + pos.startCol; // sidebar + border + startCol
-
-    // Box border: ┌ at top-left
-    expect(result.cells[pos.startRow - 1][gridCol - 1].char).toBe("┌");
-    // Box border: ┐ at top-right
-    expect(result.cells[pos.startRow - 1][gridCol + 10].char).toBe("┐");
-    // Palette content inside border
-    expect(result.cells[pos.startRow][gridCol].char).toBe("▷");
-    // Box border: └ at bottom-left
-    expect(result.cells[pos.startRow + 2][gridCol - 1].char).toBe("└");
-    // Side border: │ on left
-    expect(result.cells[pos.startRow][gridCol - 1].char).toBe("│");
-  });
-
-  test("main content is dimmed when palette is open", () => {
-    const sidebar = createGrid(4, 14);
-    const main = createGrid(20, 12);
-    writeString(main, 0, 0, "visible row zero");
+  test("palette is centered with box border over entire terminal", () => {
+    const sidebar = createGrid(6, 20);
+    const main = createGrid(40, 18);
 
     const toolbar = {
       buttons: [],
-      mainCols: 20,
+      mainCols: 40,
       tabs: [],
     };
 
-    const palette = createGrid(10, 2);
-    writeString(palette, 0, 0, "palette   ");
+    // Palette: 14 cols wide, 2 rows tall
+    const palette = createGrid(14, 2);
+    writeString(palette, 0, 0, "▷ query       ");
+    writeString(palette, 1, 0, " result       ");
 
     const result = compositeGrids(main, sidebar, toolbar, palette);
-    // Main content at row 1 (below toolbar) should be dimmed
-    expect(result.cells[1][5].dim).toBe(true); // "v" from "visible"
+    // Total grid: sidebar(6) + border(1) + main(40) = 47 cols, 19 rows
+    expect(result.cols).toBe(47);
+
+    const pos = getPalettePosition(47, 19, 14, 2);
+
+    // Box border: ┌ at top-left
+    expect(result.cells[pos.startRow - 1][pos.startCol - 1].char).toBe("┌");
+    // Box border: ┐ at top-right
+    expect(result.cells[pos.startRow - 1][pos.startCol + 14].char).toBe("┐");
+    // Palette content inside border
+    expect(result.cells[pos.startRow][pos.startCol].char).toBe("▷");
+    // Box border: └ at bottom-left
+    expect(result.cells[pos.startRow + 2][pos.startCol - 1].char).toBe("└");
+    // Side border: │ on left
+    expect(result.cells[pos.startRow][pos.startCol - 1].char).toBe("│");
   });
 
-  test("shadow appears on right and bottom edges", () => {
-    const sidebar = createGrid(4, 20);
-    const main = createGrid(30, 18);
+  test("main content is dimmed when palette is open", () => {
+    const sidebar = createGrid(6, 14);
+    const main = createGrid(30, 12);
+    writeString(main, 0, 0, "visible row zero");
 
     const toolbar = {
       buttons: [],
@@ -196,21 +178,36 @@ describe("compositeGrids with palette overlay", () => {
     };
 
     const palette = createGrid(10, 2);
+
+    const result = compositeGrids(main, sidebar, toolbar, palette);
+    // Main content area starts at col 7 (sidebar 6 + border 1), should be dimmed
+    expect(result.cells[1][7].dim).toBe(true);
+  });
+
+  test("shadow appears on right and bottom edges", () => {
+    const sidebar = createGrid(6, 24);
+    const main = createGrid(50, 22);
+
+    const toolbar = {
+      buttons: [],
+      mainCols: 50,
+      tabs: [],
+    };
+
+    const palette = createGrid(14, 2);
     const result = compositeGrids(main, sidebar, toolbar, palette);
 
-    const pos = getPalettePosition(30, 18, 10, 2, 1);
-    const bRight = 4 + 1 + pos.startCol + 10; // sidebar + border + startCol + paletteWidth
-    const bBottom = pos.startRow + 2; // startRow + paletteHeight
+    const pos = getPalettePosition(57, 23, 14, 2); // totalCols=6+1+50=57, totalRows=22+1=23
+    const bRight = pos.startCol + 14; // right border col
+    const bBottom = pos.startRow + 2; // bottom border row
 
     // Shadow cell to the right of the border
-    const shadowX = bRight + 1;
-    if (shadowX < result.cols) {
-      expect(result.cells[pos.startRow][shadowX].dim).toBe(true);
+    if (bRight + 1 < result.cols) {
+      expect(result.cells[pos.startRow][bRight + 1].dim).toBe(true);
     }
     // Shadow cell below the border
-    const shadowY = bBottom + 1;
-    if (shadowY < result.rows) {
-      expect(result.cells[shadowY][4 + 1 + pos.startCol].dim).toBe(true);
+    if (bBottom + 1 < result.rows) {
+      expect(result.cells[bBottom + 1][pos.startCol].dim).toBe(true);
     }
   });
 

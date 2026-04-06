@@ -404,10 +404,11 @@ function renderFrame(): void {
   let paletteGrid: import("./types").CellGrid | null = null;
   let paletteCursor: { row: number; col: number } | null = null;
   if (palette.isOpen()) {
-    const ptyRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-    const paletteWidth = Math.min(Math.max(40, Math.round(mainCols * 0.7)), 80);
+    const termCols = process.stdout.columns || 80;
+    const termRows = process.stdout.rows || 24;
+    const paletteWidth = Math.min(Math.max(40, Math.round(termCols * 0.55)), 80);
     paletteGrid = palette.getGrid(paletteWidth);
-    const pos = getPalettePosition(mainCols, ptyRows, paletteWidth, paletteGrid.rows, toolbarEnabled ? 1 : 0);
+    const pos = getPalettePosition(termCols, termRows, paletteWidth, paletteGrid.rows);
     paletteCursor = { row: pos.startRow, col: pos.startCol + palette.getCursorCol() };
   }
   renderer.render(
