@@ -104,12 +104,15 @@ No prefix key needed — these work instantly.
 | Next window | `Ctrl-Right` |
 | Previous window | `Ctrl-Left` |
 | Switch pane | `Shift-Arrow` (any direction) |
+| Resize pane | `Ctrl-a` then arrow keys (repeatable) |
+| Toggle pane zoom | `Ctrl-a` then `z` |
 | Window picker | `Ctrl-a` then `j` |
 
 ### Utilities
 
 | Action | Keys |
 |--------|------|
+| Command palette | `Ctrl-a` then `p` |
 | Settings | `Ctrl-a` then `i` |
 | Clear pane | `Ctrl-a` then `k` |
 | Copy pane to clipboard | `Ctrl-a` then `y` |
@@ -221,6 +224,7 @@ Settings are saved to `~/.config/jmux/config.json` and most take effect immediat
 - **Mouse selection** works — click and drag to select text, it copies to your clipboard
 - **Your tmux config** still works. If you have `~/.tmux.conf`, jmux loads it. Your plugins, themes, and custom bindings carry over
 - **Resize panes** with `Ctrl-a` then arrow keys (hold for continuous resize)
+- **Zoom a pane** with `Ctrl-a` then `z` — the tab shows ⤢ when zoomed, press again to unzoom
 - **Pane borders** auto-show when a window has multiple panes and hide for single-pane windows
 
 ---

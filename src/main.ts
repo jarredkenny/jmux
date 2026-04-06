@@ -45,6 +45,7 @@ Keybindings:
   Ctrl-a c                 New window
   Ctrl-a z                 Toggle pane zoom
   Ctrl-a Arrows            Resize panes
+  Ctrl-a p                 Command palette
   Ctrl-a j                 Window picker (fzf)
   Ctrl-a i                 Settings
   Click sidebar            Switch to session

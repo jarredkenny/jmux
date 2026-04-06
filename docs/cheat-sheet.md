@@ -55,6 +55,7 @@ The sidebar shows all sessions with:
 | `Ctrl-a -` | Split vertically |
 | `Shift-Left/Right/Up/Down` | Navigate between panes |
 | `Ctrl-a Left/Right/Up/Down` | Resize pane (repeatable) |
+| `Ctrl-a z` | Toggle pane zoom (⤢ shown in tab) |
 
 
 Pane borders auto-show when a window has multiple panes and hide for single-pane windows.
@@ -67,6 +68,7 @@ Shift-arrow pane navigation is smart-splits.nvim aware — if the active pane is
 
 | Key | Action |
 |-----|--------|
+| `Ctrl-a p` | Command palette (fuzzy search all actions) |
 | `Ctrl-a k` | Clear pane content + scrollback |
 | `Ctrl-a y` | Copy entire pane content to clipboard |
 | `Ctrl-a i` | Settings |
