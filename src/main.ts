@@ -1,7 +1,7 @@
 import { $ } from "bun";
 import { TmuxPty } from "./tmux-pty";
 import { ScreenBridge } from "./screen-bridge";
-import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getPalettePosition, type ToolbarConfig } from "./renderer";
+import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { CommandPalette } from "./command-palette";
@@ -398,6 +398,7 @@ async function switchSession(sessionId: string): Promise<void> {
 let renderTimer: ReturnType<typeof setTimeout> | null = null;
 
 function renderFrame(): void {
+  if (writesPending > 0) return;
   const grid = bridge.getGrid();
   const cursor = bridge.getCursor();
   const tb = toolbarEnabled ? makeToolbar() : null;
@@ -408,7 +409,7 @@ function renderFrame(): void {
     const termRows = process.stdout.rows || 24;
     const paletteWidth = Math.min(Math.max(40, Math.round(termCols * 0.55)), 80);
     paletteGrid = palette.getGrid(paletteWidth);
-    const pos = getPalettePosition(termCols, termRows, paletteWidth, paletteGrid.rows);
+    const pos = getModalPosition(termCols, termRows, paletteWidth, paletteGrid.rows);
     paletteCursor = { row: pos.startRow, col: pos.startCol + palette.getCursorCol() };
   }
   renderer.render(
@@ -613,6 +614,7 @@ function buildPaletteCommands(): PaletteCommand[] {
     { id: "kill-session", label: "Kill session", category: "session" },
     { id: "rename-session", label: "Rename session", category: "session" },
     { id: "new-window", label: "New window", category: "window" },
+    { id: "rename-window", label: "Rename window", category: "window" },
     { id: "close-window", label: "Close window", category: "window" },
     { id: "move-window", label: "Move window to session", category: "window" },
     { id: "split-h", label: "Split horizontal", category: "pane" },
@@ -721,6 +723,9 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       return;
     case "new-window":
       await handleToolbarAction("new-window");
+      return;
+    case "rename-window":
+      spawnTmuxPopup({ w: "40%", h: "8" }, resolve(jmuxDir, "config", "rename-window.sh"));
       return;
     case "close-window":
       await control.sendCommand("kill-window");

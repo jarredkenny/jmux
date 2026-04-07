@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { sgrForCell, compositeGrids, getPalettePosition, BORDER_CHAR } from "../renderer";
+import { sgrForCell, compositeGrids, getModalPosition, BORDER_CHAR } from "../renderer";
 import { createGrid, writeString } from "../cell-grid";
 import { ColorMode } from "../types";
 import type { Cell } from "../types";
@@ -111,21 +111,21 @@ describe("compositeGrids", () => {
   });
 });
 
-describe("getPalettePosition", () => {
-  test("centers palette horizontally over entire terminal", () => {
-    const pos = getPalettePosition(100, 30, 60, 6);
+describe("getModalPosition", () => {
+  test("centers modal horizontally over entire terminal", () => {
+    const pos = getModalPosition(100, 30, 60, 6);
     // totalW = 63, startCol = max(2, floor((100-63)/2) + 1) = max(2, 18+1) = 19
     expect(pos.startCol).toBe(19);
   });
 
-  test("positions palette in upper third vertically", () => {
-    const pos = getPalettePosition(100, 30, 60, 6);
+  test("positions modal in upper third vertically", () => {
+    const pos = getModalPosition(100, 30, 60, 6);
     // totalH = 9, startRow = max(2, floor((30-9)/3)+1) = max(2, 7+1) = 8
     expect(pos.startRow).toBe(8);
   });
 
   test("minimum startRow and startCol leave room for border", () => {
-    const pos = getPalettePosition(20, 6, 18, 5);
+    const pos = getModalPosition(20, 6, 18, 5);
     // Very tight — startCol = max(2, ...) = 2, startRow = max(2, ...) = 2
     expect(pos.startCol).toBeGreaterThanOrEqual(2);
     expect(pos.startRow).toBeGreaterThanOrEqual(2);
@@ -152,7 +152,7 @@ describe("compositeGrids with palette overlay", () => {
     // Total grid: sidebar(6) + border(1) + main(40) = 47 cols, 19 rows
     expect(result.cols).toBe(47);
 
-    const pos = getPalettePosition(47, 19, 14, 2);
+    const pos = getModalPosition(47, 19, 14, 2);
 
     // Box border: ┌ at top-left
     expect(result.cells[pos.startRow - 1][pos.startCol - 1].char).toBe("┌");
@@ -197,7 +197,7 @@ describe("compositeGrids with palette overlay", () => {
     const palette = createGrid(14, 2);
     const result = compositeGrids(main, sidebar, toolbar, palette);
 
-    const pos = getPalettePosition(57, 23, 14, 2); // totalCols=6+1+50=57, totalRows=22+1=23
+    const pos = getModalPosition(57, 23, 14, 2); // totalCols=6+1+50=57, totalRows=22+1=23
     const bRight = pos.startCol + 14; // right border col
     const bBottom = pos.startRow + 2; // bottom border row
 

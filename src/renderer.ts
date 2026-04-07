@@ -124,15 +124,15 @@ export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string;
   return ranges;
 }
 
-// Returns the absolute grid position for palette content.
+// Returns the absolute grid position for modal content.
 // Centered over the entire terminal (not just the main area).
 // Accounts for border (1 cell each side) and shadow (1 cell right/bottom).
-export function getPalettePosition(
+export function getModalPosition(
   totalGridCols: number, totalGridRows: number,
-  paletteWidth: number, paletteHeight: number,
+  modalWidth: number, modalHeight: number,
 ): { startCol: number; startRow: number } {
-  const totalW = paletteWidth + 3; // border left + content + border right + shadow
-  const totalH = paletteHeight + 3; // border top + content + border bottom + shadow
+  const totalW = modalWidth + 3; // border left + content + border right + shadow
+  const totalH = modalHeight + 3; // border top + content + border bottom + shadow
   return {
     startCol: Math.max(2, Math.floor((totalGridCols - totalW) / 2) + 1),
     startRow: Math.max(2, Math.floor((totalGridRows - totalH) / 3) + 1),
@@ -143,7 +143,7 @@ export function compositeGrids(
   main: CellGrid,
   sidebar: CellGrid | null,
   toolbar?: ToolbarConfig | null,
-  paletteOverlay?: CellGrid | null,
+  modalOverlay?: CellGrid | null,
 ): CellGrid {
   if (!sidebar) return main;
 
@@ -264,9 +264,9 @@ export function compositeGrids(
     }
   }
 
-  // Overlay palette centered over entire terminal with border, shadow, and dimmed background
-  if (paletteOverlay) {
-    const pos = getPalettePosition(totalCols, totalRows, paletteOverlay.cols, paletteOverlay.rows);
+  // Overlay modal centered over entire terminal with border, shadow, and dimmed background
+  if (modalOverlay) {
+    const pos = getModalPosition(totalCols, totalRows, modalOverlay.cols, modalOverlay.rows);
 
     // Dim all content cells behind the palette (main area + toolbar, not sidebar)
     const mainStart = sidebar.cols + 1;
@@ -281,8 +281,8 @@ export function compositeGrids(
     const shadowBg = (0x06 << 16) | (0x08 << 8) | 0x0c; // very dark
     const bTop = pos.startRow - 1;
     const bLeft = pos.startCol - 1;
-    const bRight = pos.startCol + paletteOverlay.cols;
-    const bBottom = pos.startRow + paletteOverlay.rows;
+    const bRight = pos.startCol + modalOverlay.cols;
+    const bBottom = pos.startRow + modalOverlay.rows;
     const borderCell = (ch: string) => ({
       ...DEFAULT_CELL, char: ch, fg: 8, fgMode: ColorMode.Palette as number,
       bg: paletteBg, bgMode: ColorMode.RGB as number,
@@ -297,15 +297,15 @@ export function compositeGrids(
       if (bRight < totalCols) grid.cells[bTop][bRight] = borderCell("┐");
     }
 
-    // Side borders + palette content
-    for (let py = 0; py < paletteOverlay.rows; py++) {
+    // Side borders + modal content
+    for (let py = 0; py < modalOverlay.rows; py++) {
       const gy = pos.startRow + py;
       if (gy >= totalRows) break;
       if (bLeft >= 0 && bLeft < totalCols) grid.cells[gy][bLeft] = borderCell("│");
-      for (let px = 0; px < paletteOverlay.cols; px++) {
+      for (let px = 0; px < modalOverlay.cols; px++) {
         const gx = pos.startCol + px;
         if (gx >= totalCols) break;
-        grid.cells[gy][gx] = { ...paletteOverlay.cells[py][px] };
+        grid.cells[gy][gx] = { ...modalOverlay.cells[py][px] };
       }
       if (bRight < totalCols) grid.cells[gy][bRight] = borderCell("│");
     }
@@ -365,10 +365,10 @@ export class Renderer {
     cursor: CursorPosition,
     sidebar: CellGrid | null,
     toolbar?: ToolbarConfig | null,
-    paletteOverlay?: CellGrid | null,
-    paletteCursor?: { row: number; col: number } | null,
+    modalOverlay?: CellGrid | null,
+    modalCursor?: { row: number; col: number } | null,
   ): void {
-    const grid = compositeGrids(main, sidebar, toolbar, paletteOverlay);
+    const grid = compositeGrids(main, sidebar, toolbar, modalOverlay);
     const cursorOffset = sidebar ? sidebar.cols + 1 : 0;
     const buf: string[] = [];
 
@@ -376,6 +376,7 @@ export class Renderer {
       // Move to start of row (1-indexed)
       buf.push(`\x1b[${y + 1};1H`);
       this.prevAttrs = null;
+      let col = 1; // expected terminal column (1-indexed)
 
       for (let x = 0; x < grid.cols; x++) {
         const cell = grid.cells[y][x];
@@ -390,15 +391,24 @@ export class Renderer {
         }
 
         buf.push(cell.char);
+        col += cell.width;
+
+        // After characters with potentially ambiguous terminal width,
+        // explicitly reposition cursor to prevent drift from width
+        // disagreements between xterm.js and the actual terminal.
+        const cp = cell.char.codePointAt(0) ?? 0;
+        if (col <= grid.cols && (cell.width > 1 || cell.char.length > 1 || cp >= 0x2500)) {
+          buf.push(`\x1b[${y + 1};${col}H`);
+        }
       }
     }
 
     // Reset attributes, position cursor
     const cursorRowOffset = toolbar ? 1 : 0;
     buf.push("\x1b[0m");
-    if (paletteCursor != null) {
-      // Palette cursor is in absolute grid coordinates
-      buf.push(`\x1b[${paletteCursor.row + 1};${paletteCursor.col + 1}H`);
+    if (modalCursor != null) {
+      // Modal cursor is in absolute grid coordinates
+      buf.push(`\x1b[${modalCursor.row + 1};${modalCursor.col + 1}H`);
     } else {
       buf.push(
         `\x1b[${cursor.y + cursorRowOffset + 1};${cursor.x + cursorOffset + 1}H`,
