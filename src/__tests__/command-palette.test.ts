@@ -125,14 +125,14 @@ describe("CommandPalette", () => {
     expect(palette.getSelectedIndex()).toBe(testCommands.length - 1);
   });
 
-  test("enter on regular command returns execute", () => {
+  test("enter on regular command returns result", () => {
     const palette = new CommandPalette();
     palette.open(testCommands);
     const action = palette.handleInput("\r"); // enter
-    expect(action.type).toBe("execute");
-    if (action.type === "execute") {
-      expect(action.result.commandId).toBe("split-h");
-      expect(action.result.sublistOptionId).toBeUndefined();
+    expect(action.type).toBe("result");
+    if (action.type === "result") {
+      expect(action.value.commandId).toBe("split-h");
+      expect(action.value.sublistOptionId).toBeUndefined();
     }
   });
 
@@ -148,7 +148,7 @@ describe("CommandPalette", () => {
     expect(palette.isInSublist()).toBe(true);
   });
 
-  test("enter in sublist returns execute with sublistOptionId", () => {
+  test("enter in sublist returns result with sublistOptionId", () => {
     const palette = new CommandPalette();
     palette.open(testCommands);
     // Navigate to "Sidebar width" and drill in
@@ -158,10 +158,10 @@ describe("CommandPalette", () => {
     palette.handleInput("\r"); // drill in
     // Select "22" (first option, already selected)
     const action = palette.handleInput("\r");
-    expect(action.type).toBe("execute");
-    if (action.type === "execute") {
-      expect(action.result.commandId).toBe("setting-width");
-      expect(action.result.sublistOptionId).toBe("22");
+    expect(action.type).toBe("result");
+    if (action.type === "result") {
+      expect(action.value.commandId).toBe("setting-width");
+      expect(action.value.sublistOptionId).toBe("22");
     }
   });
 
@@ -245,8 +245,8 @@ describe("CommandPalette rendering", () => {
     }
     const palette = new CommandPalette();
     palette.open(manyCommands);
-    // 1 input + 10 visible = 11
-    expect(palette.getHeight()).toBe(11);
+    // 1 input + 16 visible = 17
+    expect(palette.getHeight()).toBe(17);
   });
 
   test("getGrid returns grid with correct dimensions", () => {

@@ -70,4 +70,4 @@ export interface PaletteResult {
 export type PaletteAction =
   | { type: "consumed" }
   | { type: "closed" }
-  | { type: "execute"; result: PaletteResult };
+  | { type: "result"; value: PaletteResult };

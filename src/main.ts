@@ -550,9 +550,9 @@ const inputRouter = new InputRouter(
         case "closed":
           closePalette();
           break;
-        case "execute":
+        case "result":
           closePalette();
-          handlePaletteAction(action.result);
+          handlePaletteAction(action.value);
           break;
       }
     },

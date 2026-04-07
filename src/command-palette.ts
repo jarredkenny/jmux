@@ -1,95 +1,14 @@
-import type { PaletteCommand, PaletteResult, PaletteAction } from "./types";
+import type { PaletteCommand, PaletteAction } from "./types";
 import type { CellGrid } from "./types";
-import { createGrid, writeString, type CellAttrs } from "./cell-grid";
-import { ColorMode } from "./types";
+import { createGrid, writeString } from "./cell-grid";
+import {
+  PROMPT_ATTRS, INPUT_ATTRS, RESULT_ATTRS, SELECTED_RESULT_ATTRS,
+  MATCH_ATTRS, SELECTED_MATCH_ATTRS, CATEGORY_ATTRS, SELECTED_CATEGORY_ATTRS,
+  CURRENT_TAG_ATTRS, SELECTED_CURRENT_TAG_ATTRS,
+  BREADCRUMB_ATTRS, NO_MATCHES_ATTRS, BG_ATTRS, SELECTED_BG_ATTRS,
+} from "./modal";
 
-const MAX_VISIBLE_RESULTS = 10;
-const PALETTE_BG = (0x16 << 16) | (0x1b << 8) | 0x22; // #161b22
-const SELECTED_BG = (0x1e << 16) | (0x2a << 8) | 0x35; // #1e2a35
-
-const PROMPT_ATTRS: CellAttrs = {
-  fg: 2,
-  fgMode: ColorMode.Palette,
-  bg: PALETTE_BG,
-  bgMode: ColorMode.RGB,
-};
-const QUERY_ATTRS: CellAttrs = {
-  fg: 7,
-  fgMode: ColorMode.Palette,
-  bold: true,
-  bg: PALETTE_BG,
-  bgMode: ColorMode.RGB,
-};
-const RESULT_ATTRS: CellAttrs = {
-  fg: 7,
-  fgMode: ColorMode.Palette,
-  dim: true,
-  bg: PALETTE_BG,
-  bgMode: ColorMode.RGB,
-};
-const SELECTED_RESULT_ATTRS: CellAttrs = {
-  fg: 7,
-  fgMode: ColorMode.Palette,
-  bg: SELECTED_BG,
-  bgMode: ColorMode.RGB,
-};
-const MATCH_ATTRS: CellAttrs = {
-  fg: 2,
-  fgMode: ColorMode.Palette,
-  bg: PALETTE_BG,
-  bgMode: ColorMode.RGB,
-};
-const SELECTED_MATCH_ATTRS: CellAttrs = {
-  fg: 2,
-  fgMode: ColorMode.Palette,
-  bold: true,
-  bg: SELECTED_BG,
-  bgMode: ColorMode.RGB,
-};
-const CATEGORY_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  bg: PALETTE_BG,
-  bgMode: ColorMode.RGB,
-};
-const SELECTED_CATEGORY_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  bg: SELECTED_BG,
-  bgMode: ColorMode.RGB,
-};
-const CURRENT_TAG_ATTRS: CellAttrs = {
-  fg: 3,
-  fgMode: ColorMode.Palette,
-  bg: PALETTE_BG,
-  bgMode: ColorMode.RGB,
-};
-const SELECTED_CURRENT_TAG_ATTRS: CellAttrs = {
-  fg: 3,
-  fgMode: ColorMode.Palette,
-  bg: SELECTED_BG,
-  bgMode: ColorMode.RGB,
-};
-const BORDER_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  dim: true,
-  bg: PALETTE_BG,
-  bgMode: ColorMode.RGB,
-};
-const BREADCRUMB_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  bg: PALETTE_BG,
-  bgMode: ColorMode.RGB,
-};
-const NO_MATCHES_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  dim: true,
-  bg: PALETTE_BG,
-  bgMode: ColorMode.RGB,
-};
+const MAX_VISIBLE_RESULTS = 16;
 
 export interface FilteredItem {
   command: PaletteCommand;
@@ -211,6 +130,14 @@ export class CommandPalette {
     return 2 + this.query.length; // "▷ " prefix = 2 chars
   }
 
+  getCursorPosition(): { row: number; col: number } | null {
+    return { row: 0, col: this.getCursorCol() };
+  }
+
+  preferredWidth(termCols: number): number {
+    return Math.min(Math.max(40, Math.round(termCols * 0.55)), 80);
+  }
+
   handleInput(data: string): PaletteAction {
     // Handle Ctrl-a buffering
     if (this.ctrlABuffered) {
@@ -252,8 +179,8 @@ export class CommandPalette {
       if (this.sublistParent) {
         // In sublist: execute with sublistOptionId
         return {
-          type: "execute",
-          result: {
+          type: "result",
+          value: {
             commandId: this.sublistParent.id,
             sublistOptionId: selected.command.id,
           },
@@ -273,8 +200,8 @@ export class CommandPalette {
 
       // Regular command
       return {
-        type: "execute",
-        result: { commandId: selected.command.id },
+        type: "result",
+        value: { commandId: selected.command.id },
       };
     }
 
@@ -333,19 +260,18 @@ export class CommandPalette {
     const grid = createGrid(width, height);
 
     // Fill background
-    const bgAttrs: CellAttrs = { bg: PALETTE_BG, bgMode: ColorMode.RGB };
     for (let r = 0; r < height; r++) {
-      writeString(grid, r, 0, " ".repeat(width), bgAttrs);
+      writeString(grid, r, 0, " ".repeat(width), BG_ATTRS);
     }
 
     // Row 0: input line
     if (this.sublistParent) {
       const breadcrumb = this.sublistParent.label + " › ";
       writeString(grid, 0, 0, breadcrumb, BREADCRUMB_ATTRS);
-      writeString(grid, 0, breadcrumb.length, this.query, QUERY_ATTRS);
+      writeString(grid, 0, breadcrumb.length, this.query, INPUT_ATTRS);
     } else {
       writeString(grid, 0, 0, "▷", PROMPT_ATTRS);
-      writeString(grid, 0, 2, this.query, QUERY_ATTRS);
+      writeString(grid, 0, 2, this.query, INPUT_ATTRS);
     }
 
     // Rows 1..N: results (scrolled)
@@ -363,7 +289,7 @@ export class CommandPalette {
 
         // Paint selected row background
         if (isSelected) {
-          writeString(grid, row, 0, " ".repeat(width), { bg: SELECTED_BG, bgMode: ColorMode.RGB });
+          writeString(grid, row, 0, " ".repeat(width), SELECTED_BG_ATTRS);
         }
 
         // Selection indicator
