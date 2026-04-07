@@ -55,22 +55,27 @@ You'll see a terminal split into two areas:
 
 ## Core concepts
 
-### Sessions
+### Sessions = projects
 
-A **session** is an independent workspace. Each session has its own set of windows and remembers what you were doing. Think of sessions like browser profiles — completely separate environments.
+A **session** is a project. Each session has its own set of windows and remembers what you were doing — think of sessions like browser profiles, completely separate environments.
 
-Use sessions to separate projects:
-- One session for your API server
-- One session for the frontend
-- One session for running an AI coding agent
+Create one session per project:
+- `myapp` — your main project
+- `docs-site` — a separate project
+- `infra` — your infrastructure repo
 
-### Windows
+### Windows = concerns within a project
 
 A **window** is a tab within a session. Window tabs appear in the toolbar at the top of the screen — click one to switch. Each window is a full-screen terminal.
 
-### Panes
+Use windows to separate the things you're doing inside a project:
+- One window for your editor
+- One window for an AI coding agent
+- One window for a dev server or test runner
 
-A **pane** splits a window into multiple terminals side by side. Useful for watching logs while editing code, or running a server alongside a test runner.
+### Panes = multiplexing within a window
+
+A **pane** splits a window into multiple terminals side by side. Useful when you want to see two things at once — like a server's output while you're editing code in the same window, or two log streams next to each other.
 
 ---
 
@@ -123,22 +128,25 @@ No prefix key needed — these work instantly.
 
 ## Common workflows
 
-### Running an AI agent alongside your editor
+### Setting up a project session
 
 1. Start jmux: `jmux`
-2. Open your editor (vim, etc.) in the main area
-3. Split the window: `Ctrl-a` then `|`
-4. In the right pane, start your agent: `claude`
-5. Switch between panes with `Shift-Left` and `Shift-Right`
+2. You're in your first session — this is your first project
+3. Open your editor in the default window
+4. Create a new window for your agent: `Ctrl-a` then `c`
+5. Start your agent: `claude`
+6. Create another window for your dev server: `Ctrl-a` then `c`
+7. Switch between windows with `Ctrl-Right` / `Ctrl-Left` or click the tabs
 
-### Multiple agents on different projects
+Now you have one project with an editor, an agent, and a dev server — each in its own tab.
 
-1. Start jmux: `jmux`
-2. Create a new session: `Ctrl-a` then `n`
-3. Pick a project directory, name the session
-4. Start an agent in the new session
-5. Repeat for more projects
-6. Switch between sessions with `Ctrl-Shift-Up/Down` or click the sidebar
+### Working on multiple projects
+
+1. Create a new session: `Ctrl-a` then `n`
+2. Pick a project directory, name the session
+3. Set up windows for that project (editor, agent, etc.)
+4. Repeat for more projects
+5. Switch between projects with `Ctrl-Shift-Up/Down` or click the sidebar
 
 ### Parallel agents with worktrees (recommended)
 
