@@ -5,6 +5,7 @@ import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition
 import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { CommandPalette } from "./command-palette";
+import { InputModal } from "./input-modal";
 import type { Modal } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
@@ -735,15 +736,36 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     case "kill-session":
       await control.sendCommand(`kill-session -t '${currentSessionId}'`);
       return;
-    case "rename-session":
-      spawnTmuxPopup({ w: "40%", h: "8" }, resolve(jmuxDir, "config", "rename-session.sh"));
+    case "rename-session": {
+      const currentName = currentSessions.find(s => s.id === currentSessionId)?.name ?? "";
+      const modal = new InputModal({
+        header: "Rename Session",
+        subheader: `Current: ${currentName}`,
+        value: currentName,
+      });
+      modal.open();
+      openModal(modal, async (name) => {
+        await control.sendCommand(`rename-session -t '${currentSessionId}' '${name}'`);
+      });
       return;
+    }
     case "new-window":
       await handleToolbarAction("new-window");
       return;
-    case "rename-window":
-      spawnTmuxPopup({ w: "40%", h: "8" }, resolve(jmuxDir, "config", "rename-window.sh"));
+    case "rename-window": {
+      const currentName = currentWindows.find(w => w.active)?.name ?? "";
+      const modal = new InputModal({
+        header: "Rename Window",
+        subheader: `Current: ${currentName}`,
+        value: currentName,
+      });
+      modal.open();
+      openModal(modal, async (name) => {
+        await control.sendCommand(`rename-window '${name}'`);
+        fetchWindows();
+      });
       return;
+    }
     case "close-window":
       await control.sendCommand("kill-window");
       fetchWindows();
