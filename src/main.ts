@@ -6,6 +6,7 @@ import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { CommandPalette } from "./command-palette";
 import { InputModal } from "./input-modal";
+import { ListModal, type ListItem } from "./list-modal";
 import type { Modal } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
@@ -770,9 +771,25 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       await control.sendCommand("kill-window");
       fetchWindows();
       return;
-    case "move-window":
-      spawnTmuxPopup({ w: "40%", h: "50%" }, resolve(jmuxDir, "config", "move-window.sh"));
+    case "move-window": {
+      const currentWindowName = currentWindows.find(w => w.active)?.name ?? "";
+      const sessions = currentSessions
+        .filter(s => s.id !== currentSessionId)
+        .map(s => ({ id: s.id, label: s.name }));
+      if (sessions.length === 0) return;
+      const modal = new ListModal({
+        header: "Move Window",
+        subheader: `Moving: ${currentWindowName} \u2192 ?`,
+        items: sessions,
+      });
+      modal.open();
+      openModal(modal, async (value) => {
+        const selected = value as ListItem;
+        await control.sendCommand(`move-window -t '${selected.label}:'`);
+        fetchWindows();
+      });
       return;
+    }
     case "split-h":
       await handleToolbarAction("split-h");
       return;
