@@ -20,7 +20,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.9.1";
+const VERSION = "0.9.2";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -719,26 +719,35 @@ async function applySetting(key: string, value: string | number | boolean | stri
   }
 }
 
-function getNewSessionProviders(): NewSessionProviders {
+async function scanProjectDirsAsync(): Promise<string[]> {
   const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+  let searchDirs: string[] = [];
+  try {
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));
+    searchDirs = (cfg.projectDirs ?? []).map((d: string) => d.replace("~", homedir()));
+  } catch {}
+  if (searchDirs.length === 0) {
+    searchDirs = ["Code", "Projects", "src", "work", "dev"].map(d => resolve(homedir(), d));
+  }
+  searchDirs = searchDirs.filter(d => existsSync(d));
+  if (searchDirs.length === 0) return [homedir()];
+  const proc = Bun.spawn([
+    "find", ...searchDirs, "-maxdepth", "4",
+    "(", "-name", "node_modules", "-o", "-name", ".git", "-o", "-name", "vendor",
+          "-o", "-name", ".cache", "-o", "-name", "target", ")",
+    "-prune", "-name", ".git", "-print",
+  ], {
+    stdout: "pipe", stderr: "ignore",
+  });
+  const stdout = (await new Response(proc.stdout).text()).trim();
+  if (!stdout) return [homedir()];
+  const dirs = stdout.split("\n").map(p => p.replace(/\/\.git$/, "")).sort();
+  return [homedir(), ...new Set(dirs)];
+}
+
+function getNewSessionProviders(preScannedDirs: string[]): NewSessionProviders {
   return {
-    scanProjectDirs: () => {
-      let searchDirs: string[] = [];
-      try {
-        const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));
-        searchDirs = (cfg.projectDirs ?? []).map((d: string) => d.replace("~", homedir()));
-      } catch {}
-      if (searchDirs.length === 0) {
-        searchDirs = ["Code", "Projects", "src", "work", "dev"].map(d => resolve(homedir(), d));
-      }
-      const result = Bun.spawnSync(["find", ...searchDirs, "-maxdepth", "4", "-name", ".git"], {
-        stdout: "pipe", stderr: "ignore",
-      });
-      const stdout = result.stdout.toString().trim();
-      if (!stdout) return [homedir()];
-      const dirs = stdout.split("\n").map(p => p.replace(/\/\.git$/, "")).sort();
-      return [homedir(), ...new Set(dirs)];
-    },
+    scanProjectDirs: () => preScannedDirs,
     isBareRepo: (dir) => {
       try {
         const result = Bun.spawnSync(["git", "--git-dir", `${dir}/.git`, "config", "--get", "core.bare"], {
@@ -807,7 +816,8 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
 
   switch (commandId) {
     case "new-session": {
-      const modal = new NewSessionModal(getNewSessionProviders());
+      const dirs = await scanProjectDirsAsync();
+      const modal = new NewSessionModal(getNewSessionProviders(dirs));
       modal.open();
       openModal(modal, async (value) => {
         const result = value as NewSessionResult;
