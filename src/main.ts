@@ -7,7 +7,10 @@ import { Sidebar } from "./sidebar";
 import { CommandPalette } from "./command-palette";
 import { InputModal } from "./input-modal";
 import { ListModal, type ListItem } from "./list-modal";
+import { ContentModal, type StyledLine } from "./content-modal";
+import type { CellAttrs } from "./cell-grid";
 import type { Modal } from "./modal";
+import { MODAL_BG } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { resolve, dirname } from "path";
@@ -996,18 +999,62 @@ async function checkForUpdates(): Promise<void> {
 }
 
 async function showVersionInfo(): Promise<void> {
-  if (!ptyClientName) await resolveClientName();
-  if (!ptyClientName) return;
-  const tag = `v${VERSION}`;
-  const cmd = `${jmuxDir}/config/release-notes.sh ${tag}`;
-  const termCols = process.stdout.columns || 80;
-  const termRows = process.stdout.rows || 24;
-  const popupW = Math.max(40, Math.round(termCols * 0.7));
-  const popupH = Math.max(12, Math.round(termRows * 0.8));
-  const args = ["tmux"];
-  if (socketName) args.push("-L", socketName);
-  args.push("display-popup", "-c", ptyClientName, "-E", "-w", String(popupW), "-h", String(popupH), "-b", "heavy", "-S", "fg=#4f565d", "sh", "-c", cmd);
-  Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+  try {
+    const resp = await fetch(
+      `https://api.github.com/repos/jarredkenny/jmux/releases?per_page=10`,
+      { headers: { Accept: "application/vnd.github.v3+json" } },
+    );
+    if (!resp.ok) return;
+    const releases = await resp.json() as Array<{
+      tag_name: string; name?: string; published_at?: string; body?: string;
+    }>;
+
+    const currentTag = `v${VERSION}`;
+    const lines: StyledLine[] = [[]];
+
+    for (const r of releases) {
+      const tag = r.tag_name;
+      const date = (r.published_at || "").split("T")[0];
+      const name = r.name || tag;
+      const isCurrent = tag === currentTag;
+
+      if (isCurrent) {
+        lines.push([
+          { text: name, attrs: { fg: 2, fgMode: 1, bold: true, bg: MODAL_BG, bgMode: 2 } },
+          { text: "  \u2190 current", attrs: { fg: 2, fgMode: 1, bg: MODAL_BG, bgMode: 2 } },
+        ]);
+      } else {
+        lines.push([{ text: name, attrs: { bold: true, bg: MODAL_BG, bgMode: 2 } }]);
+      }
+      lines.push([{ text: date, attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }]);
+      lines.push([]);
+
+      const body = (r.body || "").trim();
+      if (body) {
+        for (const line of body.split("\n")) {
+          const formatted = line.replace(/^## (.*)/, "$1").replace(/^- /, "\u2022 ");
+          const isHeader = line.startsWith("## ");
+          lines.push([{
+            text: formatted,
+            attrs: isHeader
+              ? { bold: true, bg: MODAL_BG, bgMode: 2 }
+              : { bg: MODAL_BG, bgMode: 2 },
+          }]);
+        }
+        lines.push([]);
+      }
+      lines.push([{ text: "\u2500".repeat(40), attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }]);
+      lines.push([]);
+    }
+    lines.push([{ text: "github.com/jarredkenny/jmux/releases", attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }]);
+
+    const modal = new ContentModal({ lines, title: "jmux changelog" });
+    modal.setTermRows(process.stdout.rows || 24);
+    modal.open();
+    openModal(modal, () => {});
+  } catch {
+    // Network error — silently fail
+  }
 }
 
 // Check for updates in the background (non-blocking)
@@ -1194,14 +1241,48 @@ async function start(): Promise<void> {
   if (!existsSync(configPath)) {
     mkdirSync(configDir, { recursive: true });
     writeFileSync(configPath, JSON.stringify({}, null, 2) + "\n");
-    if (!ptyClientName) await resolveClientName();
-    if (ptyClientName) {
-      const welcomeScript = resolve(jmuxDir, "config", "welcome.sh");
-      const args = ["tmux"];
-      if (socketName) args.push("-L", socketName);
-      args.push("display-popup", "-c", ptyClientName, "-E", "-w", "55%", "-h", "60%", "-b", "heavy", "-S", "fg=#4f565d", welcomeScript);
-      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
-    }
+
+    const g: CellAttrs = { fg: 2, fgMode: 1, bg: MODAL_BG, bgMode: 2 };
+    const b: CellAttrs = { bold: true, bg: MODAL_BG, bgMode: 2 };
+    const d: CellAttrs = { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 };
+    const n: CellAttrs = { bg: MODAL_BG, bgMode: 2 };
+    const c: CellAttrs = { fg: 6, fgMode: 1, bg: MODAL_BG, bgMode: 2 };
+    const y: CellAttrs = { fg: 3, fgMode: 1, bg: MODAL_BG, bgMode: 2 };
+
+    const welcomeLines: StyledLine[] = [
+      [{ text: "The terminal workspace for agentic development", attrs: d }],
+      [],
+      [{ text: "\u2500".repeat(44), attrs: d }],
+      [],
+      [{ text: "Essential keybindings", attrs: b }],
+      [],
+      [{ text: "Ctrl-Shift-Up/Down", attrs: g }, { text: "     Switch between sessions", attrs: n }],
+      [{ text: "Ctrl-a", attrs: g }, { text: " then ", attrs: n }, { text: "n", attrs: g }, { text: "          New session", attrs: n }],
+      [{ text: "Ctrl-a", attrs: g }, { text: " then ", attrs: n }, { text: "c", attrs: g }, { text: "          New window (tab)", attrs: n }],
+      [{ text: "Ctrl-a", attrs: g }, { text: " then ", attrs: n }, { text: "|", attrs: g }, { text: "          Split pane horizontally", attrs: n }],
+      [{ text: "Ctrl-a", attrs: g }, { text: " then ", attrs: n }, { text: "-", attrs: g }, { text: "          Split pane vertically", attrs: n }],
+      [{ text: "Shift-Arrow", attrs: g }, { text: "            Move between panes", attrs: n }],
+      [{ text: "Ctrl-a", attrs: g }, { text: " then ", attrs: n }, { text: "p", attrs: g }, { text: "          Command palette", attrs: n }],
+      [],
+      [{ text: "\u2500".repeat(44), attrs: d }],
+      [],
+      [{ text: "The sidebar", attrs: b }, { text: " on the left shows all your sessions.", attrs: n }],
+      [{ text: "\u25CF", attrs: g }, { text: " Green dot = new output    ", attrs: n }, { text: "!", attrs: y }, { text: " Orange = needs review", attrs: n }],
+      [{ text: "Click a session to switch to it.", attrs: n }],
+      [],
+      [{ text: "\u2500".repeat(44), attrs: d }],
+      [],
+      [{ text: "Next steps", attrs: b }],
+      [],
+      [{ text: "1.", attrs: c }, { text: " Try ", attrs: n }, { text: "Ctrl-a p", attrs: g }, { text: " to open the command palette", attrs: n }],
+      [{ text: "2.", attrs: c }, { text: " Run ", attrs: n }, { text: "jmux --install-agent-hooks", attrs: g }, { text: " for Claude Code notifications", attrs: n }],
+      [{ text: "3.", attrs: c }, { text: " Full guide: ", attrs: n }, { text: "github.com/jarredkenny/jmux", attrs: d }],
+    ];
+
+    const welcomeModal = new ContentModal({ lines: welcomeLines, title: "Welcome to jmux" });
+    welcomeModal.setTermRows(process.stdout.rows || 24);
+    welcomeModal.open();
+    openModal(welcomeModal, () => {});
   }
 
   // Subscribe to @jmux-attention across all sessions
