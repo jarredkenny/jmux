@@ -62,6 +62,78 @@ describe("writeString", () => {
   });
 });
 
+describe("writeString with wide and multi-codepoint characters", () => {
+  test("writes emoji (supplementary Unicode) as a single cell, not two surrogates", () => {
+    // 🎉 is U+1F389 — a supplementary character that is 2 UTF-16 code units.
+    // writeString should place the full character in one cell, not split it
+    // into two surrogate halves.
+    const grid = createGrid(10, 1);
+    writeString(grid, 0, 0, "a🎉b");
+
+    // "a" at col 0
+    expect(grid.cells[0][0].char).toBe("a");
+    // 🎉 at col 1 — should be the full emoji, not a surrogate half
+    expect(grid.cells[0][1].char).toBe("🎉");
+    // 🎉 is 2-wide, so col 2 should be a continuation cell
+    expect(grid.cells[0][2].width).toBe(0);
+    // "b" should be at col 3 (after the 2-wide emoji)
+    expect(grid.cells[0][3].char).toBe("b");
+  });
+
+  test("sets width=2 for wide characters and inserts continuation cells", () => {
+    // CJK character 你 (U+4F60) is 2 terminal columns wide
+    const grid = createGrid(10, 1);
+    writeString(grid, 0, 0, "a你b");
+
+    expect(grid.cells[0][0].char).toBe("a");
+    expect(grid.cells[0][0].width).toBe(1);
+    // 你 at col 1, width 2
+    expect(grid.cells[0][1].char).toBe("你");
+    expect(grid.cells[0][1].width).toBe(2);
+    // col 2 is continuation
+    expect(grid.cells[0][2].width).toBe(0);
+    expect(grid.cells[0][2].char).toBe("");
+    // "b" at col 3
+    expect(grid.cells[0][3].char).toBe("b");
+  });
+
+  test("box-drawing characters remain width=1", () => {
+    const grid = createGrid(5, 1);
+    writeString(grid, 0, 0, "─│┌");
+
+    expect(grid.cells[0][0].char).toBe("─");
+    expect(grid.cells[0][0].width).toBe(1);
+    expect(grid.cells[0][1].char).toBe("│");
+    expect(grid.cells[0][1].width).toBe(1);
+    expect(grid.cells[0][2].char).toBe("┌");
+    expect(grid.cells[0][2].width).toBe(1);
+  });
+
+  test("truncates wide character that would overflow grid boundary", () => {
+    // If a 2-wide character starts at the last column, it shouldn't
+    // write a half-character — it should be omitted
+    const grid = createGrid(3, 1);
+    writeString(grid, 0, 0, "a你");
+
+    expect(grid.cells[0][0].char).toBe("a");
+    // 你 starts at col 1 but needs cols 1-2. Col 2 is the last col (index 2).
+    // It should fit: col 1 = char, col 2 = continuation
+    expect(grid.cells[0][1].char).toBe("你");
+    expect(grid.cells[0][1].width).toBe(2);
+    expect(grid.cells[0][2].width).toBe(0);
+  });
+
+  test("wide character at exact boundary is omitted", () => {
+    // Grid is 2 cols wide. "a" takes col 0. 你 needs cols 1-2 but col 2 doesn't exist.
+    const grid = createGrid(2, 1);
+    writeString(grid, 0, 0, "a你");
+
+    expect(grid.cells[0][0].char).toBe("a");
+    // 你 can't fit — needs 2 cols but only 1 remains. Should be skipped.
+    expect(grid.cells[0][1].char).toBe(" "); // default unchanged
+  });
+});
+
 describe("DEFAULT_CELL", () => {
   test("is a space with default colors and no attributes", () => {
     expect(DEFAULT_CELL.char).toBe(" ");

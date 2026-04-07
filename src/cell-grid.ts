@@ -37,6 +37,31 @@ export interface CellAttrs {
   dim?: boolean;
 }
 
+// Display width of a Unicode codepoint for grid layout purposes.
+// Must agree with terminal rendering for correct column tracking.
+// Used by both writeString (sidebar/modals) and charDisplayWidth (toolbar).
+export function cellWidth(cp: number): number {
+  if (cp < 0x1100) return 1;
+  // CJK and wide character ranges
+  if (
+    (cp >= 0x1100 && cp <= 0x115F) ||   // Hangul Jamo
+    (cp >= 0x2E80 && cp <= 0x303E) ||   // CJK Radicals, Kangxi, Ideographic
+    (cp >= 0x3041 && cp <= 0x33BF) ||   // Hiragana, Katakana, Bopomofo, CJK compat
+    (cp >= 0x3400 && cp <= 0x4DBF) ||   // CJK Extension A
+    (cp >= 0x4E00 && cp <= 0xA4CF) ||   // CJK Unified + Yi
+    (cp >= 0xAC00 && cp <= 0xD7AF) ||   // Hangul Syllables
+    (cp >= 0xF900 && cp <= 0xFAFF) ||   // CJK Compatibility Ideographs
+    (cp >= 0xFE30 && cp <= 0xFE6F) ||   // CJK Compatibility Forms
+    (cp >= 0xFF01 && cp <= 0xFF60) ||   // Fullwidth Forms
+    (cp >= 0xFFE0 && cp <= 0xFFE6) ||   // Fullwidth Signs
+    (cp >= 0x1F000) ||                   // Emoji & supplementary symbols
+    (cp >= 0x20000 && cp <= 0x2FFFF)     // CJK Extension B+
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
 export function writeString(
   grid: CellGrid,
   row: number,
@@ -45,11 +70,17 @@ export function writeString(
   attrs?: CellAttrs,
 ): void {
   if (row < 0 || row >= grid.rows) return;
-  for (let i = 0; i < text.length; i++) {
-    const c = col + i;
-    if (c < 0 || c >= grid.cols) continue;
+  let c = col;
+  for (const ch of text) {
+    if (c >= grid.cols) break;
+    if (c < 0) { c++; continue; }
+    const cp = ch.codePointAt(0) ?? 0;
+    const w = cellWidth(cp);
+    // Skip wide chars that would overflow the grid
+    if (w === 2 && c + 1 >= grid.cols) break;
     const cell = grid.cells[row][c];
-    cell.char = text[i];
+    cell.char = ch;
+    cell.width = w;
     if (attrs) {
       if (attrs.fg !== undefined) cell.fg = attrs.fg;
       if (attrs.bg !== undefined) cell.bg = attrs.bg;
@@ -60,5 +91,16 @@ export function writeString(
       if (attrs.underline !== undefined) cell.underline = attrs.underline;
       if (attrs.dim !== undefined) cell.dim = attrs.dim;
     }
+    if (w === 2) {
+      // Insert continuation cell
+      const cont = grid.cells[row][c + 1];
+      cont.char = "";
+      cont.width = 0;
+      if (attrs) {
+        if (attrs.bg !== undefined) cont.bg = attrs.bg;
+        if (attrs.bgMode !== undefined) cont.bgMode = attrs.bgMode;
+      }
+    }
+    c += w;
   }
 }

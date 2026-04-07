@@ -1,6 +1,6 @@
 {
   "name": "@jx0/jmux",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "The terminal workspace for agentic development",
   "type": "module",
   "bin": {
@@ -33,6 +33,7 @@
   },
   "homepage": "https://github.com/jarredkenny/jmux",
   "dependencies": {
+    "@xterm/addon-unicode-graphemes": "^0.4.0",
     "@xterm/headless": "^6.0.0",
     "bun-pty": "^0.4.8"
   },

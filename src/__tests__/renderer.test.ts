@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { sgrForCell, compositeGrids, getModalPosition, BORDER_CHAR } from "../renderer";
+import { sgrForCell, compositeGrids, getModalPosition, BORDER_CHAR, charDisplayWidth, stringDisplayWidth } from "../renderer";
 import { createGrid, writeString } from "../cell-grid";
 import { ColorMode } from "../types";
 import type { Cell } from "../types";
@@ -225,5 +225,79 @@ describe("compositeGrids with palette overlay", () => {
     expect(result.rows).toBe(3);
     // No dimming when palette is null
     expect(result.cells[1][5].dim).toBe(false);
+  });
+});
+
+describe("charDisplayWidth", () => {
+  test("ASCII characters are 1-wide", () => {
+    expect(charDisplayWidth("a")).toBe(1);
+    expect(charDisplayWidth("Z")).toBe(1);
+    expect(charDisplayWidth("0")).toBe(1);
+    expect(charDisplayWidth(" ")).toBe(1);
+  });
+
+  test("box-drawing characters are 1-wide", () => {
+    // These are universally 1-wide in all terminals
+    expect(charDisplayWidth("─")).toBe(1); // U+2500
+    expect(charDisplayWidth("│")).toBe(1); // U+2502
+    expect(charDisplayWidth("┌")).toBe(1); // U+250C
+    expect(charDisplayWidth("└")).toBe(1); // U+2514
+  });
+
+  test("geometric shapes are 1-wide in text presentation", () => {
+    // U+25A0-U+25FF: these render as 1-wide in text presentation
+    // in modern terminals (Ghostty, iTerm, etc.)
+    expect(charDisplayWidth("●")).toBe(1); // U+25CF
+    expect(charDisplayWidth("▲")).toBe(1); // U+25B2
+    expect(charDisplayWidth("▼")).toBe(1); // U+25BC
+    expect(charDisplayWidth("◈")).toBe(1); // U+25C8 — used in toolbar
+    expect(charDisplayWidth("▸")).toBe(1); // U+25B8
+  });
+
+  test("miscellaneous technical symbols are 1-wide in text presentation", () => {
+    // U+2300-U+23FF
+    expect(charDisplayWidth("⏸")).toBe(1); // U+23F8 — toolbar pause
+    expect(charDisplayWidth("⏏")).toBe(1); // U+23CF — toolbar eject
+  });
+
+  test("miscellaneous symbols are 1-wide in text presentation", () => {
+    // U+2600-U+27BF
+    expect(charDisplayWidth("⚙")).toBe(1); // U+2699 — toolbar settings
+  });
+
+  test("CJK Unified Ideographs are 2-wide", () => {
+    expect(charDisplayWidth("你")).toBe(2); // U+4F60
+    expect(charDisplayWidth("好")).toBe(2); // U+597D
+    expect(charDisplayWidth("中")).toBe(2); // U+4E2D
+  });
+
+  test("Hangul Syllables are 2-wide", () => {
+    expect(charDisplayWidth("한")).toBe(2); // U+D55C
+    expect(charDisplayWidth("글")).toBe(2); // U+AE00
+  });
+
+  test("Fullwidth Forms are 2-wide", () => {
+    expect(charDisplayWidth("＋")).toBe(2); // U+FF0B — toolbar plus
+    expect(charDisplayWidth("Ａ")).toBe(2); // U+FF21
+  });
+
+  test("emoji are 2-wide", () => {
+    expect(charDisplayWidth("🎉")).toBe(2); // U+1F389
+    expect(charDisplayWidth("🚀")).toBe(2); // U+1F680
+  });
+
+  test("general punctuation is 1-wide", () => {
+    expect(charDisplayWidth("–")).toBe(1); // U+2013 en-dash
+    expect(charDisplayWidth("—")).toBe(1); // U+2014 em-dash
+    expect(charDisplayWidth("…")).toBe(1); // U+2026 ellipsis
+    expect(charDisplayWidth("•")).toBe(1); // U+2022 bullet
+  });
+});
+
+describe("stringDisplayWidth", () => {
+  test("computes width of mixed ASCII and wide characters", () => {
+    expect(stringDisplayWidth("hello")).toBe(5);
+    expect(stringDisplayWidth("a你b")).toBe(4); // 1+2+1
+    expect(stringDisplayWidth("🎉!")).toBe(3);  // 2+1
   });
 });

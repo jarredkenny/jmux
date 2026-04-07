@@ -1,6 +1,6 @@
 import type { Cell, CellGrid, CursorPosition, WindowTab } from "./types";
 import { ColorMode } from "./types";
-import { createGrid, DEFAULT_CELL } from "./cell-grid";
+import { createGrid, DEFAULT_CELL, cellWidth } from "./cell-grid";
 
 export const BORDER_CHAR = "\u2502"; // │
 
@@ -62,26 +62,14 @@ export function sgrForCell(cell: Cell): string {
   return `\x1b[${parts.join(";")}m`;
 }
 
-// Display width of a character — wide Unicode symbols take 2 terminal columns
+// Display width of a character — delegates to the shared cellWidth table.
 function charDisplayWidth(ch: string): number {
-  const cp = ch.codePointAt(0) ?? 0;
-  if (cp < 0x2000) return 1;
-  // Ranges that render as 2-wide in most terminal fonts
-  if (
-    (cp >= 0x2300 && cp <= 0x23FF) ||  // Miscellaneous Technical
-    (cp >= 0x25A0 && cp <= 0x25FF) ||  // Geometric Shapes
-    (cp >= 0x2600 && cp <= 0x27BF) ||  // Misc Symbols + Dingbats
-    (cp >= 0x2900 && cp <= 0x29FF) ||  // Misc Mathematical Symbols-B
-    (cp >= 0x2B00 && cp <= 0x2BFF) ||  // Misc Symbols and Arrows
-    (cp >= 0xFF01 && cp <= 0xFF60) ||  // Fullwidth Forms
-    (cp >= 0x1F000)                     // Supplementary symbols/emoji
-  ) {
-    return 2;
-  }
-  return 1;
+  return cellWidth(ch.codePointAt(0) ?? 0);
 }
 
-function stringDisplayWidth(s: string): number {
+export { charDisplayWidth };
+
+export function stringDisplayWidth(s: string): number {
   let w = 0;
   for (const ch of s) w += charDisplayWidth(ch);
   return w;
@@ -393,11 +381,13 @@ export class Renderer {
         buf.push(cell.char);
         col += cell.width;
 
-        // After characters with potentially ambiguous terminal width,
-        // explicitly reposition cursor to prevent drift from width
-        // disagreements between xterm.js and the actual terminal.
-        const cp = cell.char.codePointAt(0) ?? 0;
-        if (col <= grid.cols && (cell.width > 1 || cell.char.length > 1 || cp >= 0x2500)) {
+        // After wide characters (width > 1), explicitly reposition
+        // cursor to prevent drift from width disagreements between
+        // xterm.js and the actual terminal.  Only reposition for
+        // genuinely wide cells — repositioning after 1-wide chars
+        // (box-drawing, symbols) forces alignment to xterm.js's
+        // model and creates ghost gaps when the terminal disagrees.
+        if (col <= grid.cols && cell.width > 1) {
           buf.push(`\x1b[${y + 1};${col}H`);
         }
       }
