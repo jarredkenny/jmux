@@ -1,6 +1,6 @@
 {
   "name": "@jx0/jmux",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "The terminal workspace for agentic development",
   "type": "module",
   "bin": {
@@ -14,7 +14,8 @@
   "scripts": {
     "dev": "bun run src/main.ts",
     "test": "bun test",
-    "typecheck": "bun run tsc --noEmit"
+    "typecheck": "bun run tsc --noEmit",
+    "docker": "docker build -f Dockerfile.test -t jmux-test . && docker run --rm -it jmux-test"
   },
   "keywords": [
     "tmux",

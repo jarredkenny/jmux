@@ -72,9 +72,8 @@ interface SessionGroup {
 function getGroupLabel(dir: string): string | null {
   const segments = dir.split("/").filter((s) => s.length > 0);
   // For ~/X/Y/... paths, group by X/Y (fixed depth)
-  // ~/Code/personal/jmux → "Code/personal"
-  // ~/Code/personal      → "Code/personal"
-  // ~/Code/tracktile/platform → "Code/tracktile"
+  // ~/X/Y/Z → "X/Y"
+  // ~/X/Y   → "X/Y"
   if (segments[0] === "~") {
     if (segments.length < 3) return null; // ~ or ~/Code — too shallow
     return segments[1] + "/" + segments[2];
@@ -85,12 +84,12 @@ function getGroupLabel(dir: string): string | null {
 }
 
 function getSubdirectory(dir: string, groupLabel: string): string | null {
-  // dir: "~/Code/personal/jmux", groupLabel: "Code/personal" → "jmux"
-  // dir: "~/Code/personal/jmux/sub", groupLabel: "Code/personal" → "jmux/sub"
+  // dir: "~/X/Y/Z", groupLabel: "X/Y" → "Z"
+  // dir: "~/X/Y/Z/sub", groupLabel: "X/Y" → "Z/sub"
   const idx = dir.indexOf(groupLabel);
   if (idx < 0) return null;
   const rest = dir.slice(idx + groupLabel.length);
-  // rest is e.g. "/jmux" or "/jmux/sub/deep"
+  // rest is e.g. "/Z" or "/Z/sub/deep"
   const trimmed = rest.replace(/^\/+/, "");
   if (!trimmed) return null;
   // For nested paths, just show the last directory name

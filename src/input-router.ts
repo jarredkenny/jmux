@@ -39,6 +39,7 @@ export interface InputRouterOptions {
   onModalInput?: (data: string) => void;
   onModalToggle?: () => void;
   onNewSession?: () => void;
+  onSettings?: () => void;
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
 }
@@ -88,6 +89,10 @@ export class InputRouter {
           this.opts.onNewSession?.();
           return;
         }
+        if (data === "i") {
+          this.opts.onSettings?.();
+          return;
+        }
         // Not intercepted — forward to PTY normally (tmux handles its prefix binding)
       } else if (data === "\x01") {
         this.prefixSeen = true;
@@ -131,8 +136,13 @@ export class InputRouter {
         return; // Consume sidebar mouse events
       }
 
-      // When palette is open, ignore all non-sidebar mouse events
-      if (this.modalOpen) return;
+      // When modal is open, forward wheel events as arrow keys, ignore other mouse events
+      if (this.modalOpen) {
+        if (isWheel) {
+          this.opts.onModalInput?.((mouse.button & 1) ? "\x1b[B" : "\x1b[A");
+        }
+        return;
+      }
 
       // Toolbar click — row 1 in main area
       if (mouse.y === 1 && !mouse.release && !isMotion && !isWheel) {

@@ -20,7 +20,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.9.0";
+const VERSION = "0.9.1";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -180,19 +180,27 @@ for (let i = 2; i < process.argv.length; i++) {
   }
 }
 // Preflight checks — offer to install missing dependencies
+function hasCommand(cmd: string[]): boolean {
+  try {
+    return Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" }).exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
 async function preflight(): Promise<void> {
   const missing: string[] = [];
-  if (Bun.spawnSync(["tmux", "-V"], { stdout: "pipe", stderr: "pipe" }).exitCode !== 0) {
+  if (!hasCommand(["tmux", "-V"])) {
     missing.push("tmux");
   }
-  if (Bun.spawnSync(["fzf", "--version"], { stdout: "pipe", stderr: "pipe" }).exitCode !== 0) {
+  if (!hasCommand(["fzf", "--version"])) {
     missing.push("fzf");
   }
   if (missing.length === 0) return;
 
   const isMac = process.platform === "darwin";
-  const hasBrew = isMac && Bun.spawnSync(["brew", "--version"], { stdout: "pipe", stderr: "pipe" }).exitCode === 0;
-  const hasApt = !isMac && Bun.spawnSync(["apt", "--version"], { stdout: "pipe", stderr: "pipe" }).exitCode === 0;
+  const hasBrew = isMac && hasCommand(["brew", "--version"]);
+  const hasApt = !isMac && hasCommand(["apt", "--version"]);
 
   console.log(`\njmux requires ${missing.join(" and ")} to run.\n`);
 
@@ -214,11 +222,16 @@ async function preflight(): Promise<void> {
 
     if (response === "" || response === "y" || response === "yes") {
       console.log(`\nRunning: ${installCmd}\n`);
-      const args = hasBrew
-        ? ["brew", "install", ...missing]
-        : ["sudo", "apt", "install", "-y", ...missing];
-      const result = Bun.spawnSync(args, { stdout: "inherit", stderr: "inherit" });
-      if (result.exitCode !== 0) {
+      try {
+        const args = hasBrew
+          ? ["brew", "install", ...missing]
+          : ["sudo", "apt-get", "install", "-y", ...missing];
+        const result = Bun.spawnSync(args, { stdout: "inherit", stderr: "inherit" });
+        if (result.exitCode !== 0) {
+          console.error("\nInstallation failed. Please install manually and try again.");
+          process.exit(1);
+        }
+      } catch {
         console.error("\nInstallation failed. Please install manually and try again.");
         process.exit(1);
       }
@@ -551,6 +564,7 @@ const inputRouter = new InputRouter(
     },
     onModalToggle: () => togglePalette(),
     onNewSession: () => handlePaletteAction({ commandId: "new-session" }),
+    onSettings: () => handleToolbarAction("settings"),
     onModalInput: (data) => {
       if (!activeModal?.isOpen()) return;
       const action = activeModal.handleInput(data);
@@ -655,16 +669,11 @@ function buildPaletteCommands(): PaletteCommand[] {
     { id: "open-claude", label: "Open Claude", category: "other" },
   );
 
-  // Settings with sub-lists
+  // Settings
   commands.push({
     id: "setting-sidebar-width",
     label: "Sidebar width",
     category: "setting",
-    sublist: [20, 22, 24, 26, 28, 30, 34].map((w) => ({
-      id: String(w),
-      label: String(w),
-      current: w === sidebarWidth,
-    })),
   });
 
   commands.push({
@@ -792,14 +801,6 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     return;
   }
 
-  // Settings with sub-list values
-  if (commandId === "setting-sidebar-width" && sublistOptionId) {
-    const newWidth = parseInt(sublistOptionId, 10);
-    if (!isNaN(newWidth)) {
-      await applySetting("sidebarWidth", newWidth, "number");
-    }
-    return;
-  }
   // Static commands — many reuse existing handlers
   if (!ptyClientName) await resolveClientName();
   if (!ptyClientName) return;
@@ -907,6 +908,21 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     case "open-claude":
       await handleToolbarAction("claude");
       return;
+    case "setting-sidebar-width": {
+      const modal = new InputModal({
+        header: "Sidebar Width",
+        subheader: `Current: ${sidebarWidth} (range: 10-60)`,
+        value: String(sidebarWidth),
+      });
+      modal.open();
+      openModal(modal, async (value) => {
+        const newWidth = parseInt(value as string, 10);
+        if (!isNaN(newWidth) && newWidth >= 10 && newWidth <= 60) {
+          await applySetting("sidebarWidth", newWidth, "number");
+        }
+      });
+      return;
+    }
     case "setting-wtm": {
       let wtmSettings: Record<string, any> = {};
       try {
@@ -983,6 +999,14 @@ async function handleToolbarAction(id: string): Promise<void> {
     case "claude":
       await control.sendCommand(`split-window -t ${ptyClientName} -h -c '#{pane_current_path}' ${claudeCommand}`);
       return;
+    case "settings": {
+      const settingsCommands = buildPaletteCommands().filter(c => c.category === "setting");
+      palette.open(settingsCommands);
+      openModal(palette, (value) => {
+        handlePaletteAction(value as PaletteResult);
+      });
+      return;
+    }
   }
 
 }

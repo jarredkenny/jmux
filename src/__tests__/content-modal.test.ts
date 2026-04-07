@@ -46,10 +46,10 @@ describe("ContentModal", () => {
     expect(grid.cells[2][2].char).toBe("L");
   });
 
-  // termRows=8: headerRows=2, contentArea=8-2-1=5, maxScroll=20-5=15
+  // termRows=14: headerRows=2, contentArea=14-2-7=5, maxScroll=20-5=15
   test("j scrolls down one line", () => {
     const modal = makeModal();
-    modal.setTermRows(8);
+    modal.setTermRows(14);
 
     const before = modal.getGrid(60);
     expect(before.cells[2][2].char).toBe("L"); // "Line one plain"
@@ -63,7 +63,7 @@ describe("ContentModal", () => {
 
   test("k scrolls up one line", () => {
     const modal = makeModal();
-    modal.setTermRows(8);
+    modal.setTermRows(14);
 
     modal.handleInput("j");
     const action = modal.handleInput("k");
@@ -75,7 +75,7 @@ describe("ContentModal", () => {
 
   test("k at top does nothing (stays at 0)", () => {
     const modal = makeModal();
-    modal.setTermRows(8);
+    modal.setTermRows(14);
 
     modal.handleInput("k");
     const grid = modal.getGrid(60);
@@ -84,7 +84,7 @@ describe("ContentModal", () => {
 
   test("down arrow scrolls down one line", () => {
     const modal = makeModal();
-    modal.setTermRows(8);
+    modal.setTermRows(14);
 
     modal.handleInput("\x1b[B");
     const grid = modal.getGrid(60);
@@ -93,7 +93,7 @@ describe("ContentModal", () => {
 
   test("up arrow scrolls up one line", () => {
     const modal = makeModal();
-    modal.setTermRows(8);
+    modal.setTermRows(14);
 
     modal.handleInput("j");
     modal.handleInput("\x1b[A");
@@ -131,7 +131,7 @@ describe("ContentModal", () => {
 
   test("renders styled segments (bold text on correct cells)", () => {
     const modal = makeModal();
-    modal.setTermRows(8);
+    modal.setTermRows(14);
 
     const grid = modal.getGrid(60);
     // Row 2 = "Line one plain" — not bold
@@ -146,10 +146,10 @@ describe("ContentModal", () => {
     expect(grid2.cells[2][11].bold).toBe(false);
   });
 
-  // termRows=8: contentArea=5, maxScroll=15
+  // termRows=14: contentArea=5, maxScroll=15
   test("g scrolls to top (after scrolling down)", () => {
     const modal = makeModal();
-    modal.setTermRows(8);
+    modal.setTermRows(14);
 
     modal.handleInput("j");
     modal.handleInput("j");
@@ -162,7 +162,7 @@ describe("ContentModal", () => {
 
   test("G scrolls to bottom", () => {
     const modal = makeModal();
-    modal.setTermRows(8); // contentArea=5, maxScroll=15
+    modal.setTermRows(14); // contentArea=5, maxScroll=15
 
     modal.handleInput("G");
     const grid = modal.getGrid(60);
@@ -176,10 +176,10 @@ describe("ContentModal", () => {
     expect(grid.cells[lastContentRow][7].char).toBe("t"); // "Line twenty" -> 't' at index 5 + col offset 2 = col 7
   });
 
-  // termRows=12: headerRows=2, contentArea=9, maxScroll=11, half=floor(9/2)=4
+  // termRows=18: headerRows=2, contentArea=9, maxScroll=11, half=floor(9/2)=4
   test("d scrolls half page down", () => {
     const modal = makeModal();
-    modal.setTermRows(12);
+    modal.setTermRows(18);
 
     modal.handleInput("d");
     const grid = modal.getGrid(60);
@@ -191,7 +191,7 @@ describe("ContentModal", () => {
 
   test("u scrolls half page up", () => {
     const modal = makeModal();
-    modal.setTermRows(12); // half=4
+    modal.setTermRows(18); // half=4
 
     modal.handleInput("d"); // offset=4
     modal.handleInput("d"); // offset=8
@@ -203,7 +203,7 @@ describe("ContentModal", () => {
 
   test("space scrolls half page down (same as d)", () => {
     const modal = makeModal();
-    modal.setTermRows(12);
+    modal.setTermRows(18);
 
     modal.handleInput(" ");
     const grid = modal.getGrid(60);
@@ -213,7 +213,7 @@ describe("ContentModal", () => {
 
   test("status bar is rendered on last row", () => {
     const modal = makeModal();
-    modal.setTermRows(20);
+    modal.setTermRows(26);
 
     const grid = modal.getGrid(60);
     const lastRow = grid.rows - 1;
