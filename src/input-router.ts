@@ -38,6 +38,7 @@ export interface InputRouterOptions {
   onHover?: (target: { area: "sidebar"; row: number } | { area: "toolbar"; col: number } | null) => void;
   onModalInput?: (data: string) => void;
   onModalToggle?: () => void;
+  onNewSession?: () => void;
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
 }
@@ -83,7 +84,11 @@ export class InputRouter {
           this.opts.onModalToggle?.();
           return;
         }
-        // Not "p" — forward to PTY normally (tmux handles its prefix binding)
+        if (data === "n") {
+          this.opts.onNewSession?.();
+          return;
+        }
+        // Not intercepted — forward to PTY normally (tmux handles its prefix binding)
       } else if (data === "\x01") {
         this.prefixSeen = true;
         this.prefixTimer = setTimeout(() => { this.prefixSeen = false; this.prefixTimer = null; }, 2000);

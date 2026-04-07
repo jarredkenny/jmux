@@ -8,6 +8,7 @@ import { CommandPalette } from "./command-palette";
 import { InputModal } from "./input-modal";
 import { ListModal, type ListItem } from "./list-modal";
 import { ContentModal, type StyledLine } from "./content-modal";
+import { NewSessionModal, type NewSessionResult, type NewSessionProviders } from "./new-session-modal";
 import type { CellAttrs } from "./cell-grid";
 import type { Modal } from "./modal";
 import { MODAL_BG } from "./modal";
@@ -549,6 +550,7 @@ const inputRouter = new InputRouter(
       if (changed) scheduleRender();
     },
     onModalToggle: () => togglePalette(),
+    onNewSession: () => handlePaletteAction({ commandId: "new-session" }),
     onModalInput: (data) => {
       if (!activeModal?.isOpen()) return;
       const action = activeModal.handleInput(data);
@@ -699,6 +701,71 @@ async function applySetting(key: string, value: string | number, type: string): 
   }
 }
 
+function getNewSessionProviders(): NewSessionProviders {
+  const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+  return {
+    scanProjectDirs: () => {
+      let searchDirs: string[] = [];
+      try {
+        const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));
+        searchDirs = (cfg.projectDirs ?? []).map((d: string) => d.replace("~", homedir()));
+      } catch {}
+      if (searchDirs.length === 0) {
+        searchDirs = ["Code", "Projects", "src", "work", "dev"].map(d => resolve(homedir(), d));
+      }
+      const result = Bun.spawnSync(["find", ...searchDirs, "-maxdepth", "4", "-name", ".git"], {
+        stdout: "pipe", stderr: "ignore",
+      });
+      const stdout = result.stdout.toString().trim();
+      if (!stdout) return [homedir()];
+      const dirs = stdout.split("\n").map(p => p.replace(/\/\.git$/, "")).sort();
+      return [homedir(), ...new Set(dirs)];
+    },
+    isBareRepo: (dir) => {
+      try {
+        const result = Bun.spawnSync(["git", "--git-dir", `${dir}/.git`, "config", "--get", "core.bare"], {
+          stdout: "pipe", stderr: "ignore",
+        });
+        return result.stdout.toString().trim() === "true";
+      } catch { return false; }
+    },
+    getWorktrees: (dir) => {
+      const result = Bun.spawnSync(["git", "--git-dir", `${dir}/.git`, "worktree", "list", "--porcelain"], {
+        stdout: "pipe", stderr: "ignore",
+      });
+      const lines = result.stdout.toString().split("\n");
+      const worktrees: Array<{ name: string; path: string }> = [];
+      let currentPath = "";
+      for (const line of lines) {
+        if (line.startsWith("worktree ")) currentPath = line.slice(9);
+        if (line.startsWith("branch refs/heads/")) {
+          worktrees.push({ name: line.slice(18), path: currentPath });
+        }
+      }
+      return worktrees;
+    },
+    getRemoteBranches: (dir) => {
+      const result = Bun.spawnSync(["git", "--git-dir", `${dir}/.git`, "for-each-ref",
+        "--format=%(refname:short)", "refs/remotes/origin/"], {
+        stdout: "pipe", stderr: "ignore",
+      });
+      return result.stdout.toString().trim().split("\n")
+        .map(b => b.replace("origin/", ""))
+        .filter(b => b && b !== "HEAD")
+        .sort();
+    },
+    getDefaultBranch: (dir) => {
+      for (const b of ["main", "master", "develop"]) {
+        const result = Bun.spawnSync(["git", "--git-dir", `${dir}/.git`, "rev-parse", "--verify", `refs/remotes/origin/${b}`], {
+          stdout: "ignore", stderr: "ignore",
+        });
+        if (result.exitCode === 0) return b;
+      }
+      return "";
+    },
+  };
+}
+
 async function handlePaletteAction(result: PaletteResult): Promise<void> {
   const { commandId, sublistOptionId } = result;
 
@@ -734,9 +801,36 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
   if (!ptyClientName) return;
 
   switch (commandId) {
-    case "new-session":
-      spawnTmuxPopup({ w: "60%", h: "70%" }, resolve(jmuxDir, "config", "new-session.sh"));
+    case "new-session": {
+      const modal = new NewSessionModal(getNewSessionProviders());
+      modal.open();
+      openModal(modal, async (value) => {
+        const result = value as NewSessionResult;
+        const parentClient = ptyClientName;
+        if (!parentClient) return;
+        switch (result.type) {
+          case "standard":
+            await control.sendCommand(`new-session -d -s '${result.name}' -c '${result.dir}'`);
+            await control.sendCommand(`switch-client -c ${parentClient} -t '${result.name}'`);
+            break;
+          case "existing_worktree":
+            await control.sendCommand(`new-session -d -s '${result.branch}' -c '${result.path}'`);
+            await control.sendCommand(`switch-client -c ${parentClient} -t '${result.branch}'`);
+            break;
+          case "new_worktree": {
+            const wtPath = `${result.dir}/${result.name}`;
+            const cmd = `wtm create ${result.name} --from ${result.baseBranch} --no-shell; cd ${result.name}; exec $SHELL`;
+            await control.sendCommand(`new-session -d -s '${result.name}' -c '${result.dir}' '${cmd}'`);
+            const waitCmd = `while [ ! -d '${wtPath}' ]; do sleep 0.2; done; cd '${wtPath}' && exec $SHELL`;
+            await control.sendCommand(`split-window -h -d -t '${result.name}' -c '${result.dir}' '${waitCmd}'`);
+            await control.sendCommand(`select-pane -t '${result.name}.0'`);
+            await control.sendCommand(`switch-client -c ${parentClient} -t '${result.name}'`);
+            break;
+          }
+        }
+      });
       return;
+    }
     case "kill-session":
       await control.sendCommand(`kill-session -t '${currentSessionId}'`);
       return;
