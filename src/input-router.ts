@@ -36,8 +36,8 @@ export interface InputRouterOptions {
   onSidebarScroll?: (delta: number) => void;
   onToolbarClick?: (col: number) => void;
   onHover?: (target: { area: "sidebar"; row: number } | { area: "toolbar"; col: number } | null) => void;
-  onPaletteInput?: (data: string) => void;
-  onPaletteToggle?: () => void;
+  onModalInput?: (data: string) => void;
+  onModalToggle?: () => void;
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
 }
@@ -45,7 +45,7 @@ export interface InputRouterOptions {
 export class InputRouter {
   private opts: InputRouterOptions;
   private sidebarVisible: boolean;
-  private paletteOpen = false;
+  private modalOpen = false;
   private prefixSeen = false;
   private prefixTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(opts: InputRouterOptions, sidebarVisible: boolean) {
@@ -57,8 +57,8 @@ export class InputRouter {
     this.sidebarVisible = visible;
   }
 
-  setPaletteOpen(open: boolean): void {
-    this.paletteOpen = open;
+  setModalOpen(open: boolean): void {
+    this.modalOpen = open;
   }
 
   handleInput(data: string): void {
@@ -75,12 +75,12 @@ export class InputRouter {
     // Ctrl-a p interception: detect prefix + p to toggle palette
     // Ctrl-a is forwarded to tmux (so other prefix bindings work),
     // but if next byte is "p" we intercept it before tmux sees it.
-    if (!this.paletteOpen) {
+    if (!this.modalOpen) {
       if (this.prefixSeen) {
         this.prefixSeen = false;
         if (this.prefixTimer) { clearTimeout(this.prefixTimer); this.prefixTimer = null; }
         if (data === "p") {
-          this.opts.onPaletteToggle?.();
+          this.opts.onModalToggle?.();
           return;
         }
         // Not "p" — forward to PTY normally (tmux handles its prefix binding)
@@ -103,7 +103,7 @@ export class InputRouter {
       if (isMotion && this.opts.onHover) {
         if (mouse.x <= this.opts.sidebarCols) {
           this.opts.onHover({ area: "sidebar", row: mouse.y - 1 });
-        } else if (!this.paletteOpen) {
+        } else if (!this.modalOpen) {
           if (mouse.y === 1) {
             this.opts.onHover({ area: "toolbar", col: mouse.x - this.opts.sidebarCols - 1 });
           } else {
@@ -127,7 +127,7 @@ export class InputRouter {
       }
 
       // When palette is open, ignore all non-sidebar mouse events
-      if (this.paletteOpen) return;
+      if (this.modalOpen) return;
 
       // Toolbar click — row 1 in main area
       if (mouse.y === 1 && !mouse.release && !isMotion && !isWheel) {
@@ -152,8 +152,8 @@ export class InputRouter {
     }
 
     // When palette is open, route keyboard input to palette callback
-    if (this.paletteOpen) {
-      this.opts.onPaletteInput?.(data);
+    if (this.modalOpen) {
+      this.opts.onModalInput?.(data);
       return;
     }
 

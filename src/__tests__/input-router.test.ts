@@ -112,8 +112,8 @@ describe("passthrough", () => {
   });
 });
 
-describe("palette mode", () => {
-  test("routes keyboard input to onPaletteInput when palette is open", () => {
+describe("modal mode", () => {
+  test("routes keyboard input to onModalInput when modal is open", () => {
     let paletteData = "";
     let ptyData = "";
     const router = new InputRouter(
@@ -121,11 +121,11 @@ describe("palette mode", () => {
         sidebarCols: 24,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
-        onPaletteInput: (d) => { paletteData += d; },
+        onModalInput: (d) => { paletteData += d; },
       },
       true,
     );
-    router.setPaletteOpen(true);
+    router.setModalOpen(true);
     router.handleInput("hello");
     expect(paletteData).toBe("hello");
     expect(ptyData).toBe("");
@@ -138,12 +138,12 @@ describe("palette mode", () => {
         sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
-        onPaletteInput: () => {},
+        onModalInput: () => {},
         onSessionPrev: () => { prevCalled = true; },
       },
       true,
     );
-    router.setPaletteOpen(true);
+    router.setModalOpen(true);
     router.handleInput("\x1b[1;6A");
     expect(prevCalled).toBe(true);
   });
@@ -155,11 +155,11 @@ describe("palette mode", () => {
         sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: (row) => { clickedRow = row; },
-        onPaletteInput: () => {},
+        onModalInput: () => {},
       },
       true,
     );
-    router.setPaletteOpen(true);
+    router.setModalOpen(true);
     router.handleInput("\x1b[<0;5;3M");
     expect(clickedRow).toBe(2);
   });
@@ -171,12 +171,12 @@ describe("palette mode", () => {
         sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
-        onPaletteInput: () => {},
+        onModalInput: () => {},
         onToolbarClick: () => { toolbarClicked = true; },
       },
       true,
     );
-    router.setPaletteOpen(true);
+    router.setModalOpen(true);
     router.handleInput("\x1b[<0;30;1M");
     expect(toolbarClicked).toBe(false);
   });
@@ -188,11 +188,11 @@ describe("palette mode", () => {
         sidebarCols: 24,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
-        onPaletteInput: () => {},
+        onModalInput: () => {},
       },
       true,
     );
-    router.setPaletteOpen(true);
+    router.setModalOpen(true);
     router.handleInput("\x1b[<0;30;5M");
     expect(ptyData).toBe("");
   });
@@ -205,12 +205,12 @@ describe("palette mode", () => {
         sidebarCols: 24,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
-        onPaletteInput: (d) => { paletteData += d; },
+        onModalInput: (d) => { paletteData += d; },
       },
       true,
     );
-    router.setPaletteOpen(true);
-    router.setPaletteOpen(false);
+    router.setModalOpen(true);
+    router.setModalOpen(false);
     router.handleInput("hello");
     expect(ptyData).toBe("hello");
     expect(paletteData).toBe("");

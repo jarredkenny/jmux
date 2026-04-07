@@ -5,6 +5,7 @@ import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition
 import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { CommandPalette } from "./command-palette";
+import type { Modal } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { resolve, dirname } from "path";
@@ -402,22 +403,25 @@ function renderFrame(): void {
   const grid = bridge.getGrid();
   const cursor = bridge.getCursor();
   const tb = toolbarEnabled ? makeToolbar() : null;
-  let paletteGrid: import("./types").CellGrid | null = null;
-  let paletteCursor: { row: number; col: number } | null = null;
-  if (palette.isOpen()) {
+  let modalGrid: import("./types").CellGrid | null = null;
+  let modalCursorPos: { row: number; col: number } | null = null;
+  if (activeModal?.isOpen()) {
     const termCols = process.stdout.columns || 80;
     const termRows = process.stdout.rows || 24;
-    const paletteWidth = Math.min(Math.max(40, Math.round(termCols * 0.55)), 80);
-    paletteGrid = palette.getGrid(paletteWidth);
-    const pos = getModalPosition(termCols, termRows, paletteWidth, paletteGrid.rows);
-    paletteCursor = { row: pos.startRow, col: pos.startCol + palette.getCursorCol() };
+    const modalWidth = activeModal.preferredWidth(termCols);
+    modalGrid = activeModal.getGrid(modalWidth);
+    const pos = getModalPosition(termCols, termRows, modalWidth, modalGrid.rows);
+    const cursorPos = activeModal.getCursorPosition();
+    if (cursorPos) {
+      modalCursorPos = { row: pos.startRow + cursorPos.row, col: pos.startCol + cursorPos.col };
+    }
   }
   renderer.render(
     grid, cursor,
     sidebarShown ? sidebar.getGrid() : null,
     tb,
-    paletteGrid,
-    paletteCursor,
+    modalGrid,
+    modalCursorPos,
   );
 }
 
@@ -539,21 +543,23 @@ const inputRouter = new InputRouter(
       }
       if (changed) scheduleRender();
     },
-    onPaletteToggle: () => togglePalette(),
-    onPaletteInput: (data) => {
-      if (!palette.isOpen()) return;
-      const action = palette.handleInput(data);
+    onModalToggle: () => togglePalette(),
+    onModalInput: (data) => {
+      if (!activeModal?.isOpen()) return;
+      const action = activeModal.handleInput(data);
       switch (action.type) {
         case "consumed":
           scheduleRender();
           break;
         case "closed":
-          closePalette();
+          closeModal();
           break;
-        case "result":
-          closePalette();
-          handlePaletteAction(action.value);
+        case "result": {
+          const handler = onModalResult;
+          closeModal();
+          handler?.(action.value);
           break;
+        }
       }
     },
     onSessionPrev: () => switchByOffset(-1),
@@ -563,10 +569,27 @@ const inputRouter = new InputRouter(
 );
 
 const palette = new CommandPalette();
+let activeModal: Modal | null = null;
+let onModalResult: ((value: unknown) => void) | null = null;
+
+function openModal(modal: Modal, onResult: (value: unknown) => void): void {
+  activeModal = modal;
+  onModalResult = onResult;
+  inputRouter.setModalOpen(true);
+  renderFrame();
+}
+
+function closeModal(): void {
+  activeModal?.close();
+  activeModal = null;
+  onModalResult = null;
+  inputRouter.setModalOpen(false);
+  renderFrame();
+}
 
 function togglePalette(): void {
-  if (palette.isOpen()) {
-    closePalette();
+  if (activeModal) {
+    closeModal();
   } else {
     openPalette();
   }
@@ -575,14 +598,9 @@ function togglePalette(): void {
 function openPalette(): void {
   const commands = buildPaletteCommands();
   palette.open(commands);
-  inputRouter.setPaletteOpen(true);
-  renderFrame();
-}
-
-function closePalette(): void {
-  palette.close();
-  inputRouter.setPaletteOpen(false);
-  renderFrame();
+  openModal(palette, (value) => {
+    handlePaletteAction(value as PaletteResult);
+  });
 }
 
 function buildPaletteCommands(): PaletteCommand[] {
@@ -621,7 +639,6 @@ function buildPaletteCommands(): PaletteCommand[] {
     { id: "split-v", label: "Split vertical", category: "pane" },
     { id: "zoom-pane", label: "Zoom pane", category: "pane" },
     { id: "close-pane", label: "Close pane", category: "pane" },
-    { id: "window-picker", label: "Window picker", category: "other" },
     { id: "open-claude", label: "Open Claude", category: "other" },
   );
 
@@ -747,10 +764,6 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     case "close-pane":
       await control.sendCommand("kill-pane");
       return;
-    case "window-picker":
-      spawnTmuxPopup({ w: "30%", h: "100%", x: "0", y: "0" },
-        "sh", "-c", "tmux list-windows -F '#I: #W#{?window_active, *, }' | fzf --reverse --no-info --prompt=' Window> ' --pointer='▸' --color='bg:#0c1117,fg:#6b7280,hl:#fbd4b8,fg+:#b5bcc9,hl+:#fbd4b8,pointer:#9fe8c3,prompt:#9fe8c3' | cut -d: -f1 | xargs -I{} tmux select-window -t :{}");
-      return;
     case "open-claude":
       await handleToolbarAction("claude");
       return;
@@ -871,8 +884,8 @@ process.stdin.on("data", (data: Buffer) => {
 // --- Resize ---
 
 process.on("SIGWINCH", () => {
-  if (palette.isOpen()) {
-    closePalette();
+  if (activeModal) {
+    closeModal();
   }
   const newCols = process.stdout.columns || 80;
   const newRows = process.stdout.rows || 24;
