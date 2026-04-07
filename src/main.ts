@@ -613,6 +613,12 @@ function openPalette(): void {
 function buildPaletteCommands(): PaletteCommand[] {
   const commands: PaletteCommand[] = [];
 
+  let settings: Record<string, any> = {};
+  try {
+    const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+    if (existsSync(cfgPath)) settings = JSON.parse(readFileSync(cfgPath, "utf-8"));
+  } catch {}
+
   // Dynamic: switch to session (excluding current)
   for (const session of currentSessions) {
     if (session.id === currentSessionId) continue;
@@ -662,16 +668,15 @@ function buildPaletteCommands(): PaletteCommand[] {
   });
 
   commands.push({
+    id: "setting-wtm",
+    label: `wtm integration: ${settings.wtmIntegration !== false ? "on" : "off"}`,
+    category: "setting",
+  });
+  commands.push({
     id: "setting-claude-command",
     label: "Claude command",
     category: "setting",
-    sublist: [
-      { id: "claude", label: "claude", current: claudeCommand === "claude" },
-      { id: "claude --dangerously-skip-permissions", label: "claude --dangerously-skip-permissions", current: claudeCommand === "claude --dangerously-skip-permissions" },
-    ],
   });
-
-  // Project directories — falls back to settings popup
   commands.push({
     id: "setting-project-dirs",
     label: "Project directories",
@@ -681,7 +686,7 @@ function buildPaletteCommands(): PaletteCommand[] {
   return commands;
 }
 
-async function applySetting(key: string, value: string | number, type: string): Promise<void> {
+async function applySetting(key: string, value: string | number | boolean | string[], type: string): Promise<void> {
   const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
   try {
     let config: Record<string, any> = {};
@@ -690,6 +695,10 @@ async function applySetting(key: string, value: string | number, type: string): 
     }
     if (type === "number") {
       config[key] = typeof value === "number" ? value : parseInt(String(value), 10);
+    } else if (type === "boolean") {
+      config[key] = value;
+    } else if (type === "array") {
+      config[key] = value;
     } else {
       config[key] = value;
     }
@@ -791,11 +800,6 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     }
     return;
   }
-  if (commandId === "setting-claude-command" && sublistOptionId) {
-    await applySetting("claudeCommand", sublistOptionId, "string");
-    return;
-  }
-
   // Static commands — many reuse existing handlers
   if (!ptyClientName) await resolveClientName();
   if (!ptyClientName) return;
@@ -903,20 +907,59 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     case "open-claude":
       await handleToolbarAction("claude");
       return;
-    case "setting-project-dirs":
-      spawnTmuxPopup({ w: "50%", h: "40%" }, resolve(jmuxDir, "config", "settings.sh"));
+    case "setting-wtm": {
+      let wtmSettings: Record<string, any> = {};
+      try {
+        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+        if (existsSync(cfgPath)) wtmSettings = JSON.parse(readFileSync(cfgPath, "utf-8"));
+      } catch {}
+      const current = wtmSettings.wtmIntegration !== false;
+      await applySetting("wtmIntegration", !current, "boolean");
       return;
+    }
+    case "setting-claude-command": {
+      let current = "claude";
+      try {
+        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+        if (existsSync(cfgPath)) {
+          const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));
+          current = cfg.claudeCommand ?? "claude";
+        }
+      } catch {}
+      const modal = new InputModal({
+        header: "Claude Command",
+        subheader: "Command to launch Claude Code from toolbar",
+        value: current,
+      });
+      modal.open();
+      openModal(modal, async (value) => {
+        await applySetting("claudeCommand", value as string, "string");
+      });
+      return;
+    }
+    case "setting-project-dirs": {
+      let dirs: string[] = [];
+      try {
+        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+        if (existsSync(cfgPath)) {
+          const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));
+          dirs = cfg.projectDirs ?? [];
+        }
+      } catch {}
+      if (dirs.length === 0) dirs = ["~/Code", "~/Projects", "~/src", "~/work", "~/dev"];
+      const modal = new InputModal({
+        header: "Project Directories",
+        subheader: "Comma-separated list of directories to search",
+        value: dirs.join(", "),
+      });
+      modal.open();
+      openModal(modal, async (value) => {
+        const newDirs = (value as string).split(",").map(s => s.trim()).filter(Boolean);
+        await applySetting("projectDirs", newDirs, "array");
+      });
+      return;
+    }
   }
-}
-
-function spawnTmuxPopup(opts: { w: string; h: string; x?: string; y?: string }, ...cmd: string[]): void {
-  const args = ["tmux"];
-  if (socketName) args.push("-L", socketName);
-  args.push("display-popup", "-c", ptyClientName!, "-E");
-  if (opts.x !== undefined) args.push("-x", opts.x);
-  if (opts.y !== undefined) args.push("-y", opts.y);
-  args.push("-w", opts.w, "-h", opts.h, "-b", "heavy", "-S", "fg=#4f565d", ...cmd);
-  Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
 }
 
 // --- Toolbar actions ---
@@ -942,14 +985,6 @@ async function handleToolbarAction(id: string): Promise<void> {
       return;
   }
 
-  // Non-window actions — popups need a real PTY
-  switch (id) {
-    case "settings":
-      spawnTmuxPopup({ w: "50%", h: "40%" }, resolve(jmuxDir, "config", "settings.sh"));
-      return;
-    default:
-      return;
-  }
 }
 
 // --- PTY output pipeline ---
