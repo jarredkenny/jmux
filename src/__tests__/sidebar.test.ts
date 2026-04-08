@@ -72,7 +72,7 @@ describe("Sidebar", () => {
     expect(apiRow).toContain("api");
   });
 
-  test("solo sessions in a directory are ungrouped", () => {
+  test("solo sessions in a directory still show group header", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(
       makeSessions([
@@ -81,13 +81,12 @@ describe("Sidebar", () => {
       ]),
     );
     const grid = sidebar.getGrid();
-    // Neither has a sibling → no group headers, just sessions
+    // Both have valid group labels → both get group headers
     const row2 = Array.from(
       { length: SIDEBAR_WIDTH },
       (_, i) => grid.cells[2][i].char,
     ).join("");
-    // Should contain a session name, not a group header
-    expect(row2).toContain("only-one");
+    expect(row2).toContain("Code/work");
   });
 
   test("grouped sessions show branch on detail line", () => {

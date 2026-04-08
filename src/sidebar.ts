@@ -127,13 +127,6 @@ function buildRenderPlan(sessions: SessionInfo[]): {
     }
   }
 
-  for (const [label, indices] of groupMap) {
-    if (indices.length === 1) {
-      ungrouped.push(indices[0]);
-      groupMap.delete(label);
-    }
-  }
-
   const sortedGroups: SessionGroup[] = [...groupMap.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([label, indices]) => ({
