@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="site/assets/logo.svg" alt="jmux" width="96" height="96">
+
 # jmux
 
 **The terminal workspace for agentic development.**

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="jmux">
+  <!-- Tile -->
+  <rect x="0.75" y="0.75" width="62.5" height="62.5" rx="14" fill="#111520" stroke="#252b3a" stroke-width="1.5"/>
+
+  <!-- Streams: three parallel agents converging into a single view.
+       Middle is active, top is idle (dim green), bottom needs attention (orange). -->
+  <path d="M14 17 C 30 17, 34 32, 48 32" stroke="#4ade80" stroke-opacity="0.45" stroke-width="2.75" stroke-linecap="round"/>
+  <path d="M14 32 L 48 32" stroke="#4ade80" stroke-width="2.75" stroke-linecap="round"/>
+  <path d="M14 47 C 30 47, 34 32, 48 32" stroke="#fb923c" stroke-width="2.75" stroke-linecap="round"/>
+
+  <!-- Input nodes (the agents) -->
+  <circle cx="14" cy="17" r="3" fill="#4ade80" fill-opacity="0.45"/>
+  <circle cx="14" cy="32" r="3" fill="#4ade80"/>
+  <circle cx="14" cy="47" r="3" fill="#fb923c"/>
+
+  <!-- Output node (you, watching) -->
+  <circle cx="48" cy="32" r="6" fill="#4ade80"/>
+  <circle cx="48" cy="32" r="9.5" stroke="#4ade80" stroke-opacity="0.25" stroke-width="1.5"/>
+</svg>
