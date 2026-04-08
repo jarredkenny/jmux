@@ -257,6 +257,55 @@ describe("NewSessionModal", () => {
     expect(pos2!.col).toBe(5); // 4 + 1
   });
 
+  test("updateProjectDirs refreshes the directory picker list when on dir step", () => {
+    // Start with 1 initial dir
+    const providers = makeProviders({
+      scanProjectDirs: () => ["/tmp/only-one"],
+    });
+    const modal = new NewSessionModal(providers);
+    modal.open();
+
+    // Verify initial state: header + subheader + query + 1 item = 4 rows
+    let grid = modal.getGrid(60);
+    const initialRows = grid.rows;
+
+    // Simulate scan completion: update dirs with 3 entries
+    modal.updateProjectDirs([
+      "/tmp/alpha",
+      "/tmp/beta",
+      "/tmp/gamma",
+    ]);
+
+    grid = modal.getGrid(60);
+    // More result rows visible now — height is header + sub + query + N items
+    expect(grid.rows).toBeGreaterThan(initialRows);
+    expect(grid.rows).toBeGreaterThanOrEqual(6); // header + sub + query + 3 items
+  });
+
+  test("updateProjectDirs is a no-op when not on dir step", () => {
+    const modal = new NewSessionModal(makeProviders());
+    modal.open();
+
+    // Advance to name input step by selecting first dir (non-bare)
+    modal.handleInput("\r");
+
+    // Now on name input — updateProjectDirs should not affect this
+    expect(() => {
+      modal.updateProjectDirs(["/different/dirs"]);
+    }).not.toThrow();
+
+    // Still on name input step — verify by checking the grid has the prompt
+    const grid = modal.getGrid(60);
+    expect(grid.cells[2][2].char).toBe("▷");
+  });
+
+  test("updateProjectDirs before modal is opened does not crash", () => {
+    const modal = new NewSessionModal(makeProviders());
+    expect(() => {
+      modal.updateProjectDirs(["/a", "/b"]);
+    }).not.toThrow();
+  });
+
   test("preferredWidth returns ListModal-compatible width", () => {
     const modal = new NewSessionModal(makeProviders());
     // Should match ListModal's formula

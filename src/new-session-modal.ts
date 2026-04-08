@@ -78,6 +78,18 @@ export class NewSessionModal {
     return this.currentInner!.getGrid(width);
   }
 
+  updateProjectDirs(dirs: string[]): void {
+    if (!this._open) return;
+    if (this.currentStep !== "dir") return;
+    const inner = this.currentInner;
+    if (!(inner instanceof ListModal)) return;
+    const items: ListItem[] = dirs.map(dir => ({
+      id: dir,
+      label: this.shortenPath(dir),
+    }));
+    inner.updateItems(items);
+  }
+
   handleInput(data: string): ModalAction {
     // Intercept Esc before the inner modal sees it
     if (data === "\x1b") {

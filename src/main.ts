@@ -14,13 +14,14 @@ import type { Modal } from "./modal";
 import { MODAL_BG } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
+import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.9.3";
+const VERSION = "0.9.4";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -608,6 +609,31 @@ function closeModal(): void {
   renderFrame();
 }
 
+function showNewSessionError(result: NewSessionResult, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  const title = result.type === "new_worktree"
+    ? `New worktree '${result.name}' failed`
+    : result.type === "existing_worktree"
+      ? `Worktree session '${result.branch}' failed`
+      : `New session '${result.name}' failed`;
+  const hint = result.type === "new_worktree"
+    ? "The worktree, branch, or session name may already exist."
+    : "The session name may already exist.";
+  const lines: StyledLine[] = [
+    [],
+    [{ text: message, attrs: { fg: 1, fgMode: 1, bg: MODAL_BG, bgMode: 2 } }],
+    [],
+    [{ text: hint, attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }],
+    [],
+    [{ text: "Press q or Esc to close.", attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }],
+  ];
+  const modal = new ContentModal({ lines, title });
+  modal.setTermRows(process.stdout.rows || 24);
+  modal.open();
+  openModal(modal, () => {});
+  scheduleRender();
+}
+
 function togglePalette(): void {
   if (activeModal) {
     closeModal();
@@ -719,6 +745,12 @@ async function applySetting(key: string, value: string | number | boolean | stri
   }
 }
 
+const projectDirsCachePath = resolve(homedir(), ".config", "jmux", "cache", "project-dirs.json");
+
+// In-memory cache — populated from disk at startup, refreshed in background
+let cachedProjectDirs: string[] = loadProjectDirsCache(projectDirsCachePath);
+let projectDirsScanInFlight: Promise<string[]> | null = null;
+
 async function scanProjectDirsAsync(): Promise<string[]> {
   const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
   let searchDirs: string[] = [];
@@ -743,6 +775,29 @@ async function scanProjectDirsAsync(): Promise<string[]> {
   if (!stdout) return [homedir()];
   const dirs = stdout.split("\n").map(p => p.replace(/\/\.git$/, "")).sort();
   return [homedir(), ...new Set(dirs)];
+}
+
+// Kick off a background scan, updating cache + disk + optionally the active modal.
+// Returns immediately; the scan runs async. Multiple concurrent calls dedupe.
+function refreshProjectDirsInBackground(onUpdate?: (dirs: string[]) => void): void {
+  if (projectDirsScanInFlight) {
+    // Already scanning — attach to existing scan
+    if (onUpdate) {
+      projectDirsScanInFlight.then((dirs) => onUpdate(dirs)).catch(() => {});
+    }
+    return;
+  }
+  projectDirsScanInFlight = scanProjectDirsAsync();
+  projectDirsScanInFlight
+    .then((dirs) => {
+      cachedProjectDirs = dirs;
+      saveProjectDirsCache(projectDirsCachePath, dirs);
+      if (onUpdate) onUpdate(dirs);
+    })
+    .catch(() => {})
+    .finally(() => {
+      projectDirsScanInFlight = null;
+    });
 }
 
 function getNewSessionProviders(preScannedDirs: string[]): NewSessionProviders {
@@ -816,32 +871,45 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
 
   switch (commandId) {
     case "new-session": {
-      const dirs = await scanProjectDirsAsync();
-      const modal = new NewSessionModal(getNewSessionProviders(dirs));
+      // Open modal immediately with whatever is in the cache (could be empty
+      // on a cold first start). Kick off a background rescan and update the
+      // modal live when it completes.
+      const initialDirs = cachedProjectDirs.length > 0
+        ? cachedProjectDirs
+        : [homedir()];
+      const modal = new NewSessionModal(getNewSessionProviders(initialDirs));
       modal.open();
+      refreshProjectDirsInBackground((dirs) => {
+        modal.updateProjectDirs(dirs);
+        scheduleRender();
+      });
       openModal(modal, async (value) => {
         const result = value as NewSessionResult;
         const parentClient = ptyClientName;
         if (!parentClient) return;
-        switch (result.type) {
-          case "standard":
-            await control.sendCommand(`new-session -d -s '${result.name}' -c '${result.dir}'`);
-            await control.sendCommand(`switch-client -c ${parentClient} -t '${result.name}'`);
-            break;
-          case "existing_worktree":
-            await control.sendCommand(`new-session -d -s '${result.branch}' -c '${result.path}'`);
-            await control.sendCommand(`switch-client -c ${parentClient} -t '${result.branch}'`);
-            break;
-          case "new_worktree": {
-            const wtPath = `${result.dir}/${result.name}`;
-            const cmd = `wtm create ${result.name} --from ${result.baseBranch} --no-shell; cd ${result.name}; exec $SHELL`;
-            await control.sendCommand(`new-session -d -s '${result.name}' -c '${result.dir}' '${cmd}'`);
-            const waitCmd = `while [ ! -d '${wtPath}' ]; do sleep 0.2; done; cd '${wtPath}' && exec $SHELL`;
-            await control.sendCommand(`split-window -h -d -t '${result.name}' -c '${result.dir}' '${waitCmd}'`);
-            await control.sendCommand(`select-pane -t '${result.name}.0'`);
-            await control.sendCommand(`switch-client -c ${parentClient} -t '${result.name}'`);
-            break;
+        try {
+          switch (result.type) {
+            case "standard":
+              await control.sendCommand(`new-session -d -s '${result.name}' -c '${result.dir}'`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t '${result.name}'`);
+              break;
+            case "existing_worktree":
+              await control.sendCommand(`new-session -d -s '${result.branch}' -c '${result.path}'`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t '${result.branch}'`);
+              break;
+            case "new_worktree": {
+              const wtPath = `${result.dir}/${result.name}`;
+              const cmd = `wtm create ${result.name} --from ${result.baseBranch} --no-shell; cd ${result.name}; exec $SHELL`;
+              await control.sendCommand(`new-session -d -s '${result.name}' -c '${result.dir}' '${cmd}'`);
+              const waitCmd = `while [ ! -d '${wtPath}' ]; do sleep 0.2; done; cd '${wtPath}' && exec $SHELL`;
+              await control.sendCommand(`split-window -h -d -t '${result.name}' -c '${result.dir}' '${waitCmd}'`);
+              await control.sendCommand(`select-pane -t '${result.name}.0'`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t '${result.name}'`);
+              break;
+            }
           }
+        } catch (err) {
+          showNewSessionError(result, err);
         }
       });
       return;
@@ -1222,6 +1290,9 @@ async function showVersionInfo(): Promise<void> {
 
 // Check for updates in the background (non-blocking)
 checkForUpdates();
+
+// Warm the project-dirs cache in the background so Ctrl-a+n is instant
+refreshProjectDirsInBackground();
 
 // --- Control mode events ---
 

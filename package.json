@@ -1,6 +1,6 @@
 {
   "name": "@jx0/jmux",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "The terminal workspace for agentic development",
   "type": "module",
   "bin": {

@@ -78,6 +78,17 @@ export class ListModal {
     return { row: queryRow, col: 4 + this.query.length };
   }
 
+  updateItems(items: ListItem[]): void {
+    this.config = { ...this.config, items };
+    if (this._open) {
+      this.refilter();
+      if (this.selectedIndex >= this.filtered.length) {
+        this.selectedIndex = Math.max(0, this.filtered.length - 1);
+      }
+      this.adjustScroll();
+    }
+  }
+
   handleInput(data: string): ModalAction {
     // Escape
     if (data === "\x1b") {

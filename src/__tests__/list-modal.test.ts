@@ -173,6 +173,50 @@ describe("ListModal", () => {
     expect(grid.cells[1][5].char).toBe("l");
   });
 
+  test("updateItems replaces the items and refilters with current query", () => {
+    const modal = new ListModal({ header: "Pick One", items: testItems });
+    modal.open();
+    modal.handleInput("a"); // query = "a" — matches Alpha, Charlie, Delta
+
+    // Replace items with a new set that includes a match and a non-match
+    modal.updateItems([
+      { id: "x", label: "Aardvark" },
+      { id: "y", label: "Zebra" },
+      { id: "z", label: "Apple" },
+    ]);
+
+    const grid = modal.getGrid(50);
+    // Query row still shows "a" (query preserved)
+    expect(grid.cells[1][4].char).toBe("a");
+    // First result row should now be Aardvark (matches "a") — selected
+    expect(grid.cells[2][1].char).toBe("▸");
+    expect(grid.cells[2][3].char).toBe("A");
+    expect(grid.cells[2][4].char).toBe("a");
+    expect(grid.cells[2][5].char).toBe("r");
+  });
+
+  test("updateItems while modal is closed does not crash", () => {
+    const modal = new ListModal({ header: "Pick One", items: testItems });
+    // Don't open
+    expect(() => {
+      modal.updateItems([{ id: "new", label: "New" }]);
+    }).not.toThrow();
+  });
+
+  test("updateItems clamps selectedIndex when new list is smaller", () => {
+    const modal = new ListModal({ header: "Pick One", items: testItems });
+    modal.open();
+    modal.handleInput("\x1b[B"); // selectedIndex = 1
+    modal.handleInput("\x1b[B"); // selectedIndex = 2
+    modal.handleInput("\x1b[B"); // selectedIndex = 3
+
+    modal.updateItems([{ id: "only", label: "Only" }]);
+
+    const grid = modal.getGrid(50);
+    // Selection indicator should be on the single item (row 2)
+    expect(grid.cells[2][1].char).toBe("▸");
+  });
+
   test("close() resets state", () => {
     const modal = new ListModal({ header: "Pick One", items: testItems });
     modal.open();
