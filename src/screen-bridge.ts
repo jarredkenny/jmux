@@ -1,5 +1,5 @@
 import { Terminal } from "@xterm/headless";
-import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import type { Cell, CellGrid, CursorPosition } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, DEFAULT_CELL } from "./cell-grid";
@@ -14,9 +14,9 @@ export class ScreenBridge {
       scrollback: 0,
       allowProposedApi: true,
     });
-    const unicodeAddon = new UnicodeGraphemesAddon();
+    const unicodeAddon = new Unicode11Addon();
     this.terminal.loadAddon(unicodeAddon);
-    this.terminal.unicode.activeVersion = "15";
+    this.terminal.unicode.activeVersion = "11";
   }
 
   write(data: string): Promise<void> {
