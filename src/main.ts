@@ -8,7 +8,12 @@ import { CommandPalette } from "./command-palette";
 import { InputModal } from "./input-modal";
 import { ListModal, type ListItem } from "./list-modal";
 import { ContentModal, type StyledLine } from "./content-modal";
-import { NewSessionModal, type NewSessionResult, type NewSessionProviders } from "./new-session-modal";
+import {
+  NewSessionModal,
+  sanitizeTmuxSessionName,
+  type NewSessionResult,
+  type NewSessionProviders,
+} from "./new-session-modal";
 import type { CellAttrs } from "./cell-grid";
 import type { Modal } from "./modal";
 import { MODAL_BG } from "./modal";
@@ -21,7 +26,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.9.4";
+const VERSION = "0.9.5";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -889,22 +894,31 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
         if (!parentClient) return;
         try {
           switch (result.type) {
-            case "standard":
-              await control.sendCommand(`new-session -d -s '${result.name}' -c '${result.dir}'`);
-              await control.sendCommand(`switch-client -c ${parentClient} -t '${result.name}'`);
+            case "standard": {
+              const session = sanitizeTmuxSessionName(result.name);
+              await control.sendCommand(`new-session -d -s '${session}' -c '${result.dir}'`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t '${session}'`);
               break;
-            case "existing_worktree":
-              await control.sendCommand(`new-session -d -s '${result.branch}' -c '${result.path}'`);
-              await control.sendCommand(`switch-client -c ${parentClient} -t '${result.branch}'`);
+            }
+            case "existing_worktree": {
+              const session = sanitizeTmuxSessionName(result.branch);
+              await control.sendCommand(`new-session -d -s '${session}' -c '${result.path}'`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t '${session}'`);
               break;
+            }
             case "new_worktree": {
-              const wtPath = `${result.dir}/${result.name}`;
-              const cmd = `wtm create ${result.name} --from ${result.baseBranch} --no-shell; cd ${result.name}; exec $SHELL`;
-              await control.sendCommand(`new-session -d -s '${result.name}' -c '${result.dir}' '${cmd}'`);
+              // Use one sanitized name everywhere so the worktree directory,
+              // the `wtm create` argument, and the tmux session all agree —
+              // otherwise a user-typed name like `foo.bar` creates a `foo.bar`
+              // directory but a `foo_bar` session, drifting the two apart.
+              const session = sanitizeTmuxSessionName(result.name);
+              const wtPath = `${result.dir}/${session}`;
+              const cmd = `wtm create ${session} --from ${result.baseBranch} --no-shell; cd ${session}; exec $SHELL`;
+              await control.sendCommand(`new-session -d -s '${session}' -c '${result.dir}' '${cmd}'`);
               const waitCmd = `while [ ! -d '${wtPath}' ]; do sleep 0.2; done; cd '${wtPath}' && exec $SHELL`;
-              await control.sendCommand(`split-window -h -d -t '${result.name}' -c '${result.dir}' '${waitCmd}'`);
-              await control.sendCommand(`select-pane -t '${result.name}.0'`);
-              await control.sendCommand(`switch-client -c ${parentClient} -t '${result.name}'`);
+              await control.sendCommand(`split-window -h -d -t '${session}' -c '${result.dir}' '${waitCmd}'`);
+              await control.sendCommand(`select-pane -t '${session}.0'`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t '${session}'`);
               break;
             }
           }

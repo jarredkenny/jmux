@@ -1,5 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { NewSessionModal, type NewSessionProviders, type NewSessionResult } from "../new-session-modal";
+import {
+  NewSessionModal,
+  sanitizeTmuxSessionName,
+  type NewSessionProviders,
+  type NewSessionResult,
+} from "../new-session-modal";
 
 function makeProviders(overrides?: Partial<NewSessionProviders>): NewSessionProviders {
   return {
@@ -312,5 +317,45 @@ describe("NewSessionModal", () => {
     expect(modal.preferredWidth(80)).toBe(Math.min(Math.max(40, Math.round(80 * 0.55)), 80));
     expect(modal.preferredWidth(200)).toBe(80);
     expect(modal.preferredWidth(20)).toBe(40);
+  });
+
+  test("default session name strips '.' and ':' so tmux can use it as a target", () => {
+    // tmux silently rewrites '.' and ':' in session names to '_', and then
+    // treats those characters in target strings as window/pane separators —
+    // which makes follow-up commands like `switch-client -t name` fail with
+    // a misleading "can't find pane: X" error. The modal must mirror tmux's
+    // sanitization so the user sees (and submits) a name tmux will accept.
+    const modal = new NewSessionModal(
+      makeProviders({ scanProjectDirs: () => ["/home/user/mist.fm"] }),
+    );
+    modal.open();
+    // Select the only directory — advances to the name input.
+    modal.handleInput("\r");
+    // Accept the default by pressing Enter immediately.
+    const action = modal.handleInput("\r");
+    expect(action.type).toBe("result");
+    if (action.type === "result") {
+      const result = action.value as NewSessionResult;
+      expect(result.type).toBe("standard");
+      if (result.type === "standard") {
+        expect(result.name).toBe("mist_fm");
+        expect(result.dir).toBe("/home/user/mist.fm");
+      }
+    }
+  });
+});
+
+describe("sanitizeTmuxSessionName", () => {
+  test("replaces '.' and ':' with '_' to mirror tmux's own sanitization", () => {
+    expect(sanitizeTmuxSessionName("mist.fm")).toBe("mist_fm");
+    expect(sanitizeTmuxSessionName("a.b.c")).toBe("a_b_c");
+    expect(sanitizeTmuxSessionName("user:host")).toBe("user_host");
+    expect(sanitizeTmuxSessionName("a.b:c")).toBe("a_b_c");
+  });
+
+  test("leaves names without '.' or ':' untouched", () => {
+    expect(sanitizeTmuxSessionName("clean-name")).toBe("clean-name");
+    expect(sanitizeTmuxSessionName("release/v1")).toBe("release/v1");
+    expect(sanitizeTmuxSessionName("")).toBe("");
   });
 });

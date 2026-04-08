@@ -3,6 +3,17 @@ import { InputModal } from "./input-modal";
 import { ListModal, type ListItem } from "./list-modal";
 import type { ModalAction } from "./modal";
 
+/**
+ * tmux silently rewrites '.' and ':' in session names to '_'. If we let them
+ * through, the session is created under the rewritten name but follow-up
+ * commands like `switch-client -t name` parse '.' / ':' as window/pane
+ * separators and fail with a misleading "can't find pane: X" error. Mirror
+ * tmux's sanitization here so callers and tmux agree on the final name.
+ */
+export function sanitizeTmuxSessionName(name: string): string {
+  return name.replace(/[.:]/g, "_");
+}
+
 export interface NewSessionProviders {
   scanProjectDirs: () => string[];
   isBareRepo: (dir: string) => boolean;
@@ -147,7 +158,8 @@ export class NewSessionModal {
         // Non-bare: advance to name input
         this.pushCurrentToStack();
         this.currentStep = "name";
-        const defaultName = this.selectedDir.split("/").pop() ?? "";
+        const basename = this.selectedDir.split("/").pop() ?? "";
+        const defaultName = sanitizeTmuxSessionName(basename);
         this.currentInner = this.createNameInput(defaultName);
         this.currentInner.open();
         return { type: "consumed" };
