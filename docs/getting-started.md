@@ -14,16 +14,16 @@ jmux will check for dependencies and offer to install them automatically. If you
 
 ```bash
 # macOS
-brew install tmux fzf
+brew install tmux
 
 # Ubuntu/Debian
-sudo apt install tmux fzf
+sudo apt install tmux
 
 # Fedora
-sudo dnf install tmux fzf
+sudo dnf install tmux
 
 # Arch
-pacman -S tmux fzf
+pacman -S tmux
 ```
 
 You'll also need [Bun](https://bun.sh) 1.2+ and optionally [git](https://git-scm.com/) for branch display in the sidebar.

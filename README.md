@@ -22,7 +22,7 @@ bun install -g @jx0/jmux
 jmux
 ```
 
-Requires [Bun](https://bun.sh) 1.2+, [tmux](https://github.com/tmux/tmux) 3.2+, [fzf](https://github.com/junegunn/fzf), and optionally [git](https://git-scm.com/) for branch display. jmux will offer to install tmux and fzf for you on first run.
+Requires [Bun](https://bun.sh) 1.2+, [tmux](https://github.com/tmux/tmux) 3.2+, and optionally [git](https://git-scm.com/) for branch display. jmux will offer to install tmux for you on first run.
 
 New to tmux? See the **[Getting Started guide](docs/getting-started.md)** — no prior tmux knowledge needed.
 
@@ -72,7 +72,7 @@ Type to filter, arrow keys to navigate, Enter to execute. Settings like sidebar 
 
 ### New Session Modal
 
-`Ctrl-a n` opens a two-step fzf flow: fuzzy-search your git repos for a directory, then name the session. Pre-filled with the directory basename.
+`Ctrl-a n` opens a two-step flow: fuzzy-search your git repos for a directory, then name the session. Pre-filled with the directory basename.
 
 ### Bring Your Own Everything
 
@@ -134,7 +134,6 @@ When Claude Code finishes a response, the orange `!` appears on that session in 
 | `Ctrl-a c` | New window |
 | `Ctrl-Right/Left` | Next/prev window |
 | `Ctrl-Shift-Right/Left` | Reorder windows |
-| `Ctrl-a j` | fzf window picker |
 
 ### Panes
 

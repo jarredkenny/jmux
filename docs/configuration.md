@@ -79,7 +79,7 @@ These settings are required for jmux to function. They're applied last and overr
 |---------|-------|-----|
 | `detach-on-destroy` | `off` | Switch to next session on kill instead of exiting jmux |
 | `mouse` | `on` | Sidebar and toolbar click/hover handling |
-| `prefix + n` | New session modal | jmux's fzf-powered session creation |
+| `prefix + n` | New session modal | jmux's native session creation |
 | `status` | `off` | jmux renders its own toolbar with window tabs |
 
 If you bind `n` to something in `~/.tmux.conf`, jmux's core will override it. All other keys are yours.

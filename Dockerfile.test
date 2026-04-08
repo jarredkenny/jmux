@@ -22,6 +22,6 @@ COPY . .
 # Link jmux into PATH so it works like a real install
 RUN bun link
 
-# Auto-launch jmux — tmux/fzf are intentionally NOT installed
+# Auto-launch jmux — tmux is intentionally NOT installed
 # so the onboarding/dependency-install flow can be tested
 CMD ["jmux"]

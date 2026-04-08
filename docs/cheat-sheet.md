@@ -39,7 +39,6 @@ The sidebar shows all sessions with:
 | Key | Action |
 |-----|--------|
 | `Ctrl-a c` | New window (starts in `~`) |
-| `Ctrl-a j` | fzf window picker |
 | `Ctrl-Right` | Next window |
 | `Ctrl-Left` | Previous window |
 | `Ctrl-Shift-Right` | Move window right |

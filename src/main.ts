@@ -26,7 +26,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.9.6";
+const VERSION = "0.9.7";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -59,7 +59,6 @@ Keybindings:
   Ctrl-a z                 Toggle pane zoom
   Ctrl-a Arrows            Resize panes
   Ctrl-a p                 Command palette
-  Ctrl-a j                 Window picker (fzf)
   Ctrl-a i                 Settings
   Click sidebar            Switch to session
 
@@ -198,9 +197,6 @@ async function preflight(): Promise<void> {
   const missing: string[] = [];
   if (!hasCommand(["tmux", "-V"])) {
     missing.push("tmux");
-  }
-  if (!hasCommand(["fzf", "--version"])) {
-    missing.push("fzf");
   }
   if (missing.length === 0) return;
 
