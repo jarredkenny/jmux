@@ -95,6 +95,52 @@ describe("ScreenBridge", () => {
     expect(grid.cells[0][12].char).toBe("h");
   });
 
+  test("emoji from Unicode 13+ must be 2-wide (pane border regression)", async () => {
+    // 🪝 (U+1FA9D, fish hook) was added in Unicode 13.0.
+    // tmux and Ghostty render it as 2-wide. If xterm.js classifies it
+    // as 1-wide, the buffer positions shift and the tmux pane border
+    // ends up at the wrong column — pushed right by 1 on that row.
+    const bridge = new ScreenBridge(20, 1);
+    await bridge.write("🪝 hi│end");
+    const grid = bridge.getGrid();
+
+    // 🪝 at col 0, must be 2-wide
+    expect(grid.cells[0][0].char).toBe("🪝");
+    expect(grid.cells[0][0].width).toBe(2);
+    expect(grid.cells[0][1].width).toBe(0); // continuation
+
+    // " " at col 2 (after 2-wide emoji)
+    expect(grid.cells[0][2].char).toBe(" ");
+    // "h" at col 3
+    expect(grid.cells[0][3].char).toBe("h");
+    // "i" at col 4
+    expect(grid.cells[0][4].char).toBe("i");
+    // "│" at col 5 — this is the pane border
+    expect(grid.cells[0][5].char).toBe("│");
+    // "e" at col 6
+    expect(grid.cells[0][6].char).toBe("e");
+  });
+
+  test("block elements and htop characters are 1-wide", async () => {
+    // htop uses block elements for CPU bars. These must be 1-wide
+    // to avoid shifting the tmux pane border.
+    const bridge = new ScreenBridge(20, 1);
+    // Full block, upper/lower half, and various bar fills htop uses
+    await bridge.write("█▓▒░▏▎▍▌▋▊▉│");
+    const grid = bridge.getGrid();
+
+    // Each block element should be 1-wide, no continuation cells
+    const chars = "█▓▒░▏▎▍▌▋▊▉│";
+    let col = 0;
+    for (const ch of chars) {
+      expect(grid.cells[0][col].char).toBe(ch);
+      expect(grid.cells[0][col].width).toBe(1);
+      col++;
+    }
+    // All 12 characters should fit in exactly 12 columns
+    expect(col).toBe(12);
+  });
+
   test("handles resize", async () => {
     const bridge = new ScreenBridge(10, 3);
     bridge.resize(20, 5);
