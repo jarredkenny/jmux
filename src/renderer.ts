@@ -381,13 +381,17 @@ export class Renderer {
         buf.push(cell.char);
         col += cell.width;
 
-        // After wide characters (width > 1), explicitly reposition
-        // cursor to prevent drift from width disagreements between
-        // xterm.js and the actual terminal.  Only reposition for
-        // genuinely wide cells — repositioning after 1-wide chars
-        // (box-drawing, symbols) forces alignment to xterm.js's
-        // model and creates ghost gaps when the terminal disagrees.
-        if (col <= grid.cols && cell.width > 1) {
+        // Reposition cursor after non-ASCII characters to prevent
+        // drift from width disagreements between xterm.js and the
+        // real terminal.  ASCII (< 0x80) is always width 1 everywhere;
+        // non-ASCII chars (symbols, emoji, box-drawing) may differ
+        // between xterm.js and the terminal.  Repositioning forces
+        // alignment to xterm.js's model — this may cause a minor
+        // artifact at a specific ambiguous-width character (its
+        // second half overwritten) but prevents the accumulated
+        // drift that corrupts tmux pane borders and line layout.
+        const cp = cell.char.codePointAt(0) ?? 0;
+        if (col <= grid.cols && cp >= 0x80) {
           buf.push(`\x1b[${y + 1};${col}H`);
         }
       }

@@ -73,13 +73,12 @@
     }
     .hero-glow {
       position: relative;
-      overflow: hidden;
     }
     .hero-glow::before {
       content: '';
       position: absolute;
-      top: 50%;
-      left: 50%;
+      top: var(--glow-y, 50%);
+      left: var(--glow-x, 50%);
       transform: translate(-50%, -50%);
       width: 600px;
       height: 300px;
@@ -88,6 +87,7 @@
       filter: blur(80px);
       pointer-events: none;
       z-index: 0;
+      transition: top 0.3s ease-out, left 0.3s ease-out;
     }
     .hero-glow > * {
       position: relative;
@@ -147,7 +147,7 @@
     <div class="flex items-center gap-2">
       <img src="assets/logo.svg" alt="" width="28" height="28" class="block">
       <span class="font-mono text-lg font-bold tracking-tight">jmux</span>
-      <span class="text-xs font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded">v0.9.6</span>
+      <span class="text-xs font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded">v0.10.0</span>
     </div>
     <div class="flex items-center gap-6 text-sm">
       <a href="https://github.com/jarredkenny/jmux/blob/main/docs/getting-started.md" target="_blank" rel="noopener" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors hidden sm:block">Getting Started</a>
@@ -186,7 +186,7 @@
   </section>
 
   <!-- Hero Screenshot -->
-  <section class="px-6 md:px-12 pb-16 md:pb-24">
+  <section class="px-6 md:px-12 pb-16 md:pb-24 relative z-10">
     <div class="max-w-4xl mx-auto">
       <img src="assets/hero.png" alt="jmux sidebar with grouped sessions alongside vim and Claude Code" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50">
     </div>
@@ -364,6 +364,21 @@
 
 </div>
 <script>
+  (function() {
+    var hero = document.querySelector('.hero-glow');
+    hero.addEventListener('mousemove', function(e) {
+      var rect = hero.getBoundingClientRect();
+      var x = ((e.clientX - rect.left) / rect.width) * 100;
+      var y = ((e.clientY - rect.top) / rect.height) * 100;
+      hero.style.setProperty('--glow-x', x + '%');
+      hero.style.setProperty('--glow-y', y + '%');
+    });
+    hero.addEventListener('mouseleave', function() {
+      hero.style.setProperty('--glow-x', '50%');
+      hero.style.setProperty('--glow-y', '50%');
+    });
+  })();
+
   (function() {
     var observer = new IntersectionObserver(function(entries) {
       entries.forEach(function(entry) {
