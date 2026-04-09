@@ -43,11 +43,10 @@ export interface InputRouterOptions {
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
   // Diff panel additions
-  onDiffPanelClick?: (col: number, row: number) => void;
-  onDiffPanelScroll?: (delta: number) => void;
   onDiffPanelData?: (data: string) => void;
   onDiffPanelFocusToggle?: () => void;
   onDiffToggle?: () => void;
+  onPaneNavRight?: () => void;  // Shift+Right when diff panel is open — main.ts queries pane_at_right
 }
 
 export class InputRouter {
@@ -90,6 +89,20 @@ export class InputRouter {
     if (data === "\x1b[1;6B") {
       this.opts.onSessionNext?.();
       return;
+    }
+
+    // Shift+Right/Left pane navigation integrating with diff panel
+    if (this.diffPanelCols > 0 && !this.modalOpen) {
+      // Shift+Left from diff panel: unfocus back to tmux
+      if (data === "\x1b[1;2D" && this.diffPanelFocused) {
+        this.opts.onDiffPanelFocusToggle?.();
+        return;
+      }
+      // Shift+Right when tmux focused: let main.ts check pane_at_right
+      if (data === "\x1b[1;2C" && !this.diffPanelFocused) {
+        this.opts.onPaneNavRight?.();
+        return;
+      }
     }
 
     // Ctrl-a p interception: detect prefix + p to toggle palette

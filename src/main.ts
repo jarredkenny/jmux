@@ -780,6 +780,24 @@ const inputRouter = new InputRouter(
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),
     onDiffToggle: () => toggleDiffPanel(),
+    onPaneNavRight: async () => {
+      // Shift+Right intercepted — check if we're at the rightmost pane
+      try {
+        const lines = await control.sendCommand("display-message -p '#{pane_at_right}'");
+        if ((lines[0] || "").trim() === "1") {
+          // At right edge — focus the diff panel
+          diffPanelFocused = true;
+          inputRouter.setDiffPanel(getDiffPanelCols(), true);
+          scheduleRender();
+        } else {
+          // Not at right edge — forward Shift+Right to tmux for normal pane switch
+          pty.write("\x1b[1;2C");
+        }
+      } catch {
+        // Control query failed — forward to tmux as fallback
+        pty.write("\x1b[1;2C");
+      }
+    },
     onDiffPanelData: (data) => {
       if (diffPty) diffPty.write(data);
     },

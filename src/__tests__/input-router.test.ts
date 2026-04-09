@@ -345,4 +345,70 @@ describe("diff panel routing", () => {
     router.handleInput("g");
     expect(toggleCalled).toBe(true);
   });
+
+  test("Shift+Left from focused diff panel toggles focus back to tmux", () => {
+    let focusToggled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onDiffPanelFocusToggle: () => { focusToggled = true; },
+      },
+      true,
+    );
+    router.setDiffPanel(10, true); // focused
+    router.handleInput("\x1b[1;2D"); // Shift+Left
+    expect(focusToggled).toBe(true);
+  });
+
+  test("Shift+Left forwards to tmux when diff panel is not focused", () => {
+    let ptyData = "";
+    let focusToggled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onDiffPanelFocusToggle: () => { focusToggled = true; },
+      },
+      true,
+    );
+    router.setDiffPanel(10, false); // not focused
+    router.handleInput("\x1b[1;2D"); // Shift+Left
+    expect(focusToggled).toBe(false);
+    expect(ptyData).toBe("\x1b[1;2D");
+  });
+
+  test("Shift+Right calls onPaneNavRight when diff panel open and tmux focused", () => {
+    let navRightCalled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onPaneNavRight: () => { navRightCalled = true; },
+      },
+      true,
+    );
+    router.setDiffPanel(10, false); // tmux focused
+    router.handleInput("\x1b[1;2C"); // Shift+Right
+    expect(navRightCalled).toBe(true);
+  });
+
+  test("Shift+Right forwards to tmux when no diff panel", () => {
+    let ptyData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onPaneNavRight: () => {},
+      },
+      true,
+    );
+    // No setDiffPanel — diffPanelCols is 0
+    router.handleInput("\x1b[1;2C"); // Shift+Right
+    expect(ptyData).toBe("\x1b[1;2C");
+  });
 });
