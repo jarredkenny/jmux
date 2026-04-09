@@ -165,8 +165,8 @@ function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
 const toolbarEnabled = true;
 let claudeCommand = (userConfig.claudeCommand as string) || "claude";
 let cacheTimersEnabled = (userConfig.cacheTimers as boolean) !== false;
-const diffPanelSplitRatio = (userConfig.diffPanel as any)?.splitRatio ?? 0.4;
-const hunkCommand = (userConfig.diffPanel as any)?.hunkCommand ?? "hunk";
+let diffPanelSplitRatio = (userConfig.diffPanel as any)?.splitRatio ?? 0.4;
+let hunkCommand = (userConfig.diffPanel as any)?.hunkCommand ?? "hunk";
 
 // Resolve paths relative to source
 const jmuxDir = resolve(dirname(import.meta.dir));
@@ -1559,6 +1559,10 @@ try {
       sidebar.resize(sidebarWidth, rows);
       renderFrame();
     }
+
+    // Hot-apply diff panel config changes
+    diffPanelSplitRatio = (updated.diffPanel as any)?.splitRatio ?? 0.4;
+    hunkCommand = (updated.diffPanel as any)?.hunkCommand ?? "hunk";
   });
 } catch {
   // Config file may not exist yet — watcher will fail silently
