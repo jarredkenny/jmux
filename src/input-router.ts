@@ -42,6 +42,12 @@ export interface InputRouterOptions {
   onSettings?: () => void;
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
+  // Diff panel additions
+  onDiffPanelClick?: (col: number, row: number) => void;
+  onDiffPanelScroll?: (delta: number) => void;
+  onDiffPanelData?: (data: string) => void;
+  onDiffPanelFocusToggle?: () => void;
+  onDiffToggle?: () => void;
 }
 
 export class InputRouter {
@@ -50,6 +56,9 @@ export class InputRouter {
   private modalOpen = false;
   private prefixSeen = false;
   private prefixTimer: ReturnType<typeof setTimeout> | null = null;
+  private diffPanelCols = 0;
+  private diffPanelFocused = false;
+  private mainCols = 0;
   constructor(opts: InputRouterOptions, sidebarVisible: boolean) {
     this.opts = opts;
     this.sidebarVisible = sidebarVisible;
@@ -61,6 +70,15 @@ export class InputRouter {
 
   setModalOpen(open: boolean): void {
     this.modalOpen = open;
+  }
+
+  setDiffPanel(cols: number, focused: boolean): void {
+    this.diffPanelCols = cols;
+    this.diffPanelFocused = focused;
+  }
+
+  setMainCols(cols: number): void {
+    this.mainCols = cols;
   }
 
   handleInput(data: string): void {
@@ -93,12 +111,26 @@ export class InputRouter {
           this.opts.onSettings?.();
           return;
         }
+        if (data === "g") {
+          this.opts.onDiffToggle?.();
+          return;
+        }
+        if (data === "\t" && this.diffPanelCols > 0) {
+          this.opts.onDiffPanelFocusToggle?.();
+          return;
+        }
+        // When diff panel is focused, swallow unrecognized post-prefix keys
+        if (this.diffPanelFocused && this.diffPanelCols > 0) {
+          return;
+        }
         // Not intercepted — forward to PTY normally (tmux handles its prefix binding)
       } else if (data === "\x01") {
         this.prefixSeen = true;
         this.prefixTimer = setTimeout(() => { this.prefixSeen = false; this.prefixTimer = null; }, 2000);
-        // Forward Ctrl-a to PTY so tmux enters prefix mode
-        this.opts.onPtyData(data);
+        // Only forward Ctrl-a to PTY when tmux is focused (not when diff panel is focused)
+        if (!this.diffPanelFocused || this.diffPanelCols === 0) {
+          this.opts.onPtyData(data);
+        }
         return;
       }
     }
@@ -150,6 +182,33 @@ export class InputRouter {
         this.opts.onToolbarClick?.(mainCol);
         return;
       }
+
+      // Diff panel mouse handling
+      if (this.diffPanelCols > 0) {
+        const dividerX = this.opts.sidebarCols + 1 + this.mainCols + 1; // 1-indexed
+
+        // Divider click — toggle focus
+        if (mouse.x === dividerX && !mouse.release && !isMotion && !isWheel) {
+          this.opts.onDiffPanelFocusToggle?.();
+          return;
+        }
+
+        // Diff panel region
+        if (mouse.x > dividerX) {
+          if (isWheel) {
+            const delta = (mouse.button & 1) ? 3 : -3;
+            this.opts.onDiffPanelScroll?.(delta);
+            return;
+          }
+          if (!mouse.release && !isMotion) {
+            const diffCol = mouse.x - dividerX;
+            const diffRow = mouse.y - 1; // toolbar offset
+            this.opts.onDiffPanelClick?.(diffCol, diffRow);
+          }
+          return;
+        }
+      }
+
       // Mouse in main area — translate X coordinate and Y (offset by toolbar)
       // Don't forward bare motion events to PTY (too noisy)
       if (isMotion && (mouse.button & 0x03) === 3) return;
@@ -169,6 +228,12 @@ export class InputRouter {
     // When palette is open, route keyboard input to palette callback
     if (this.modalOpen) {
       this.opts.onModalInput?.(data);
+      return;
+    }
+
+    // When diff panel is focused, route keyboard to diff panel
+    if (this.diffPanelFocused && this.diffPanelCols > 0) {
+      this.opts.onDiffPanelData?.(data);
       return;
     }
 

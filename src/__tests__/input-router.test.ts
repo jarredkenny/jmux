@@ -216,3 +216,134 @@ describe("modal mode", () => {
     expect(paletteData).toBe("");
   });
 });
+
+describe("diff panel routing", () => {
+  test("mouse click in diff panel region calls onDiffPanelClick", () => {
+    let clicked = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onDiffPanelClick: (col, row) => { clicked = true; },
+      },
+      true,
+    );
+    router.setDiffPanel(10, false);
+    router.setMainCols(20);
+    // Diff panel starts after sidebar(4)+border(1)+main(20)+divider(1) = col 27 (1-indexed)
+    // Click at x=28 → in diff panel region
+    router.handleInput("\x1b[<0;28;3M");
+    expect(clicked).toBe(true);
+  });
+
+  test("divider click toggles focus", () => {
+    let focusToggled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onDiffPanelFocusToggle: () => { focusToggled = true; },
+      },
+      true,
+    );
+    router.setDiffPanel(10, false);
+    router.setMainCols(20);
+    // Divider is at col 4+1+20+1 = 26 (1-indexed)
+    router.handleInput("\x1b[<0;26;3M");
+    expect(focusToggled).toBe(true);
+  });
+
+  test("keyboard routes to onDiffPanelData when diff panel is focused", () => {
+    let diffData = "";
+    let ptyData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onDiffPanelData: (d) => { diffData += d; },
+      },
+      true,
+    );
+    router.setDiffPanel(10, true); // focused
+    router.handleInput("jk");
+    expect(diffData).toBe("jk");
+    expect(ptyData).toBe("");
+  });
+
+  test("keyboard routes to PTY when diff panel exists but is not focused", () => {
+    let diffData = "";
+    let ptyData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onDiffPanelData: (d) => { diffData += d; },
+      },
+      true,
+    );
+    router.setDiffPanel(10, false);
+    router.handleInput("jk");
+    expect(ptyData).toBe("jk");
+    expect(diffData).toBe("");
+  });
+
+  test("Ctrl-a Tab toggles diff panel focus", () => {
+    let focusToggled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onDiffPanelFocusToggle: () => { focusToggled = true; },
+      },
+      true,
+    );
+    router.setDiffPanel(10, false);
+    router.handleInput("\x01");
+    router.handleInput("\t");
+    expect(focusToggled).toBe(true);
+  });
+
+  test("prefix key swallowed when diff panel is focused and key is unrecognized", () => {
+    let ptyData = "";
+    let diffData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onDiffPanelData: (d) => { diffData += d; },
+      },
+      true,
+    );
+    router.setDiffPanel(10, true);
+    router.handleInput("\x01");
+    expect(ptyData).toBe("");
+    expect(diffData).toBe("");
+    router.handleInput("x");
+    expect(ptyData).toBe("");
+    expect(diffData).toBe("");
+  });
+
+  test("Ctrl-a g still intercepted when diff panel is focused", () => {
+    let toggleCalled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onDiffPanelData: () => {},
+        onDiffToggle: () => { toggleCalled = true; },
+      },
+      true,
+    );
+    router.setDiffPanel(10, true);
+    router.handleInput("\x01");
+    router.handleInput("g");
+    expect(toggleCalled).toBe(true);
+  });
+});
