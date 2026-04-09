@@ -92,6 +92,29 @@ describe("ListModal", () => {
     }
   });
 
+  test("alt+backspace clears entire query", () => {
+    const modal = new ListModal({ header: "Pick One", items: testItems });
+    modal.open();
+
+    modal.handleInput("a");
+    modal.handleInput("l");
+    modal.handleInput("\x1b\x7f"); // alt+backspace
+    const grid = modal.getGrid(50);
+    // All items visible again: header + query + 4 items
+    expect(grid.rows).toBe(2 + testItems.length);
+  });
+
+  test("ctrl-u clears entire query", () => {
+    const modal = new ListModal({ header: "Pick One", items: testItems });
+    modal.open();
+
+    modal.handleInput("a");
+    modal.handleInput("l");
+    modal.handleInput("\x15"); // ctrl-u
+    const grid = modal.getGrid(50);
+    expect(grid.rows).toBe(2 + testItems.length);
+  });
+
   test("Enter with no filtered results returns { type: 'consumed' }", () => {
     const modal = new ListModal({ header: "Pick One", items: testItems });
     modal.open();

@@ -224,6 +224,16 @@ export class CommandPalette {
       return CONSUMED;
     }
 
+    // Alt+Backspace / Cmd+Backspace / Ctrl-U: clear entire input
+    if (data === "\x1b\x7f" || data === "\x1b\b" || data === "\x15") {
+      if (this.query.length > 0) {
+        this.query = "";
+        this.selectedIndex = 0;
+        this.refilter();
+      }
+      return CONSUMED;
+    }
+
     // Backspace
     if (data === "\x7f" || data === "\b") {
       if (this.query.length > 0) {

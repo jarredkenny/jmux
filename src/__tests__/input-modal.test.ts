@@ -64,6 +64,25 @@ describe("InputModal", () => {
     expect(grid.cells[1][6].char).toBe(" ");
   });
 
+  test("alt+backspace clears entire input", () => {
+    const modal = new InputModal({ header: "Rename Session", value: "abc" });
+    modal.open();
+
+    modal.handleInput("\x1b\x7f"); // alt+backspace
+    const grid = modal.getGrid(50);
+    // value is now empty — cols 4+ should be spaces
+    expect(grid.cells[1][4].char).toBe(" ");
+  });
+
+  test("ctrl-u clears entire input", () => {
+    const modal = new InputModal({ header: "Rename Session", value: "abc" });
+    modal.open();
+
+    modal.handleInput("\x15"); // ctrl-u
+    const grid = modal.getGrid(50);
+    expect(grid.cells[1][4].char).toBe(" ");
+  });
+
   test("Enter returns { type: 'result', value: 'the-text' }", () => {
     const modal = new InputModal({ header: "Rename Session", value: "hello" });
     modal.open();

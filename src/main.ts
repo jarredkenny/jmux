@@ -61,7 +61,8 @@ Keybindings:
   Ctrl-a z                 Toggle pane zoom
   Ctrl-a Arrows            Resize panes
   Ctrl-a p                 Command palette
-  Ctrl-a g                 Toggle diff panel
+  Ctrl-a g                 Toggle diff panel (on/off)
+  Ctrl-a z                 Zoom diff panel (split ↔ full, when focused)
   Ctrl-a Tab               Switch focus (tmux ↔ diff)
   Ctrl-a i                 Settings
   Click sidebar            Switch to session
@@ -452,16 +453,15 @@ function resizeDiffPanel(): void {
 }
 
 async function toggleDiffPanel(): Promise<void> {
-  const prevState = diffPanel.state;
-  diffPanel.cycle();
-  const newState = diffPanel.state;
+  const wasActive = diffPanel.isActive();
+  diffPanel.toggle();
 
   const totalCols = process.stdout.columns || 80;
   const sidebarCols = sidebarShown ? sidebarTotal() : 0;
   const available = totalCols - sidebarCols;
   const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
 
-  if (prevState === "off" && newState === "split") {
+  if (!wasActive && diffPanel.state === "split") {
     // off → split: shrink tmux, spawn hunk
     const panelCols = diffPanel.calcPanelCols(available, diffPanelSplitRatio);
     const newMainCols = available - panelCols - 1; // -1 for divider
@@ -471,24 +471,52 @@ async function toggleDiffPanel(): Promise<void> {
     inputRouter.setDiffPanel(panelCols, diffPanelFocused);
     inputRouter.setMainCols(newMainCols);
     await spawnHunk(panelCols, ptyRowsNow);
-  } else if (prevState === "split" && newState === "full") {
-    // split → full: resize tmux to full width (invisible), resize hunk to full
-    mainCols = available;
-    pty.resize(available, ptyRowsNow);
-    bridge.resize(available, ptyRowsNow);
-    setDiffFocus(true);
-    inputRouter.setMainCols(available);
-    if (diffPty && diffBridge) {
-      diffPty.resize(available, ptyRowsNow);
-      diffBridge.resize(available, ptyRowsNow);
-    }
-  } else if (prevState === "full" && newState === "off") {
-    // full → off: kill hunk, resize tmux back
+  } else if (wasActive && diffPanel.state === "off") {
+    // split/full → off: kill hunk, resize tmux back
     killDiffProcess();
     mainCols = available;
     setDiffFocus(false);
     inputRouter.setDiffPanel(0, false);
     inputRouter.setMainCols(available);
+    pty.resize(available, ptyRowsNow);
+    bridge.resize(available, ptyRowsNow);
+  }
+
+  scheduleRender();
+}
+
+async function zoomDiffPanel(): Promise<void> {
+  if (!diffPanel.isActive()) return;
+  diffPanel.toggleZoom();
+
+  const totalCols = process.stdout.columns || 80;
+  const sidebarCols = sidebarShown ? sidebarTotal() : 0;
+  const available = totalCols - sidebarCols;
+  const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+
+  if (diffPanel.state === "full") {
+    // split → full: resize tmux to full width (invisible), resize hunk to full
+    mainCols = available;
+    pty.resize(available, ptyRowsNow);
+    bridge.resize(available, ptyRowsNow);
+    setDiffFocus(true);
+    inputRouter.setMainCols(0);
+    if (diffPty && diffBridge) {
+      diffPty.resize(available, ptyRowsNow);
+      diffBridge.resize(available, ptyRowsNow);
+    }
+  } else if (diffPanel.state === "split") {
+    // full → split: shrink tmux back, resize hunk to panel width
+    const panelCols = diffPanel.calcPanelCols(available, diffPanelSplitRatio);
+    mainCols = available - panelCols - 1;
+    pty.resize(mainCols, ptyRowsNow);
+    bridge.resize(mainCols, ptyRowsNow);
+    inputRouter.setDiffPanel(panelCols, diffPanelFocused);
+    inputRouter.setMainCols(mainCols);
+    if (diffPty && diffBridge) {
+      diffPty.resize(panelCols, ptyRowsNow);
+      diffBridge.resize(panelCols, ptyRowsNow);
+    }
   }
 
   scheduleRender();
@@ -789,6 +817,7 @@ const inputRouter = new InputRouter(
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),
     onDiffToggle: () => toggleDiffPanel(),
+    onDiffZoom: () => zoomDiffPanel(),
     onPaneNavRight: async () => {
       // Shift+Right intercepted — check if we're at the rightmost pane
       try {
@@ -933,8 +962,7 @@ function buildPaletteCommands(): PaletteCommand[] {
   // Diff panel commands
   commands.push(
     { id: "diff-toggle", label: "Toggle diff panel", category: "diff" },
-    { id: "diff-split", label: "Diff: split view", category: "diff" },
-    { id: "diff-full", label: "Diff: full screen", category: "diff" },
+    { id: "diff-zoom", label: "Zoom diff panel", category: "diff" },
   );
 
   // Settings
@@ -1330,49 +1358,8 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     case "diff-toggle":
       await toggleDiffPanel();
       return;
-    case "diff-split":
-      if (diffPanel.state !== "split") {
-        if (diffPanel.state === "full") {
-          diffPanel.setState("off");
-          killDiffProcess();
-        }
-        diffPanel.setState("split");
-        const panelCols = getDiffPanelCols();
-        const fullCols = sidebarShown ? (process.stdout.columns || 80) - sidebarTotal() : (process.stdout.columns || 80);
-        mainCols = fullCols - panelCols - 1;
-        const ptyR = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-        pty.resize(mainCols, ptyR);
-        bridge.resize(mainCols, ptyR);
-        inputRouter.setDiffPanel(panelCols, diffPanelFocused);
-        inputRouter.setMainCols(mainCols);
-        await spawnHunk(panelCols, ptyR);
-      }
-      scheduleRender();
-      return;
-    case "diff-full":
-      if (diffPanel.state !== "full") {
-        if (diffPanel.state === "off") {
-          diffPanel.setState("full");
-          const fullCols = sidebarShown ? (process.stdout.columns || 80) - sidebarTotal() : (process.stdout.columns || 80);
-          const ptyR = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-          setDiffFocus(true);
-          inputRouter.setMainCols(0);
-          await spawnHunk(fullCols, ptyR);
-        } else {
-          // split → full
-          diffPanel.setState("full");
-          const fullCols = sidebarShown ? (process.stdout.columns || 80) - sidebarTotal() : (process.stdout.columns || 80);
-          const ptyR = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-          mainCols = fullCols;
-          pty.resize(mainCols, ptyR);
-          bridge.resize(mainCols, ptyR);
-          if (diffPty) { try { diffPty.resize(fullCols, ptyR); } catch {} }
-          if (diffBridge) { diffBridge.resize(fullCols, ptyR); }
-          setDiffFocus(true);
-          inputRouter.setMainCols(0);
-        }
-      }
-      scheduleRender();
+    case "diff-zoom":
+      await zoomDiffPanel();
       return;
   }
 }

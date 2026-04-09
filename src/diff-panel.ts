@@ -25,20 +25,20 @@ export class DiffPanel {
     return this._state !== "off";
   }
 
-  cycle(): void {
-    switch (this._state) {
-      case "off":
-        this._state = "split";
-        break;
-      case "split":
-        this._state = "full";
-        break;
-      case "full":
-        this._state = "off";
-        break;
-    }
+  toggle(): void {
     if (this._state === "off") {
+      this._state = "split";
+    } else {
+      this._state = "off";
       this._hunkExited = false;
+    }
+  }
+
+  toggleZoom(): void {
+    if (this._state === "split") {
+      this._state = "full";
+    } else if (this._state === "full") {
+      this._state = "split";
     }
   }
 

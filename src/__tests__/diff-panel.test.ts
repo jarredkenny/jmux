@@ -7,13 +7,33 @@ describe("DiffPanel state machine", () => {
     expect(panel.state).toBe("off");
   });
 
-  test("cycle advances off → split → full → off", () => {
+  test("toggle switches between off and split", () => {
     const panel = new DiffPanel();
-    panel.cycle();
+    panel.toggle();
     expect(panel.state).toBe("split");
-    panel.cycle();
+    panel.toggle();
+    expect(panel.state).toBe("off");
+  });
+
+  test("toggle from full goes to off", () => {
+    const panel = new DiffPanel();
+    panel.setState("full");
+    panel.toggle();
+    expect(panel.state).toBe("off");
+  });
+
+  test("toggleZoom switches between split and full", () => {
+    const panel = new DiffPanel();
+    panel.setState("split");
+    panel.toggleZoom();
     expect(panel.state).toBe("full");
-    panel.cycle();
+    panel.toggleZoom();
+    expect(panel.state).toBe("split");
+  });
+
+  test("toggleZoom does nothing when off", () => {
+    const panel = new DiffPanel();
+    panel.toggleZoom();
     expect(panel.state).toBe("off");
   });
 

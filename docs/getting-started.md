@@ -117,7 +117,8 @@ No prefix key needed — these work instantly.
 
 | Action | Keys |
 |--------|------|
-| Toggle diff panel | `Ctrl-a` then `g` (cycles off → split → full → off) |
+| Toggle diff panel | `Ctrl-a` then `g` |
+| Zoom diff panel (split ↔ full) | `Ctrl-a` then `z` (when diff is focused) |
 | Switch focus (tmux ↔ diff) | `Ctrl-a` then `Tab` |
 | Focus diff from rightmost pane | `Shift-Right` |
 | Return focus to tmux | `Shift-Left` (from diff panel) |
@@ -207,8 +208,8 @@ When an agent finishes work and the `!` flag appears:
 1. Switch to that session
 2. Press `Ctrl-a g` to open the diff panel in split mode — you'll see the agent's terminal on the left and its code changes on the right
 3. Click the diff panel or press `Shift-Right` to focus it, then use `j`/`k` to scroll and `[`/`]` to jump between hunks
-4. Press `Ctrl-a g` again for full-screen diff review
-5. Press `Ctrl-a g` once more to close and get back to work
+4. Press `Ctrl-a z` to zoom the diff to full-screen for thorough review
+5. Press `Ctrl-a z` again to unzoom, or `Ctrl-a g` to close the panel entirely
 
 The diff panel shows the working tree changes for whichever session is active. Switch sessions in the sidebar and the diff updates automatically.
 

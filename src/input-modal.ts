@@ -45,6 +45,11 @@ export class InputModal {
       if (this.value.length === 0) return { type: "consumed" };
       return { type: "result", value: this.value };
     }
+    // Alt+Backspace / Cmd+Backspace / Ctrl-U: clear entire input
+    if (data === "\x1b\x7f" || data === "\x1b\b" || data === "\x15") {
+      this.value = "";
+      return { type: "consumed" };
+    }
     if (data === "\x7f" || data === "\b") {
       if (this.value.length > 0) this.value = this.value.slice(0, -1);
       return { type: "consumed" };

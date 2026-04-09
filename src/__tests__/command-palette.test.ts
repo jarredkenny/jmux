@@ -109,6 +109,24 @@ describe("CommandPalette", () => {
     expect(palette.isOpen()).toBe(true);
   });
 
+  test("alt+backspace clears entire query", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    palette.handleInput("s");
+    palette.handleInput("p");
+    palette.handleInput("\x1b\x7f"); // alt+backspace
+    expect(palette.getFilteredResults().length).toBe(testCommands.length);
+  });
+
+  test("ctrl-u clears entire query", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    palette.handleInput("s");
+    palette.handleInput("p");
+    palette.handleInput("\x15"); // ctrl-u
+    expect(palette.getFilteredResults().length).toBe(testCommands.length);
+  });
+
   test("down arrow moves selection", () => {
     const palette = new CommandPalette();
     palette.open(testCommands);

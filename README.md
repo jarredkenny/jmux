@@ -101,12 +101,11 @@ Press `Ctrl-a g` to open an embedded [hunk](https://github.com/modem-dev/hunk) d
 
 ![jmux with diff panel in split mode showing code changes alongside Claude Code](docs/screenshots/diff-panel-split.png)
 
-Three modes, one hotkey:
+Two modes:
 - **Split** — diff panel docks to the right. See agent output and code changes simultaneously.
-- **Full** — diff takes over the main area for thorough review. Sidebar stays for session switching.
-- **Off** — back to normal.
+- **Full** — `Ctrl-a z` zooms the diff to take over the main area, just like zooming a tmux pane. Sidebar stays for session switching.
 
-`Ctrl-a g` cycles through all three. Click or `Shift-Right` to focus the diff panel for keyboard navigation (`j`/`k` to scroll, `[`/`]` to jump between hunks). `Shift-Left` returns focus to tmux. Switching sessions automatically reloads the diff for the new session's working tree.
+`Ctrl-a g` toggles the panel on/off. Click or `Shift-Right` to focus it for keyboard navigation (`j`/`k` to scroll, `[`/`]` to jump between hunks). `Ctrl-a z` zooms to full-screen while focused. `Shift-Left` returns focus to tmux. Switching sessions automatically reloads the diff.
 
 ![jmux with diff panel in full-screen mode](docs/screenshots/diff-panel-full.png)
 
@@ -167,7 +166,8 @@ When Claude Code finishes a response, the orange `!` appears on that session in 
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-a g` | Toggle diff panel (off → split → full → off) |
+| `Ctrl-a g` | Toggle diff panel on/off |
+| `Ctrl-a z` | Zoom diff panel (split ↔ full, when focused) |
 | `Ctrl-a Tab` | Switch focus between tmux and diff panel |
 | `Shift-Right` | Focus diff panel from rightmost pane |
 | `Shift-Left` | Return focus to tmux from diff panel |

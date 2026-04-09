@@ -46,6 +46,7 @@ export interface InputRouterOptions {
   onDiffPanelData?: (data: string) => void;
   onDiffPanelFocusToggle?: () => void;
   onDiffToggle?: () => void;
+  onDiffZoom?: () => void;  // Ctrl-a z when diff panel is focused — toggles split/full
   onPaneNavRight?: () => void;  // Shift+Right when diff panel is open — main.ts queries pane_at_right
 }
 
@@ -126,6 +127,10 @@ export class InputRouter {
         }
         if (data === "g") {
           this.opts.onDiffToggle?.();
+          return;
+        }
+        if (data === "z" && this.diffPanelFocused && this.diffPanelCols > 0) {
+          this.opts.onDiffZoom?.();
           return;
         }
         if (data === "\t" && this.diffPanelCols > 0) {
