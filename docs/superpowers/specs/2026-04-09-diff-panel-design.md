@@ -20,9 +20,10 @@ No diff panel. Layout is exactly as it is today: sidebar + toolbar + tmux. Hunk 
 
 Right panel appears, taking ~40% of the available width (after sidebar). The exact ratio is configurable via `~/.config/jmux/config.json`.
 
-- Tmux area shrinks. `resize-client` is sent to the PTY client so tmux reflows properly.
+- Tmux area shrinks. `pty.resize()` is called on the bun-pty handle to change the terminal dimensions; tmux responds to the resulting SIGWINCH and reflows.
 - Hunk launches with `hunk diff` pointed at the active session's directory.
 - Both tmux and hunk are interactive. A 1-column divider between them indicates focus: bright (`#58a6ff`) when hunk is focused, dim (`#30363d`) when tmux is focused.
+- Focus switches via mouse click in either panel area, or `Ctrl-a Tab` to toggle between panels.
 
 ### State: `full`
 
@@ -38,8 +39,8 @@ Hunk takes over the entire main area. Sidebar stays.
 - `Ctrl-a g` cycles `off → split → full → off`
 - Toolbar button does the same
 - Closing the panel (from any state): hunk subprocess is killed, tmux PTY resizes back to full width
-- `split → full`: tmux stays at its narrowed size (not visible, no resize needed)
-- `full → off`: tmux resizes back to full width
+- `split → full`: tmux PTY resizes back to full width immediately (invisible reflow while tmux isn't drawn, so the `full → off` transition is instant with no visible reflow)
+- `full → off`: no tmux resize needed — already at full width from the `split → full` transition
 - Switching sessions while panel is open: hunk restarts with the new session's directory
 
 ## Subprocess Management
@@ -48,7 +49,7 @@ Hunk takes over the entire main area. Sidebar stays.
 
 When the panel opens:
 
-1. Resolve the active session's working directory via `display-message -p -t <session> '#{pane_current_path}'` on the control client.
+1. Resolve the active session's working directory via `display-message -p -t <session> '#{pane_current_path}'` on the control client. Note: this returns the *active pane's* current working directory (which may differ from the session's initial directory if the user has `cd`'d). This is intentional — we want the directory the agent is actually working in.
 2. Spawn `hunk diff` in a new PTY (via `bun-pty`) with the working directory set to the resolved path.
 3. PTY dimensions match the panel's allocated size (cols x rows).
 
@@ -66,7 +67,7 @@ A second `ScreenBridge` instance reads hunk's terminal output into a `CellGrid`.
 - **Session switch:** kill old hunk process, spawn new one for the new session's directory.
 - **Terminal resize (SIGWINCH):** recalculate panel width, `pty.resize()` both tmux and hunk PTYs, resize both ScreenBridges.
 - **Panel closes:** kill hunk process, dispose ScreenBridge #2, resize tmux PTY back to full width.
-- **Hunk exits on its own** (e.g., user presses `q`): transition panel state to `off`.
+- **Hunk exits on its own** (e.g., user presses `q`): transition to an "empty panel" state — the panel stays open showing a hint ("Press Ctrl-a g to close, or switch sessions to reload"). This prevents an accidental `q` from killing the review workflow. The next session switch will relaunch hunk automatically.
 
 ### Refresh
 
@@ -76,7 +77,7 @@ A second `ScreenBridge` instance reads hunk's terminal output into a `CellGrid`.
 
 ### hunk as an optional dependency
 
-`hunkdiff` is an optional runtime dependency. If not installed when the user triggers the panel, show a brief message: "hunk not found — install with: npm i -g hunkdiff". Detected at toggle time with `Bun.spawnSync(["which", "hunk"])`.
+`hunkdiff` is an optional runtime dependency. If not installed when the user triggers the panel, show a brief message: "hunk not found — install with: npm i -g hunkdiff". Detected at toggle time with `Bun.which("hunk")` (built-in, no subprocess needed).
 
 ## Composition Changes
 
@@ -116,7 +117,7 @@ function compositeGrids(
 - `mainCols` shrinks: `availableCols - diffPanelCols - 1` (1 for the divider column).
 - Hunk's CellGrid is placed starting at column `sidebarCols + 1 + mainCols + 1`.
 - The divider is a 1-column strip of `│` characters. Color reflects focus state.
-- Toolbar spans the full width. Existing tabs on the left, diff indicator/button on the right.
+- Toolbar spans the full width (`mainCols + 1 + diffPanelCols`). `ToolbarConfig.mainCols` stays as the tmux area width — `compositeGrids()` extends the toolbar row across the divider and diff panel columns implicitly during composition (filling with the toolbar background). The diff panel's status info (file count, view mode) renders in the toolbar within the diff panel's column range, right-aligned.
 
 ### Full mode layout
 
@@ -153,19 +154,32 @@ diffPanelFocused: boolean;   // which panel gets keyboard input
 Extending the existing SGR mouse parser:
 
 ```
-x <= sidebarCols                → sidebar click/scroll
-y == toolbar row                → toolbar click
-x > totalCols - diffPanelCols  → diff panel (translate coords, forward to hunk PTY)
-else                            → main area (translate coords, forward to tmux PTY)
+x <= sidebarCols                            → sidebar click/scroll
+y == toolbar row                            → toolbar click
+x == sidebarCols + 1 + mainCols + 1        → divider (toggle focus)
+x > totalCols - diffPanelCols              → diff panel (translate coords, forward to hunk PTY)
+else                                        → main area (translate coords, forward to tmux PTY)
 ```
 
-Mouse click in either the main or diff panel area sets `diffPanelFocused` accordingly.
+Mouse click in either the main or diff panel area sets `diffPanelFocused` accordingly. Clicking the 1-column divider toggles focus between panels (same as `Ctrl-a Tab`).
 
 ### Keyboard routing (no modal open)
 
 - `Ctrl-Shift-Up/Down`: session switching — always intercepted by jmux.
+- `Ctrl-a Tab`: toggle focus between tmux and hunk panels (split mode only).
 - Prefix sequences (`Ctrl-a p/n/i/g`): always intercepted by jmux.
 - Everything else: forwarded to hunk PTY if `diffPanelFocused`, or tmux PTY if not.
+
+### Prefix key behavior when hunk is focused
+
+When hunk has focus, the `\x01` byte (Ctrl-a) requires special handling because hunk doesn't use Ctrl-a as a prefix — forwarding it would be noise.
+
+**Rule:** When hunk is focused, `\x01` sets `prefixSeen = true` in the input router but is **not forwarded to either PTY**. Then:
+
+- If the next key is an intercepted binding (`g`, `p`, `n`, `i`, `Tab`): jmux handles it as normal.
+- If the next key is **not** an intercepted binding: the key is **swallowed** (discarded). It should not go to hunk (meaningless) or to tmux (not focused). This differs from the tmux-focused case where unrecognized post-prefix keys fall through to tmux for tmux's own prefix bindings.
+
+This means `Ctrl-a` followed by an unrecognized key is a no-op when hunk is focused, which is the correct behavior — the user gets jmux's intercepts but nothing else leaks through.
 
 ### Full mode
 
