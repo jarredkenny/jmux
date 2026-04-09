@@ -10,7 +10,7 @@ jmux already tracks per-session activity and attention state via tmux options. T
 
 ## Architecture
 
-Five components, each small and focused:
+Six components, each small and focused:
 
 ```
 Claude Code (in tmux pane)
@@ -26,6 +26,8 @@ Sidebar (src/sidebar.ts)
     │  Renders color-coded countdown on detail row
     ▼
 Render loop (1s tick while any timer is active)
+
+Settings toggle (config.json + command palette)
 ```
 
 ### 1. OTLP Receiver — `src/otel-receiver.ts`
@@ -129,7 +131,39 @@ setCacheTimer(sessionId: string, state: CacheTimerState | null): void
 
 The countdown needs to visually tick every second. A single `setInterval(scheduleRender, 1000)` starts when the first timer becomes active and clears when no timers remain (or on cleanup). This avoids burning cycles when no Claude Code sessions are running.
 
-### 5. Cleanup
+### 5. Settings Toggle
+
+The cache timer is **on by default** and can be toggled via the command palette or settings palette.
+
+**Config key**: `cacheTimers` (boolean) in `~/.config/jmux/config.json`. Defaults to `true` when absent.
+
+**Palette entry** (in `buildPaletteCommands`, category `"setting"`):
+
+```typescript
+{
+  id: "setting-cache-timers",
+  label: `Cache timers: ${settings.cacheTimers !== false ? "on" : "off"}`,
+  category: "setting",
+}
+```
+
+Follows the same pattern as the `setting-wtm` toggle: reads current value from config, toggles it via `applySetting("cacheTimers", !current, "boolean")`.
+
+**Behavior when toggled off:**
+
+- The OTLP receiver continues running (keeps the env vars valid so Claude Code doesn't log errors about a refused connection)
+- The sidebar stops rendering countdown timers — `renderSession` skips the timer display
+- The 1-second render tick stops (no timers to animate)
+- Timer state continues accumulating silently so toggling back on shows current data immediately
+
+**Behavior when toggled on:**
+
+- The 1-second render tick resumes if any timer state exists
+- Sidebar renders timers with current state — no delay or warm-up needed
+
+The config file watcher (line ~1213) hot-applies this setting without restart, same as sidebar width.
+
+### 6. Cleanup
 
 - `OtelReceiver.stop()` is called in the existing `cleanup()` function — shuts down the HTTP server
 - The 1-second render interval clears when the last timer expires or on cleanup
@@ -143,7 +177,7 @@ The countdown needs to visually tick every second. A single `setInterval(schedul
 | `src/otel-receiver.ts` | **New.** OTLP HTTP receiver + CacheTimerState map |
 | `src/sidebar.ts` | Add `setCacheTimer()`, render countdown on detail row |
 | `src/types.ts` | Export `CacheTimerState` interface |
-| `src/main.ts` | Start/stop receiver, inject env vars, wire update callback, manage render tick, prune stale state |
+| `src/main.ts` | Start/stop receiver, inject env vars, wire update callback, manage render tick, prune stale state, add `setting-cache-timers` to palette and handler |
 
 ## Testing
 
