@@ -783,17 +783,6 @@ const inputRouter = new InputRouter(
     onDiffPanelData: (data) => {
       if (diffPty) diffPty.write(data);
     },
-    onDiffPanelClick: (col, row) => {
-      if (diffPty) {
-        diffPty.write(`\x1b[<0;${col};${row}M`);
-      }
-    },
-    onDiffPanelScroll: (delta) => {
-      if (diffPty) {
-        const button = delta > 0 ? 65 : 64;
-        diffPty.write(`\x1b[<${button};1;1M`);
-      }
-    },
     onDiffPanelFocusToggle: () => {
       if (!diffPanel.isActive() || diffPanel.state === "full") return;
       diffPanelFocused = !diffPanelFocused;

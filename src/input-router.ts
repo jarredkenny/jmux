@@ -193,17 +193,18 @@ export class InputRouter {
           return;
         }
 
-        // Diff panel region
+        // Diff panel region — forward raw translated SGR mouse sequence to hunk
         if (mouse.x > dividerX) {
-          if (isWheel) {
-            const delta = (mouse.button & 1) ? 3 : -3;
-            this.opts.onDiffPanelScroll?.(delta);
-            return;
-          }
-          if (!mouse.release && !isMotion) {
-            const diffCol = mouse.x - dividerX;
-            const diffRow = mouse.y - 1; // toolbar offset
-            this.opts.onDiffPanelClick?.(diffCol, diffRow);
+          if (isMotion && (mouse.button & 0x03) === 3) return; // bare motion, skip
+          const diffOffset = dividerX; // x offset to translate into hunk's coordinate space
+          const yOffset = 1; // toolbar row
+          const m = data.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
+          if (m) {
+            const newX = parseInt(m[2], 10) - diffOffset;
+            const newY = parseInt(m[3], 10) - yOffset;
+            if (newX > 0 && newY > 0) {
+              this.opts.onDiffPanelData?.(`\x1b[<${m[1]};${newX};${newY}${m[4]}`);
+            }
           }
           return;
         }

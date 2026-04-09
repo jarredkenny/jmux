@@ -218,23 +218,22 @@ describe("modal mode", () => {
 });
 
 describe("diff panel routing", () => {
-  test("mouse click in diff panel region calls onDiffPanelClick", () => {
-    let clicked = false;
+  test("mouse click in diff panel region forwards translated SGR to onDiffPanelData", () => {
+    let diffData = "";
     const router = new InputRouter(
       {
         sidebarCols: 4,
         onPtyData: () => {},
         onSidebarClick: () => {},
-        onDiffPanelClick: (col, row) => { clicked = true; },
+        onDiffPanelData: (d) => { diffData += d; },
       },
       true,
     );
     router.setDiffPanel(10, false);
     router.setMainCols(20);
-    // Diff panel starts after sidebar(4)+border(1)+main(20)+divider(1) = col 27 (1-indexed)
-    // Click at x=28 → in diff panel region
+    // Divider at col 26 (1-indexed). Click at x=28, y=3 → diff col 2, row 2
     router.handleInput("\x1b[<0;28;3M");
-    expect(clicked).toBe(true);
+    expect(diffData).toBe("\x1b[<0;2;2M");
   });
 
   test("divider click toggles focus", () => {
