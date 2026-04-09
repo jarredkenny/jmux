@@ -260,6 +260,12 @@
             <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
           </tr>
           <tr class="border-b border-border/50">
+            <td class="py-3 pr-4 text-[#a1a1aa]">Integrated diff review</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
+          </tr>
+          <tr class="border-b border-border/50">
             <td class="py-3 pr-4 text-[#a1a1aa]">Cache cost visibility</td>
             <td class="py-3 px-4 text-center text-accent">&#10003;</td>
             <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
@@ -359,6 +365,34 @@
         </div>
         <div class="md:w-3/5 animate-in">
           <img src="assets/command-palette.png" alt="jmux command palette floating over a workspace with sessions, Claude Code, and htop" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50">
+        </div>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <!-- Diff Panel -->
+  <section>
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex flex-col md:flex-row-reverse gap-8 md:gap-12 items-center">
+        <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
+          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">New in 0.11</p>
+          <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Integrated Diff Panel</h2>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
+            <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">Ctrl-a g</span> to toggle.
+            An embedded <a href="https://github.com/modem-dev/hunk" class="text-accent hover:underline">hunk</a> diff viewer docks to the right of your terminal — see exactly what each agent changed without leaving jmux.
+          </p>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
+            Split mode for monitoring while agents work. Full-screen mode for thorough review. Switching sessions reloads the diff automatically.
+          </p>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed">
+            Navigate with <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">Shift-Right</span> from your rightmost pane — the diff panel feels like another pane in your layout.
+          </p>
+        </div>
+        <div class="md:w-3/5 animate-in">
+          <img src="assets/diff-panel-split.png" alt="jmux with integrated diff panel showing code changes alongside Claude Code in split mode" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50 mb-4">
+          <img src="assets/diff-panel-full.png" alt="jmux diff panel in full-screen mode for thorough code review" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50">
         </div>
       </div>
     </div>

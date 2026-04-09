@@ -79,6 +79,25 @@ Press `Ctrl-a p` to open the command palette — a floating overlay for fuzzy-se
 
 ---
 
+## Diff Panel
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-a g` | Toggle diff panel (off → split → full → off) |
+| `Ctrl-a Tab` | Switch focus between tmux and diff panel |
+| `Shift-Right` | Focus diff panel from rightmost pane |
+| `Shift-Left` | Return focus to tmux from diff panel |
+| Click diff panel | Focus diff panel for keyboard navigation |
+| Click divider | Toggle focus between panels |
+
+The diff panel embeds [hunk](https://github.com/modem-dev/hunk) to show the active session's working tree changes. Requires `npm i -g hunkdiff`.
+
+In split mode, the diff panel docks to the right (~40% width). In full mode, it replaces the main area. Switching sessions reloads the diff automatically.
+
+Also available via the command palette: "Toggle diff panel", "Diff: split view", "Diff: full screen".
+
+---
+
 ## Utilities
 
 | Key | Action |

@@ -113,6 +113,17 @@ No prefix key needed — these work instantly.
 | Toggle pane zoom | `Ctrl-a` then `z` |
 | Window picker | `Ctrl-a` then `j` |
 
+### Diff panel
+
+| Action | Keys |
+|--------|------|
+| Toggle diff panel | `Ctrl-a` then `g` (cycles off → split → full → off) |
+| Switch focus (tmux ↔ diff) | `Ctrl-a` then `Tab` |
+| Focus diff from rightmost pane | `Shift-Right` |
+| Return focus to tmux | `Shift-Left` (from diff panel) |
+
+Requires [hunkdiff](https://github.com/modem-dev/hunk) (`npm i -g hunkdiff`). Shows the active session's working tree changes.
+
 ### Utilities
 
 | Action | Keys |
@@ -188,6 +199,18 @@ myproject (sidebar)
     add-tests           1w
     add-tests
 ```
+
+### Reviewing agent changes with the diff panel
+
+When an agent finishes work and the `!` flag appears:
+
+1. Switch to that session
+2. Press `Ctrl-a g` to open the diff panel in split mode — you'll see the agent's terminal on the left and its code changes on the right
+3. Click the diff panel or press `Shift-Right` to focus it, then use `j`/`k` to scroll and `[`/`]` to jump between hunks
+4. Press `Ctrl-a g` again for full-screen diff review
+5. Press `Ctrl-a g` once more to close and get back to work
+
+The diff panel shows the working tree changes for whichever session is active. Switch sessions in the sidebar and the diff updates automatically.
 
 ### Monitoring multiple agents
 

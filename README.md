@@ -95,6 +95,23 @@ The sidebar automatically detects worktrees and groups sessions by project. Each
 
 **The workflow:** spin up 5 worktrees from `main`, start Claude Code in each one, and let them work in parallel on different features. Review each one when the `!` flag appears. Merge the good ones.
 
+### Integrated Diff Panel
+
+Press `Ctrl-a g` to open an embedded [hunk](https://github.com/modem-dev/hunk) diff panel — a full interactive diff viewer for reviewing agent-authored changes without leaving jmux.
+
+![jmux with diff panel in split mode showing code changes alongside Claude Code](docs/screenshots/diff-panel-split.png)
+
+Three modes, one hotkey:
+- **Split** — diff panel docks to the right. See agent output and code changes simultaneously.
+- **Full** — diff takes over the main area for thorough review. Sidebar stays for session switching.
+- **Off** — back to normal.
+
+`Ctrl-a g` cycles through all three. Click or `Shift-Right` to focus the diff panel for keyboard navigation (`j`/`k` to scroll, `[`/`]` to jump between hunks). `Shift-Left` returns focus to tmux. Switching sessions automatically reloads the diff for the new session's working tree.
+
+![jmux with diff panel in full-screen mode](docs/screenshots/diff-panel-full.png)
+
+Requires `hunkdiff` (`npm i -g hunkdiff`). If not installed, jmux shows an install hint when you toggle the panel.
+
 ### Works Great With
 
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI coding agent with built-in attention flag support
@@ -146,6 +163,15 @@ When Claude Code finishes a response, the orange `!` appears on that session in 
 | `Ctrl-a z` | Toggle pane zoom |
 
 
+### Diff Panel
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-a g` | Toggle diff panel (off → split → full → off) |
+| `Ctrl-a Tab` | Switch focus between tmux and diff panel |
+| `Shift-Right` | Focus diff panel from rightmost pane |
+| `Shift-Left` | Return focus to tmux from diff panel |
+
 ### Utilities
 
 | Key | Action |
@@ -181,10 +207,12 @@ Terminal (Ghostty, iTerm, etc.)
        +-- Sidebar (26 cols) -- session groups, indicators, hover states
        +-- Border (1 col)
        +-- Main area (remaining cols)
-            +-- Toolbar (row 0) -- window tabs (left), action buttons (right)
-            +-- tmux PTY (remaining rows)
-                 +-- PTY client ---- @xterm/headless for VT emulation
-                 +-- Control client - tmux -C for real-time metadata
+       |    +-- Toolbar (row 0) -- window tabs (left), action buttons (right)
+       |    +-- tmux PTY (remaining rows)
+       |         +-- PTY client ---- @xterm/headless for VT emulation
+       |         +-- Control client - tmux -C for real-time metadata
+       +-- Diff Panel (optional, split/full)
+            +-- hunk PTY ----------- @xterm/headless for VT emulation
 ```
 
 ~2400 lines of TypeScript. No opinions about what you run inside tmux.
