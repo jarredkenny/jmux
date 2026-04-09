@@ -355,4 +355,66 @@ describe("Sidebar", () => {
     }
     expect(found).toBe(true);
   });
+
+  test("collapsed group hides its sessions from render", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "api", directory: "~/Code/work/api" },
+        { name: "web", directory: "~/Code/work/web" },
+        { name: "solo", directory: "~" },
+      ]),
+    );
+    sidebar.toggleGroup("Code/work");
+    const grid = sidebar.getGrid();
+    let foundApi = false;
+    let foundWeb = false;
+    for (let r = 0; r < 30; r++) {
+      const text = Array.from(
+        { length: SIDEBAR_WIDTH },
+        (_, i) => grid.cells[r][i].char,
+      ).join("");
+      if (text.includes("api")) foundApi = true;
+      if (text.includes("web")) foundWeb = true;
+    }
+    expect(foundApi).toBe(false);
+    expect(foundWeb).toBe(false);
+    let foundHeader = false;
+    for (let r = 0; r < 30; r++) {
+      const text = Array.from(
+        { length: SIDEBAR_WIDTH },
+        (_, i) => grid.cells[r][i].char,
+      ).join("");
+      if (text.includes("Code/work")) foundHeader = true;
+    }
+    expect(foundHeader).toBe(true);
+  });
+
+  test("collapsed group excludes sessions from displayOrder", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "api", directory: "~/Code/work/api" },
+        { name: "web", directory: "~/Code/work/web" },
+        { name: "solo", directory: "~" },
+      ]),
+    );
+    sidebar.toggleGroup("Code/work");
+    const ids = sidebar.getDisplayOrderIds();
+    expect(ids).toEqual(["$2"]);
+  });
+
+  test("toggleGroup expands a collapsed group", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "api", directory: "~/Code/work/api" },
+        { name: "web", directory: "~/Code/work/web" },
+      ]),
+    );
+    sidebar.toggleGroup("Code/work"); // collapse
+    sidebar.toggleGroup("Code/work"); // expand
+    const ids = sidebar.getDisplayOrderIds();
+    expect(ids).toEqual(["$0", "$1"]);
+  });
 });

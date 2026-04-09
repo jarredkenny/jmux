@@ -98,11 +98,11 @@ function getSubdirectory(dir: string, groupLabel: string): string | null {
 }
 
 type RenderItem =
-  | { type: "group-header"; label: string }
+  | { type: "group-header"; label: string; collapsed: boolean; sessionCount: number }
   | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string }
   | { type: "spacer" };
 
-function buildRenderPlan(sessions: SessionInfo[]): {
+function buildRenderPlan(sessions: SessionInfo[], collapsedGroups: Set<string>): {
   items: RenderItem[];
   displayOrder: number[];
 } {
@@ -142,12 +142,20 @@ function buildRenderPlan(sessions: SessionInfo[]): {
   const displayOrder: number[] = [];
 
   for (const group of sortedGroups) {
-    items.push({ type: "group-header", label: group.label });
+    const isCollapsed = collapsedGroups.has(group.label);
+    items.push({
+      type: "group-header",
+      label: group.label,
+      collapsed: isCollapsed,
+      sessionCount: group.sessionIndices.length,
+    });
     items.push({ type: "spacer" });
-    for (const idx of group.sessionIndices) {
-      items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: group.label });
-      displayOrder.push(idx);
-      items.push({ type: "spacer" });
+    if (!isCollapsed) {
+      for (const idx of group.sessionIndices) {
+        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: group.label });
+        displayOrder.push(idx);
+        items.push({ type: "spacer" });
+      }
     }
   }
 
@@ -182,6 +190,7 @@ export class Sidebar {
   private activitySet = new Set<string>();
   private scrollOffset = 0;
   private hoveredRow: number | null = null;
+  private collapsedGroups = new Set<string>();
   private currentVersion: string = "";
   private latestVersion: string | null = null;
 
@@ -192,7 +201,7 @@ export class Sidebar {
 
   updateSessions(sessions: SessionInfo[]): void {
     this.sessions = sessions;
-    const { items, displayOrder } = buildRenderPlan(sessions);
+    const { items, displayOrder } = buildRenderPlan(sessions, this.collapsedGroups);
     this.items = items;
     this.displayOrder = displayOrder;
     this.clampScroll();
@@ -200,6 +209,18 @@ export class Sidebar {
 
   setActiveSession(id: string): void {
     this.activeSessionId = id;
+  }
+
+  toggleGroup(label: string): void {
+    if (this.collapsedGroups.has(label)) {
+      this.collapsedGroups.delete(label);
+    } else {
+      this.collapsedGroups.add(label);
+    }
+    const { items, displayOrder } = buildRenderPlan(this.sessions, this.collapsedGroups);
+    this.items = items;
+    this.displayOrder = displayOrder;
+    this.clampScroll();
   }
 
   setActivity(sessionId: string, active: boolean): void {
