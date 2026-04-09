@@ -1,4 +1,4 @@
-import type { CellGrid, SessionInfo } from "./types";
+import type { CacheTimerState, CellGrid, SessionInfo } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 
@@ -61,6 +61,35 @@ const GROUP_HEADER_ATTRS: CellAttrs = {
   fgMode: ColorMode.Palette,
   bold: true,
 };
+
+// --- Cache timer helpers ---
+
+const CACHE_TIMER_TTL = 300; // seconds
+
+function formatTimer(remaining: number): string {
+  const minutes = Math.floor(remaining / 60);
+  const seconds = remaining % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function cacheTimerAttrs(
+  remaining: number,
+  isActive: boolean,
+  isHovered: boolean,
+): CellAttrs {
+  const base: CellAttrs = {};
+  if (isActive) {
+    base.bg = ACTIVE_BG;
+    base.bgMode = ColorMode.RGB;
+  } else if (isHovered) {
+    base.bg = HOVER_BG;
+    base.bgMode = ColorMode.RGB;
+  }
+  if (remaining <= 0) return { ...base, dim: true };
+  if (remaining <= 29) return { ...base, fg: 1, fgMode: ColorMode.Palette };
+  if (remaining <= 180) return { ...base, fg: 3, fgMode: ColorMode.Palette };
+  return { ...base, fg: 2, fgMode: ColorMode.Palette };
+}
 
 // --- Grouping logic ---
 
@@ -194,6 +223,8 @@ export class Sidebar {
   private collapsedGroups = new Set<string>();
   private currentVersion: string = "";
   private latestVersion: string | null = null;
+  private cacheTimers = new Map<string, CacheTimerState>();
+  cacheTimersEnabled: boolean = true;
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -229,6 +260,14 @@ export class Sidebar {
       this.activitySet.add(sessionId);
     } else {
       this.activitySet.delete(sessionId);
+    }
+  }
+
+  setCacheTimer(sessionId: string, state: CacheTimerState | null): void {
+    if (state === null) {
+      this.cacheTimers.delete(sessionId);
+    } else {
+      this.cacheTimers.set(sessionId, state);
     }
   }
 
@@ -505,9 +544,37 @@ export class Sidebar {
       : isHovered
         ? HOVER_DETAIL_ATTRS
         : DIM_ATTRS;
+
+    // Compute timer text and width before laying out branch/directory
+    let timerText: string | null = null;
+    let timerRemaining = 0;
+    if (this.cacheTimersEnabled) {
+      const timerState = this.cacheTimers.get(session.id);
+      if (timerState) {
+        const elapsed = Math.floor((Date.now() - timerState.lastRequestTime) / 1000);
+        timerRemaining = Math.max(0, CACHE_TIMER_TTL - elapsed);
+        timerText = formatTimer(timerRemaining);
+      }
+    }
+
+    const detailStart = 3;
+
     if (item.grouped) {
-      if (session.gitBranch) {
-        const detailStart = 3;
+      if (timerText !== null) {
+        const timerAttrs = cacheTimerAttrs(timerRemaining, isActive, isHovered);
+        const timerCol = this.width - timerText.length - 1;
+        writeString(grid, detailRow, timerCol, timerText, timerAttrs);
+        if (session.gitBranch) {
+          const maxLen = timerCol - detailStart - 1;
+          let branch = session.gitBranch;
+          if (branch.length > maxLen) {
+            branch = branch.slice(0, maxLen - 1) + "\u2026";
+          }
+          if (maxLen > 0) {
+            writeString(grid, detailRow, detailStart, branch, detailAttrs);
+          }
+        }
+      } else if (session.gitBranch) {
         const maxLen = this.width - detailStart - 1;
         let branch = session.gitBranch;
         if (branch.length > maxLen) {
@@ -516,22 +583,38 @@ export class Sidebar {
         writeString(grid, detailRow, detailStart, branch, detailAttrs);
       }
     } else {
-      const detailStart = 3;
-      let branchCols = 0;
-      if (session.gitBranch) {
-        const branchCol = this.width - session.gitBranch.length - 1;
-        if (branchCol > detailStart + 1) {
-          writeString(grid, detailRow, branchCol, session.gitBranch, detailAttrs);
-          branchCols = session.gitBranch.length + 2;
+      if (timerText !== null) {
+        const timerAttrs = cacheTimerAttrs(timerRemaining, isActive, isHovered);
+        const timerCol = this.width - timerText.length - 1;
+        writeString(grid, detailRow, timerCol, timerText, timerAttrs);
+        // Drop branch when timer is present; show only directory
+        if (session.directory !== undefined) {
+          const dirMaxLen = timerCol - detailStart - 1;
+          let displayDir = session.directory;
+          if (displayDir.length > dirMaxLen) {
+            displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
+          }
+          if (dirMaxLen > 0) {
+            writeString(grid, detailRow, detailStart, displayDir, detailAttrs);
+          }
         }
-      }
-      if (session.directory !== undefined) {
-        const dirMaxLen = this.width - detailStart - branchCols - 1;
-        let displayDir = session.directory;
-        if (displayDir.length > dirMaxLen) {
-          displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
+      } else {
+        let branchCols = 0;
+        if (session.gitBranch) {
+          const branchCol = this.width - session.gitBranch.length - 1;
+          if (branchCol > detailStart + 1) {
+            writeString(grid, detailRow, branchCol, session.gitBranch, detailAttrs);
+            branchCols = session.gitBranch.length + 2;
+          }
         }
-        writeString(grid, detailRow, detailStart, displayDir, detailAttrs);
+        if (session.directory !== undefined) {
+          const dirMaxLen = this.width - detailStart - branchCols - 1;
+          let displayDir = session.directory;
+          if (displayDir.length > dirMaxLen) {
+            displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
+          }
+          writeString(grid, detailRow, detailStart, displayDir, detailAttrs);
+        }
       }
     }
   }
