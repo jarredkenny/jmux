@@ -195,6 +195,10 @@ export class InputRouter {
 
         // Diff panel region — forward raw translated SGR mouse sequence to hunk
         if (mouse.x > dividerX) {
+          // Click in diff panel acquires keyboard focus
+          if (!mouse.release && !isMotion && !isWheel && !this.diffPanelFocused) {
+            this.opts.onDiffPanelFocusToggle?.();
+          }
           if (isMotion && (mouse.button & 0x03) === 3) return; // bare motion, skip
           const diffOffset = dividerX; // x offset to translate into hunk's coordinate space
           const yOffset = 1; // toolbar row
@@ -211,6 +215,10 @@ export class InputRouter {
       }
 
       // Mouse in main area — translate X coordinate and Y (offset by toolbar)
+      // Click in main area releases diff panel focus
+      if (!mouse.release && !isMotion && !isWheel && this.diffPanelFocused && this.diffPanelCols > 0) {
+        this.opts.onDiffPanelFocusToggle?.();
+      }
       // Don't forward bare motion events to PTY (too noisy)
       if (isMotion && (mouse.button & 0x03) === 3) return;
       const offset = this.opts.sidebarCols + 1;
