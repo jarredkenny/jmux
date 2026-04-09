@@ -918,6 +918,13 @@ function buildPaletteCommands(): PaletteCommand[] {
     { id: "open-claude", label: "Open Claude", category: "other" },
   );
 
+  // Diff panel commands
+  commands.push(
+    { id: "diff-toggle", label: "Toggle diff panel", category: "diff" },
+    { id: "diff-split", label: "Diff: split view", category: "diff" },
+    { id: "diff-full", label: "Diff: full screen", category: "diff" },
+  );
+
   // Settings
   commands.push({
     id: "setting-sidebar-width",
@@ -1308,6 +1315,55 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       await applySetting("cacheTimers", !current, "boolean");
       return;
     }
+    case "diff-toggle":
+      await toggleDiffPanel();
+      return;
+    case "diff-split":
+      if (diffPanel.state !== "split") {
+        if (diffPanel.state === "full") {
+          diffPanel.setState("off");
+          killDiffProcess();
+        }
+        diffPanel.setState("split");
+        const panelCols = getDiffPanelCols();
+        const fullCols = sidebarShown ? (process.stdout.columns || 80) - sidebarTotal() : (process.stdout.columns || 80);
+        mainCols = fullCols - panelCols - 1;
+        const ptyR = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+        pty.resize(mainCols, ptyR);
+        bridge.resize(mainCols, ptyR);
+        inputRouter.setDiffPanel(panelCols, diffPanelFocused);
+        inputRouter.setMainCols(mainCols);
+        await spawnHunk(panelCols, ptyR);
+      }
+      scheduleRender();
+      return;
+    case "diff-full":
+      if (diffPanel.state !== "full") {
+        if (diffPanel.state === "off") {
+          diffPanel.setState("full");
+          const fullCols = sidebarShown ? (process.stdout.columns || 80) - sidebarTotal() : (process.stdout.columns || 80);
+          const ptyR = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+          diffPanelFocused = true;
+          inputRouter.setDiffPanel(fullCols, true);
+          inputRouter.setMainCols(0);
+          await spawnHunk(fullCols, ptyR);
+        } else {
+          // split → full
+          diffPanel.setState("full");
+          const fullCols = sidebarShown ? (process.stdout.columns || 80) - sidebarTotal() : (process.stdout.columns || 80);
+          const ptyR = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+          mainCols = fullCols;
+          pty.resize(mainCols, ptyR);
+          bridge.resize(mainCols, ptyR);
+          if (diffPty) { try { diffPty.resize(fullCols, ptyR); } catch {} }
+          if (diffBridge) { diffBridge.resize(fullCols, ptyR); }
+          diffPanelFocused = true;
+          inputRouter.setDiffPanel(fullCols, true);
+          inputRouter.setMainCols(0);
+        }
+      }
+      scheduleRender();
+      return;
   }
 }
 
