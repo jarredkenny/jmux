@@ -351,11 +351,19 @@ export class Sidebar {
       }
 
       if (item.type === "group-header") {
+        const chevron = item.collapsed ? "\u25b8" : "\u25be"; // ▸ or ▾
+        writeString(grid, screenRow, 1, chevron, GROUP_HEADER_ATTRS);
+        const labelStart = 3;
         let label = item.label;
-        if (label.length > this.width - 2) {
-          label = label.slice(0, this.width - 3) + "\u2026";
+        const countSuffix = item.collapsed ? ` (${item.sessionCount})` : "";
+        const maxLabelLen = this.width - labelStart - countSuffix.length - 1;
+        if (label.length > maxLabelLen) {
+          label = label.slice(0, maxLabelLen - 1) + "\u2026";
         }
-        writeString(grid, screenRow, 1, label, GROUP_HEADER_ATTRS);
+        writeString(grid, screenRow, labelStart, label, GROUP_HEADER_ATTRS);
+        if (countSuffix) {
+          writeString(grid, screenRow, labelStart + label.length, countSuffix, DIM_ATTRS);
+        }
       } else if (item.type === "spacer") {
         // nothing to render
       } else {

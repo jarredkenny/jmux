@@ -417,4 +417,36 @@ describe("Sidebar", () => {
     const ids = sidebar.getDisplayOrderIds();
     expect(ids).toEqual(["$0", "$1"]);
   });
+
+  test("expanded group header shows down chevron", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "api", directory: "~/Code/work/api" },
+        { name: "web", directory: "~/Code/work/web" },
+      ]),
+    );
+    const grid = sidebar.getGrid();
+    // Group header is at row 2, chevron at col 1
+    expect(grid.cells[2][1].char).toBe("\u25be"); // ▾
+  });
+
+  test("collapsed group header shows right chevron and session count", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "api", directory: "~/Code/work/api" },
+        { name: "web", directory: "~/Code/work/web" },
+      ]),
+    );
+    sidebar.toggleGroup("Code/work");
+    const grid = sidebar.getGrid();
+    // Group header is at row 2
+    expect(grid.cells[2][1].char).toBe("\u25b8"); // ▸
+    const headerText = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[2][i].char,
+    ).join("");
+    expect(headerText).toContain("(2)");
+  });
 });
