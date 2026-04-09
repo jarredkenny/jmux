@@ -20,6 +20,7 @@ import { MODAL_BG } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
+import { OtelReceiver } from "./otel-receiver";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
@@ -160,6 +161,7 @@ const BORDER_WIDTH = 1;
 function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
 const toolbarEnabled = true;
 let claudeCommand = (userConfig.claudeCommand as string) || "claude";
+let cacheTimersEnabled = (userConfig.cacheTimers as boolean) !== false;
 
 // Resolve paths relative to source
 const jmuxDir = resolve(dirname(import.meta.dir));
@@ -301,6 +303,8 @@ const pty = new TmuxPty({ sessionName, socketName, configFile, jmuxDir, cols: ma
 const bridge = new ScreenBridge(mainCols, ptyRows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, rows);
+const otelReceiver = new OtelReceiver();
+sidebar.cacheTimersEnabled = cacheTimersEnabled;
 const control = new TmuxControl();
 
 let currentSessionId: string | null = null;
@@ -311,6 +315,31 @@ let currentSessions: SessionInfo[] = [];
 sidebar.setVersion(VERSION);
 const lastViewedTimestamps = new Map<string, number>();
 const sessionDetailsCache = new Map<string, { directory?: string; gitBranch?: string; project?: string }>();
+
+let cacheTimerInterval: ReturnType<typeof setInterval> | null = null;
+
+function startCacheTimerTick(): void {
+  if (cacheTimerInterval) return;
+  cacheTimerInterval = setInterval(() => {
+    if (cacheTimersEnabled && otelReceiver.getActiveSessionIds().length > 0) {
+      scheduleRender();
+    }
+  }, 1000);
+}
+
+function stopCacheTimerTick(): void {
+  if (cacheTimerInterval) {
+    clearInterval(cacheTimerInterval);
+    cacheTimerInterval = null;
+  }
+}
+
+otelReceiver.onUpdate = (sessionId) => {
+  const state = otelReceiver.getTimerState(sessionId);
+  sidebar.setCacheTimer(sessionId, state);
+  startCacheTimerTick();
+  scheduleRender();
+};
 
 function switchByOffset(offset: number): void {
   const ids = sidebar.getDisplayOrderIds();
@@ -356,6 +385,14 @@ async function fetchSessions(): Promise<void> {
     }
 
     sidebar.updateSessions(sessions);
+
+    // Prune cache timer state for dead sessions
+    const liveIds = sessions.map((s) => s.id);
+    otelReceiver.pruneExcept(liveIds);
+    if (otelReceiver.getActiveSessionIds().length === 0) {
+      stopCacheTimerTick();
+    }
+
     renderFrame();
 
     // Fire-and-forget git branch lookup (async, updates sidebar when done)
@@ -733,6 +770,11 @@ function buildPaletteCommands(): PaletteCommand[] {
     label: "Project directories",
     category: "setting",
   });
+  commands.push({
+    id: "setting-cache-timers",
+    label: `Cache timers: ${settings.cacheTimers !== false ? "on" : "off"}`,
+    category: "setting",
+  });
 
   return commands;
 }
@@ -916,12 +958,22 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
             case "standard": {
               const session = sanitizeTmuxSessionName(result.name);
               await control.sendCommand(`new-session -d -s '${session}' -c '${result.dir}'`);
+              const idLines = await control.sendCommand(`display-message -t '${session}' -p '#{session_id}'`);
+              const newSessionId = (idLines[0] || "").trim();
+              if (newSessionId) {
+                await control.sendCommand(`set-environment -t '${session}' OTEL_RESOURCE_ATTRIBUTES 'tmux_session_id=${newSessionId}'`);
+              }
               await control.sendCommand(`switch-client -c ${parentClient} -t '${session}'`);
               break;
             }
             case "existing_worktree": {
               const session = sanitizeTmuxSessionName(result.branch);
               await control.sendCommand(`new-session -d -s '${session}' -c '${result.path}'`);
+              const idLines = await control.sendCommand(`display-message -t '${session}' -p '#{session_id}'`);
+              const newSessionId = (idLines[0] || "").trim();
+              if (newSessionId) {
+                await control.sendCommand(`set-environment -t '${session}' OTEL_RESOURCE_ATTRIBUTES 'tmux_session_id=${newSessionId}'`);
+              }
               await control.sendCommand(`switch-client -c ${parentClient} -t '${session}'`);
               break;
             }
@@ -934,6 +986,11 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
               const wtPath = `${result.dir}/${session}`;
               const cmd = `wtm create ${session} --from ${result.baseBranch} --no-shell; cd ${session}; exec $SHELL`;
               await control.sendCommand(`new-session -d -s '${session}' -c '${result.dir}' '${cmd}'`);
+              const idLines = await control.sendCommand(`display-message -t '${session}' -p '#{session_id}'`);
+              const newSessionId = (idLines[0] || "").trim();
+              if (newSessionId) {
+                await control.sendCommand(`set-environment -t '${session}' OTEL_RESOURCE_ATTRIBUTES 'tmux_session_id=${newSessionId}'`);
+              }
               const waitCmd = `while [ ! -d '${wtPath}' ]; do sleep 0.2; done; cd '${wtPath}' && exec $SHELL`;
               await control.sendCommand(`split-window -h -d -t '${session}' -c '${result.dir}' '${waitCmd}'`);
               await control.sendCommand(`select-pane -t '${session}.0'`);
@@ -1086,6 +1143,16 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       });
       return;
     }
+    case "setting-cache-timers": {
+      let ctSettings: Record<string, any> = {};
+      try {
+        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+        if (existsSync(cfgPath)) ctSettings = JSON.parse(readFileSync(cfgPath, "utf-8"));
+      } catch {}
+      const current = ctSettings.cacheTimers !== false;
+      await applySetting("cacheTimers", !current, "boolean");
+      return;
+    }
   }
 }
 
@@ -1218,6 +1285,17 @@ try {
     const newWidth = (updated.sidebarWidth as number) || 26;
     const newClaudeCmd = (updated.claudeCommand as string) || "claude";
     claudeCommand = newClaudeCmd;
+    const newCacheTimers = (updated.cacheTimers as boolean) !== false;
+    if (newCacheTimers !== cacheTimersEnabled) {
+      cacheTimersEnabled = newCacheTimers;
+      sidebar.cacheTimersEnabled = newCacheTimers;
+      if (newCacheTimers && otelReceiver.getActiveSessionIds().length > 0) {
+        startCacheTimerTick();
+      } else if (!newCacheTimers) {
+        stopCacheTimerTick();
+      }
+      scheduleRender();
+    }
 
     const needsResize = newWidth !== sidebarWidth;
 
@@ -1485,8 +1563,23 @@ async function start(): Promise<void> {
   await control.sendCommand("set-environment -g JMUX 1");
   await control.sendCommand(`source-file ${configFile}`);
 
+  // Start OTLP receiver and inject OTel env vars
+  const otelPort = await otelReceiver.start();
+  await control.sendCommand("set-environment -g CLAUDE_CODE_ENABLE_TELEMETRY 1");
+  await control.sendCommand("set-environment -g OTEL_LOGS_EXPORTER otlp");
+  await control.sendCommand("set-environment -g OTEL_EXPORTER_OTLP_PROTOCOL http/json");
+  await control.sendCommand(`set-environment -g OTEL_EXPORTER_OTLP_ENDPOINT http://127.0.0.1:${otelPort}`);
+
   // Resolve client and session — retry until the PTY client registers
   await fetchSessions();
+
+  // Set per-session resource attributes for all existing sessions
+  for (const session of currentSessions) {
+    await control.sendCommand(
+      `set-environment -t '${session.id}' OTEL_RESOURCE_ATTRIBUTES 'tmux_session_id=${session.id}'`,
+    );
+  }
+
   for (let i = 0; i < 20 && !currentSessionId; i++) {
     await resolveClientName();
     if (!currentSessionId) {
@@ -1570,6 +1663,8 @@ async function start(): Promise<void> {
 // --- Cleanup ---
 
 function cleanup(): void {
+  otelReceiver.stop();
+  stopCacheTimerTick();
   control.close().catch(() => {});
   process.stdout.write("\x1b[?2004l"); // disable bracketed paste mode
   process.stdout.write("\x1b[?1000l"); // disable mouse button tracking
