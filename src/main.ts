@@ -334,9 +334,12 @@ function stopCacheTimerTick(): void {
   }
 }
 
-otelReceiver.onUpdate = (sessionId) => {
-  const state = otelReceiver.getTimerState(sessionId);
-  sidebar.setCacheTimer(sessionId, state);
+otelReceiver.onUpdate = (sessionName) => {
+  // Map session name → session ID for the sidebar
+  const session = currentSessions.find((s) => s.name === sessionName);
+  if (!session) return;
+  const state = otelReceiver.getTimerState(sessionName);
+  sidebar.setCacheTimer(session.id, state);
   startCacheTimerTick();
   scheduleRender();
 };
@@ -386,9 +389,9 @@ async function fetchSessions(): Promise<void> {
 
     sidebar.updateSessions(sessions);
 
-    // Prune cache timer state for dead sessions
-    const liveIds = sessions.map((s) => s.id);
-    otelReceiver.pruneExcept(liveIds);
+    // Prune cache timer state for dead sessions (keyed by name)
+    const liveNames = sessions.map((s) => s.name);
+    otelReceiver.pruneExcept(liveNames);
     if (otelReceiver.getActiveSessionIds().length === 0) {
       stopCacheTimerTick();
     }
@@ -957,23 +960,13 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
           switch (result.type) {
             case "standard": {
               const session = sanitizeTmuxSessionName(result.name);
-              await control.sendCommand(`new-session -d -s '${session}' -c '${result.dir}'`);
-              const idLines = await control.sendCommand(`display-message -t '${session}' -p '#{session_id}'`);
-              const newSessionId = (idLines[0] || "").trim();
-              if (newSessionId) {
-                await control.sendCommand(`set-environment -t '${session}' OTEL_RESOURCE_ATTRIBUTES 'tmux_session_id=${newSessionId}'`);
-              }
+              await control.sendCommand(`new-session -d -e 'OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}' -s '${session}' -c '${result.dir}'`);
               await control.sendCommand(`switch-client -c ${parentClient} -t '${session}'`);
               break;
             }
             case "existing_worktree": {
               const session = sanitizeTmuxSessionName(result.branch);
-              await control.sendCommand(`new-session -d -s '${session}' -c '${result.path}'`);
-              const idLines = await control.sendCommand(`display-message -t '${session}' -p '#{session_id}'`);
-              const newSessionId = (idLines[0] || "").trim();
-              if (newSessionId) {
-                await control.sendCommand(`set-environment -t '${session}' OTEL_RESOURCE_ATTRIBUTES 'tmux_session_id=${newSessionId}'`);
-              }
+              await control.sendCommand(`new-session -d -e 'OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}' -s '${session}' -c '${result.path}'`);
               await control.sendCommand(`switch-client -c ${parentClient} -t '${session}'`);
               break;
             }
@@ -985,12 +978,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
               const session = sanitizeTmuxSessionName(result.name);
               const wtPath = `${result.dir}/${session}`;
               const cmd = `wtm create ${session} --from ${result.baseBranch} --no-shell; cd ${session}; exec $SHELL`;
-              await control.sendCommand(`new-session -d -s '${session}' -c '${result.dir}' '${cmd}'`);
-              const idLines = await control.sendCommand(`display-message -t '${session}' -p '#{session_id}'`);
-              const newSessionId = (idLines[0] || "").trim();
-              if (newSessionId) {
-                await control.sendCommand(`set-environment -t '${session}' OTEL_RESOURCE_ATTRIBUTES 'tmux_session_id=${newSessionId}'`);
-              }
+              await control.sendCommand(`new-session -d -e 'OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}' -s '${session}' -c '${result.dir}' '${cmd}'`);
               const waitCmd = `while [ ! -d '${wtPath}' ]; do sleep 0.2; done; cd '${wtPath}' && exec $SHELL`;
               await control.sendCommand(`split-window -h -d -t '${session}' -c '${result.dir}' '${waitCmd}'`);
               await control.sendCommand(`select-pane -t '${session}.0'`);
@@ -1573,10 +1561,12 @@ async function start(): Promise<void> {
   // Resolve client and session — retry until the PTY client registers
   await fetchSessions();
 
-  // Set per-session resource attributes for all existing sessions
+  // Set per-session resource attributes for all existing sessions.
+  // Note: set-environment only affects new panes/windows in these sessions —
+  // already-running shells won't pick up the change until they restart.
   for (const session of currentSessions) {
     await control.sendCommand(
-      `set-environment -t '${session.id}' OTEL_RESOURCE_ATTRIBUTES 'tmux_session_id=${session.id}'`,
+      `set-environment -t '${session.name}' OTEL_RESOURCE_ATTRIBUTES 'tmux_session_name=${session.name}'`,
     );
   }
 

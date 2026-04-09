@@ -3,7 +3,7 @@ import type { CacheTimerState } from "./types";
 export class OtelReceiver {
   private server: ReturnType<typeof Bun.serve> | null = null;
   private state = new Map<string, CacheTimerState>();
-  onUpdate: ((sessionId: string) => void) | null = null;
+  onUpdate: ((sessionName: string) => void) | null = null;
 
   async start(): Promise<number> {
     this.server = Bun.serve({
@@ -19,16 +19,16 @@ export class OtelReceiver {
     this.server = null;
   }
 
-  getTimerState(sessionId: string): CacheTimerState | null {
-    return this.state.get(sessionId) ?? null;
+  getTimerState(key: string): CacheTimerState | null {
+    return this.state.get(key) ?? null;
   }
 
   getActiveSessionIds(): string[] {
     return [...this.state.keys()];
   }
 
-  pruneExcept(activeSessionIds: string[]): void {
-    const active = new Set(activeSessionIds);
+  pruneExcept(activeKeys: string[]): void {
+    const active = new Set(activeKeys);
     for (const id of this.state.keys()) {
       if (!active.has(id)) this.state.delete(id);
     }
@@ -52,8 +52,8 @@ export class OtelReceiver {
     if (!Array.isArray(resourceLogs)) return;
 
     for (const rl of resourceLogs) {
-      const sessionId = this.extractResourceAttr(rl?.resource, "tmux_session_id");
-      if (!sessionId) continue;
+      const sessionName = this.extractResourceAttr(rl?.resource, "tmux_session_name");
+      if (!sessionName) continue;
 
       const scopeLogs = rl?.scopeLogs;
       if (!Array.isArray(scopeLogs)) continue;
@@ -63,28 +63,28 @@ export class OtelReceiver {
         if (!Array.isArray(logRecords)) continue;
 
         for (const record of logRecords) {
-          this.processRecord(record, sessionId);
+          this.processRecord(record, sessionName);
         }
       }
     }
   }
 
-  private processRecord(record: any, sessionId: string): void {
+  private processRecord(record: any, sessionName: string): void {
     const attrs = record?.attributes;
     if (!Array.isArray(attrs)) return;
 
     const eventName = this.findAttrString(attrs, "event.name");
     if (eventName !== "api_request") return;
 
-    const cacheReadTokens = this.findAttrInt(attrs, "cache_read_tokens");
+    const cacheReadTokens = this.findAttrNumber(attrs, "cache_read_tokens");
     const cacheWasHit = cacheReadTokens > 0;
 
-    this.state.set(sessionId, {
+    this.state.set(sessionName, {
       lastRequestTime: Date.now(),
       cacheWasHit,
     });
 
-    this.onUpdate?.(sessionId);
+    this.onUpdate?.(sessionName);
   }
 
   private extractResourceAttr(resource: any, key: string): string | null {
@@ -100,11 +100,19 @@ export class OtelReceiver {
     return null;
   }
 
-  private findAttrInt(attrs: any[], key: string): number {
+  private findAttrNumber(attrs: any[], key: string): number {
     for (const attr of attrs) {
       if (attr?.key === key) {
-        const v = attr?.value?.intValue;
-        return typeof v === "number" ? v : parseInt(v, 10) || 0;
+        const v = attr?.value;
+        if (!v) return 0;
+        // OTLP sends numbers as intValue or stringValue depending on the exporter
+        if (v.intValue !== undefined) {
+          return typeof v.intValue === "number" ? v.intValue : parseInt(v.intValue, 10) || 0;
+        }
+        if (v.stringValue !== undefined) {
+          return parseInt(v.stringValue, 10) || 0;
+        }
+        return 0;
       }
     }
     return 0;

@@ -1,15 +1,18 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { OtelReceiver } from "../otel-receiver";
 
-// Minimal OTLP JSON payload matching the structure Claude Code exports
+// Minimal OTLP JSON payload matching the structure Claude Code actually exports.
+// Key differences from naive OTLP assumptions:
+// - Resource attributes use tmux_session_name (not tmux_session_id)
+// - Token counts come as stringValue, not intValue
 function makeOtlpPayload(opts: {
-  sessionId?: string;
+  sessionName?: string;
   eventName?: string;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
 }): object {
   const {
-    sessionId = "$0",
+    sessionName = "main",
     eventName = "api_request",
     cacheReadTokens = 100,
     cacheCreationTokens = 0,
@@ -20,7 +23,7 @@ function makeOtlpPayload(opts: {
       {
         resource: {
           attributes: [
-            { key: "tmux_session_id", value: { stringValue: sessionId } },
+            { key: "tmux_session_name", value: { stringValue: sessionName } },
           ],
         },
         scopeLogs: [
@@ -28,10 +31,11 @@ function makeOtlpPayload(opts: {
             logRecords: [
               {
                 timeUnixNano: String(Date.now() * 1_000_000),
+                body: { stringValue: `claude_code.${eventName}` },
                 attributes: [
                   { key: "event.name", value: { stringValue: eventName } },
-                  { key: "cache_read_tokens", value: { intValue: String(cacheReadTokens) } },
-                  { key: "cache_creation_tokens", value: { intValue: String(cacheCreationTokens) } },
+                  { key: "cache_read_tokens", value: { stringValue: String(cacheReadTokens) } },
+                  { key: "cache_creation_tokens", value: { stringValue: String(cacheCreationTokens) } },
                 ],
               },
             ],
@@ -60,7 +64,7 @@ describe("OtelReceiver", () => {
 
   test("parses api_request event and updates timer state", async () => {
     const port = await receiver.start();
-    const payload = makeOtlpPayload({ sessionId: "$1", cacheReadTokens: 50 });
+    const payload = makeOtlpPayload({ sessionName: "$1", cacheReadTokens: 50 });
 
     const resp = await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
@@ -77,7 +81,7 @@ describe("OtelReceiver", () => {
 
   test("cache miss when cache_read_tokens is 0", async () => {
     const port = await receiver.start();
-    const payload = makeOtlpPayload({ sessionId: "$2", cacheReadTokens: 0, cacheCreationTokens: 500 });
+    const payload = makeOtlpPayload({ sessionName: "$2", cacheReadTokens: 0, cacheCreationTokens: 500 });
 
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
@@ -92,7 +96,7 @@ describe("OtelReceiver", () => {
 
   test("ignores non-api_request events", async () => {
     const port = await receiver.start();
-    const payload = makeOtlpPayload({ sessionId: "$3", eventName: "tool_result" });
+    const payload = makeOtlpPayload({ sessionName: "$3", eventName: "tool_result" });
 
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
@@ -103,7 +107,7 @@ describe("OtelReceiver", () => {
     expect(receiver.getTimerState("$3")).toBeNull();
   });
 
-  test("ignores payloads without tmux_session_id", async () => {
+  test("ignores payloads without tmux_session_name", async () => {
     const port = await receiver.start();
     const payload = {
       resourceLogs: [
@@ -163,7 +167,7 @@ describe("OtelReceiver", () => {
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionId: "$0", cacheReadTokens: 0 })),
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$0", cacheReadTokens: 0 })),
     });
     const first = receiver.getTimerState("$0");
     expect(first!.cacheWasHit).toBe(false);
@@ -176,7 +180,7 @@ describe("OtelReceiver", () => {
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionId: "$0", cacheReadTokens: 200 })),
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$0", cacheReadTokens: 200 })),
     });
     const second = receiver.getTimerState("$0");
     expect(second!.cacheWasHit).toBe(true);
@@ -189,12 +193,12 @@ describe("OtelReceiver", () => {
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionId: "$0" })),
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$0" })),
     });
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionId: "$5" })),
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$5" })),
     });
 
     const ids = receiver.getActiveSessionIds().sort();
@@ -207,12 +211,12 @@ describe("OtelReceiver", () => {
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionId: "$0" })),
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$0" })),
     });
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionId: "$5" })),
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$5" })),
     });
 
     receiver.pruneExcept(["$0"]);
@@ -228,7 +232,7 @@ describe("OtelReceiver", () => {
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionId: "$7" })),
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$7" })),
     });
 
     expect(updates).toEqual(["$7"]);
