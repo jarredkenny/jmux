@@ -140,10 +140,9 @@
   </style>
 </head>
 <body>
-<div class="max-w-6xl mx-auto">
-
   <!-- Navigation -->
-  <nav class="flex items-center justify-between px-6 md:px-12 py-4 border-b border-border">
+  <nav class="border-b border-border">
+    <div class="max-w-6xl mx-auto flex items-center justify-between px-6 md:px-12 py-4">
     <div class="flex items-center gap-2">
       <img src="assets/logo.svg" alt="" width="28" height="28" class="block">
       <span class="font-mono text-lg font-bold tracking-tight">jmux</span>
@@ -158,10 +157,12 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
       </a>
     </div>
+    </div>
   </nav>
 
   <!-- Hero -->
-  <section class="text-center px-6 md:px-12 pt-20 md:pt-28 pb-10 hero-glow">
+  <section class="hero-glow">
+    <div class="max-w-6xl mx-auto text-center px-6 md:px-12 pt-20 md:pt-28 pb-10">
     <p class="font-mono text-xs md:text-sm text-accent tracking-[0.2em] uppercase mb-4">Parallel Development Environment</p>
     <h1 class="text-3xl md:text-5xl font-extrabold leading-tight max-w-2xl mx-auto mb-6 tracking-tight">
       Run 10 agents in parallel.<br>
@@ -183,17 +184,21 @@
       <a href="https://github.com/jarredkenny/jmux/blob/main/docs/getting-started.md" target="_blank" rel="noopener" class="text-sm text-accent hover:underline">Getting Started Guide &rarr;</a>
     </div>
 
+    </div>
   </section>
 
   <!-- Hero Screenshot -->
-  <section class="px-6 md:px-12 pb-16 md:pb-24 relative z-10">
+  <section class="relative z-10">
+    <div class="max-w-6xl mx-auto px-6 md:px-12 pb-16 md:pb-24">
     <div class="max-w-4xl mx-auto">
       <img src="assets/hero.png" alt="jmux sidebar with grouped sessions alongside vim and Claude Code" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50">
+    </div>
     </div>
   </section>
 
   <!-- Why -->
-  <section class="px-6 md:px-12 py-16 md:py-24 border-t border-border">
+  <section class="border-t border-border">
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
     <div class="text-center mb-10 animate-in fade-up">
       <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">Why jmux</p>
       <h2 class="text-2xl md:text-3xl font-bold tracking-tight max-w-xl mx-auto">
@@ -220,10 +225,87 @@
       </div>
 
     </div>
+    </div>
+  </section>
+
+  <!-- Comparison -->
+  <section class="border-t border-border">
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
+    <div class="text-center mb-10 animate-in fade-up">
+      <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">How it Compares</p>
+      <h2 class="text-2xl md:text-3xl font-bold tracking-tight">The orchestration without the trade-offs.</h2>
+    </div>
+
+    <div class="max-w-3xl mx-auto overflow-x-auto animate-in">
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="border-b border-border">
+            <th class="py-3 pr-4 text-left text-[#71717a] font-normal w-2/5"></th>
+            <th class="py-3 px-4 text-center font-semibold text-accent">jmux</th>
+            <th class="py-3 px-4 text-center font-normal text-[#71717a]">GUI Agent IDEs</th>
+            <th class="py-3 px-4 text-center font-normal text-[#71717a]">Raw tmux</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4 text-[#a1a1aa]">Parallel agent orchestration</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">Manual</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4 text-[#a1a1aa]">Agent status &amp; attention flags</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4 text-[#a1a1aa]">Cache cost visibility</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4 text-[#a1a1aa]">Runs over SSH / headless</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4 text-[#a1a1aa]">Use any editor or tool</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">Bundled</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4 text-[#a1a1aa]">Works with any terminal agent</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">Supported list</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4 text-[#a1a1aa]">Sessions outlive the orchestrator</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4 text-[#a1a1aa]">Install size</td>
+            <td class="py-3 px-4 text-center text-accent font-mono text-xs">~0.3 MB</td>
+            <td class="py-3 px-4 text-center text-[#52525b] font-mono text-xs">~200+ MB</td>
+            <td class="py-3 px-4 text-center text-[#71717a] font-mono text-xs">&mdash;</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-center text-xs text-[#52525b] mt-6 max-w-3xl mx-auto">GUI Agent IDEs include tools like Orca, Cursor, and Windsurf that bundle their own terminal, editor, and agent runtime into a desktop app.</p>
+    </div>
   </section>
 
   <!-- Features -->
-  <section class="px-6 md:px-12 py-16 md:py-24 border-t border-border bg-surface">
+  <section class="border-t border-border bg-surface">
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
     <div class="text-center mb-10 animate-in fade-up">
       <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">Built for the Workflow</p>
       <h2 class="text-2xl md:text-3xl font-bold tracking-tight">Everything visible. Nothing in your way.</h2>
@@ -256,10 +338,12 @@
       </div>
 
     </div>
+    </div>
   </section>
 
   <!-- Command Palette -->
-  <section class="px-6 md:px-12 py-16 md:py-24 border-t border-border">
+  <section class="border-t border-border">
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
     <div class="max-w-3xl mx-auto">
       <div class="flex flex-col md:flex-row gap-8 md:gap-12 items-center">
         <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
@@ -278,10 +362,12 @@
         </div>
       </div>
     </div>
+    </div>
   </section>
 
   <!-- Cache Timers -->
-  <section class="px-6 md:px-12 py-16 md:py-24 border-t border-border bg-surface">
+  <section>
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
     <div class="max-w-3xl mx-auto">
       <div class="flex flex-col md:flex-row-reverse gap-8 md:gap-12 items-center">
         <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
@@ -299,10 +385,12 @@
         </div>
       </div>
     </div>
+    </div>
   </section>
 
   <!-- Ecosystem -->
-  <section id="ecosystem" class="px-6 md:px-12 py-16 md:py-24 border-t border-border">
+  <section id="ecosystem" class="border-t border-border">
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
     <div class="text-center mb-10 animate-in fade-up">
       <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">Ecosystem</p>
       <h2 class="text-2xl md:text-3xl font-bold tracking-tight">Run them directly. All of them.</h2>
@@ -347,10 +435,12 @@
       </div>
 
     </div>
+    </div>
   </section>
 
   <!-- Install CTA -->
-  <section id="install" class="px-6 md:px-12 py-16 md:py-24 border-t border-border text-center bg-surface">
+  <section id="install" class="border-t border-border bg-surface">
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24 text-center">
     <h2 class="text-2xl md:text-4xl font-extrabold tracking-tight mb-3 animate-in fade-up">Two commands. You're in.</h2>
     <p class="text-sm text-[#71717a] mb-8">Requires Bun 1.2+ and tmux 3.2+.</p>
 
@@ -368,10 +458,12 @@
 
     <p class="text-xs text-[#52525b] mt-5">~0.3 MB. Installs in under a second. jmux will install tmux for you if needed.</p>
     <p class="text-xs mt-3"><a href="https://github.com/jarredkenny/jmux/blob/main/docs/getting-started.md" target="_blank" rel="noopener" class="text-accent hover:underline">New to tmux? Read the Getting Started guide &rarr;</a></p>
+    </div>
   </section>
 
   <!-- Footer -->
-  <footer class="border-t border-border px-6 md:px-12 py-6 flex items-center justify-between text-sm">
+  <footer class="border-t border-border">
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-6 flex items-center justify-between text-sm">
     <div class="flex items-center gap-2">
       <span class="font-mono text-sm font-bold">jmux</span>
       <span class="text-[#52525b] text-xs">MIT License</span>
@@ -381,9 +473,9 @@
       <a href="https://www.npmjs.com/package/@jx0/jmux" target="_blank" rel="noopener" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors">npm</a>
       <a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener" class="text-[#71717a] hover:text-[#a1a1aa] transition-colors">Docs</a>
     </div>
+    </div>
   </footer>
 
-</div>
 <script>
   (function() {
     var hero = document.querySelector('.hero-glow');
