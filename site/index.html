@@ -381,7 +381,7 @@
           <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Integrated Diff Panel</h2>
           <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
             <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">Ctrl-a g</span> to toggle.
-            An embedded <a href="https://github.com/modem-dev/hunk" class="text-accent hover:underline">hunk</a> diff viewer docks to the right of your terminal — see exactly what each agent changed without leaving jmux.
+            Powered by <a href="https://github.com/modem-dev/hunk" class="text-accent hover:underline">hunk</a> — a review-first terminal diff viewer with syntax highlighting, word-level diffs, and split/stack views. The diff panel docks to the right of your terminal so you can see exactly what each agent changed without leaving jmux.
           </p>
           <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
             Split mode for monitoring while agents work. Full-screen mode for thorough review. Switching sessions reloads the diff automatically.
@@ -431,6 +431,12 @@
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl mx-auto">
+
+      <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover animate-in">
+        <div class="font-mono text-lg font-bold mb-1"><a href="https://github.com/modem-dev/hunk" target="_blank" rel="noopener" class="hover:text-accent transition-colors">hunk</a></div>
+        <p class="text-xs text-[#71717a] mb-2">Terminal diff viewer</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">Powers the integrated diff panel. Syntax-highlighted, word-level diffs with split and stack views. <span class="font-mono text-[#71717a]">npm i -g hunkdiff</span></p>
+      </div>
 
       <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover animate-in">
         <div class="font-mono text-lg font-bold mb-1">wtm</div>

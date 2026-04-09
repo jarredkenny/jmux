@@ -113,6 +113,7 @@ Requires `hunkdiff` (`npm i -g hunkdiff`). If not installed, jmux shows an insta
 
 ### Works Great With
 
+- **[hunk](https://github.com/modem-dev/hunk)** — Review-first terminal diff viewer. Powers the integrated diff panel — syntax-highlighted, word-level diffs with split/stack views
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI coding agent with built-in attention flag support
 - **[lazygit](https://github.com/jesseduffield/lazygit)** — Terminal Git UI. Run it in a jmux pane alongside your agent
 - **[gh](https://cli.github.com/)** / **[glab](https://gitlab.com/gitlab-org/cli)** — GitHub and GitLab CLIs for PRs, issues, and reviews without leaving the terminal

@@ -91,7 +91,7 @@ Press `Ctrl-a p` to open the command palette — a floating overlay for fuzzy-se
 | Click diff panel | Focus diff panel for keyboard navigation |
 | Click divider | Toggle focus between panels |
 
-The diff panel embeds [hunk](https://github.com/modem-dev/hunk) to show the active session's working tree changes. Requires `npm i -g hunkdiff`.
+The diff panel is powered by [hunk](https://github.com/modem-dev/hunk) — a review-first terminal diff viewer with syntax highlighting and word-level diffs. Install with `npm i -g hunkdiff`.
 
 In split mode, the diff panel docks to the right (~40% width). In full mode, it replaces the main area. Switching sessions reloads the diff automatically.
 

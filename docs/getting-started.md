@@ -123,7 +123,7 @@ No prefix key needed — these work instantly.
 | Focus diff from rightmost pane | `Shift-Right` |
 | Return focus to tmux | `Shift-Left` (from diff panel) |
 
-Requires [hunkdiff](https://github.com/modem-dev/hunk) (`npm i -g hunkdiff`). Shows the active session's working tree changes.
+Powered by [hunk](https://github.com/modem-dev/hunk) — a review-first terminal diff viewer with syntax highlighting and word-level diffs. Install with `npm i -g hunkdiff`.
 
 ### Utilities
 
