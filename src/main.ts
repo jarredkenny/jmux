@@ -462,13 +462,13 @@ async function toggleDiffPanel(): Promise<void> {
   const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
 
   if (!wasActive && diffPanel.state === "split") {
-    // off → split: shrink tmux, spawn hunk
+    // off → split: shrink tmux, spawn hunk, focus the panel
     const panelCols = diffPanel.calcPanelCols(available, diffPanelSplitRatio);
     const newMainCols = available - panelCols - 1; // -1 for divider
     mainCols = newMainCols;
     pty.resize(newMainCols, ptyRowsNow);
     bridge.resize(newMainCols, ptyRowsNow);
-    inputRouter.setDiffPanel(panelCols, diffPanelFocused);
+    setDiffFocus(true);
     inputRouter.setMainCols(newMainCols);
     await spawnHunk(panelCols, ptyRowsNow);
   } else if (wasActive && diffPanel.state === "off") {
