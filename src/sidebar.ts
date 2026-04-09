@@ -270,6 +270,18 @@ export class Sidebar {
     return this.rowToGroupLabel.get(row) ?? null;
   }
 
+  getGroups(): { label: string; collapsed: boolean }[] {
+    const groups: { label: string; collapsed: boolean }[] = [];
+    const seen = new Set<string>();
+    for (const item of this.items) {
+      if (item.type === "group-header" && !seen.has(item.label)) {
+        seen.add(item.label);
+        groups.push({ label: item.label, collapsed: item.collapsed });
+      }
+    }
+    return groups;
+  }
+
   setHoveredRow(row: number | null): void {
     this.hoveredRow = row;
   }

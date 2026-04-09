@@ -686,6 +686,15 @@ function buildPaletteCommands(): PaletteCommand[] {
     });
   }
 
+  // Dynamic: collapse/expand groups
+  for (const group of sidebar.getGroups()) {
+    commands.push({
+      id: `toggle-group:${group.label}`,
+      label: group.collapsed ? `Expand: ${group.label}` : `Collapse: ${group.label}`,
+      category: "session",
+    });
+  }
+
   // Static commands
   commands.push(
     { id: "new-session", label: "New session", category: "session" },
@@ -869,6 +878,14 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
   if (commandId.startsWith("switch-window:")) {
     const windowId = commandId.slice("switch-window:".length);
     await handleTabClick(windowId);
+    return;
+  }
+
+  // Dynamic: toggle sidebar group
+  if (commandId.startsWith("toggle-group:")) {
+    const label = commandId.slice("toggle-group:".length);
+    sidebar.toggleGroup(label);
+    scheduleRender();
     return;
   }
 
