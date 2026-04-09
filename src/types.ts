@@ -49,6 +49,11 @@ export interface SessionInfo {
   project?: string; // wtm project name (bare repo basename)
 }
 
+export interface CacheTimerState {
+  lastRequestTime: number;  // Date.now() when the api_request event was received
+  cacheWasHit: boolean;     // cache_read_tokens > 0 on the last request
+}
+
 export interface PaletteCommand {
   id: string;
   label: string;
