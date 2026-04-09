@@ -18,6 +18,7 @@ import type { CellAttrs } from "./cell-grid";
 import type { Modal } from "./modal";
 import { MODAL_BG } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
+import { DiffPanel } from "./diff-panel";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { OtelReceiver } from "./otel-receiver";
@@ -60,6 +61,8 @@ Keybindings:
   Ctrl-a z                 Toggle pane zoom
   Ctrl-a Arrows            Resize panes
   Ctrl-a p                 Command palette
+  Ctrl-a g                 Toggle diff panel
+  Ctrl-a Tab               Switch focus (tmux ↔ diff)
   Ctrl-a i                 Settings
   Click sidebar            Switch to session
 
@@ -162,6 +165,8 @@ function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
 const toolbarEnabled = true;
 let claudeCommand = (userConfig.claudeCommand as string) || "claude";
 let cacheTimersEnabled = (userConfig.cacheTimers as boolean) !== false;
+const diffPanelSplitRatio = (userConfig.diffPanel as any)?.splitRatio ?? 0.4;
+const hunkCommand = (userConfig.diffPanel as any)?.hunkCommand ?? "hunk";
 
 // Resolve paths relative to source
 const jmuxDir = resolve(dirname(import.meta.dir));
@@ -277,6 +282,7 @@ function makeToolbar(): ToolbarConfig {
       { label: "＋", id: "new-window" },
       { label: "⏸", id: "split-v" },
       { label: "⏏", id: "split-h" },
+      { label: "◈", id: "diff", fg: diffPanel.isActive() ? ((0xF0 << 16) | (0x88 << 8) | 0x3E) : undefined, fgMode: diffPanel.isActive() ? 2 : undefined },
       { label: "◈", id: "claude", fg: (0xE8 << 16) | (0xA0 << 8) | 0xB4, fgMode: 2 },
       { label: "⚙", id: "settings" },
     ],
@@ -306,6 +312,10 @@ const sidebar = new Sidebar(sidebarWidth, rows);
 const otelReceiver = new OtelReceiver();
 sidebar.cacheTimersEnabled = cacheTimersEnabled;
 const control = new TmuxControl();
+const diffPanel = new DiffPanel();
+let diffBridge: ScreenBridge | null = null;
+let diffPty: import("bun-pty").Terminal | null = null;
+let diffPanelFocused = false;
 
 let currentSessionId: string | null = null;
 let ptyClientName: string | null = null;
@@ -351,6 +361,128 @@ function switchByOffset(offset: number): void {
   const base = currentIdx >= 0 ? currentIdx : 0;
   const newIdx = (base + offset + ids.length) % ids.length;
   switchSession(ids[newIdx]);
+}
+
+// --- Diff panel lifecycle ---
+
+function getDiffPanelCols(): number {
+  if (!diffPanel.isActive()) return 0;
+  const totalCols = process.stdout.columns || 80;
+  const sidebarCols = sidebarShown ? sidebarTotal() : 0;
+  const available = totalCols - sidebarCols;
+  if (diffPanel.state === "full") return available;
+  return diffPanel.calcPanelCols(available, diffPanelSplitRatio);
+}
+
+async function getSessionCwd(): Promise<string | null> {
+  try {
+    const lines = await control.sendCommand(
+      `display-message -t '${currentSessionId}' -p '#{pane_current_path}'`,
+    );
+    const cwd = (lines[0] || "").trim();
+    return cwd || null;
+  } catch {
+    return null;
+  }
+}
+
+function killDiffProcess(): void {
+  if (diffPty) {
+    try { diffPty.kill(); } catch {}
+    diffPty = null;
+  }
+  diffBridge = null;
+}
+
+async function spawnHunk(cols: number, rows: number): Promise<void> {
+  killDiffProcess();
+  diffPanel.setHunkExited(false);
+
+  const hunkPath = Bun.which(hunkCommand);
+  if (!hunkPath) {
+    diffPanel.setHunkExited(true);
+    return;
+  }
+
+  const cwd = await getSessionCwd();
+  if (!cwd) {
+    diffPanel.setHunkExited(true);
+    return;
+  }
+
+  const { Terminal } = await import("bun-pty");
+  diffBridge = new ScreenBridge(cols, rows);
+  diffPty = new Terminal(hunkPath, ["diff"], {
+    name: "xterm-256color",
+    cols,
+    rows,
+    env: { ...process.env, TERM: "xterm-256color" },
+    cwd,
+  });
+
+  diffPty.onData((data: string) => {
+    diffBridge!.write(data).then(() => scheduleRender());
+  });
+
+  diffPty.onExit(() => {
+    diffPanel.setHunkExited(true);
+    diffPty = null;
+    scheduleRender();
+  });
+}
+
+function resizeDiffPanel(): void {
+  if (!diffPty || !diffBridge) return;
+  const cols = getDiffPanelCols();
+  const rows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+  diffPty.resize(cols, rows);
+  diffBridge.resize(cols, rows);
+}
+
+async function toggleDiffPanel(): Promise<void> {
+  const prevState = diffPanel.state;
+  diffPanel.cycle();
+  const newState = diffPanel.state;
+
+  const totalCols = process.stdout.columns || 80;
+  const sidebarCols = sidebarShown ? sidebarTotal() : 0;
+  const available = totalCols - sidebarCols;
+  const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+
+  if (prevState === "off" && newState === "split") {
+    // off → split: shrink tmux, spawn hunk
+    const panelCols = diffPanel.calcPanelCols(available, diffPanelSplitRatio);
+    const newMainCols = available - panelCols - 1; // -1 for divider
+    mainCols = newMainCols;
+    pty.resize(newMainCols, ptyRowsNow);
+    bridge.resize(newMainCols, ptyRowsNow);
+    inputRouter.setDiffPanel(panelCols, diffPanelFocused);
+    inputRouter.setMainCols(newMainCols);
+    await spawnHunk(panelCols, ptyRowsNow);
+  } else if (prevState === "split" && newState === "full") {
+    // split → full: resize tmux to full width (invisible), resize hunk to full
+    mainCols = available;
+    pty.resize(available, ptyRowsNow);
+    bridge.resize(available, ptyRowsNow);
+    diffPanelFocused = true;
+    inputRouter.setDiffPanel(available, true);
+    inputRouter.setMainCols(available);
+    if (diffPty && diffBridge) {
+      diffPty.resize(available, ptyRowsNow);
+      diffBridge.resize(available, ptyRowsNow);
+    }
+  } else if (prevState === "full" && newState === "off") {
+    // full → off: kill hunk, resize tmux back
+    killDiffProcess();
+    mainCols = available;
+    diffPanelFocused = false;
+    pty.resize(available, ptyRowsNow);
+    bridge.resize(available, ptyRowsNow);
+    inputRouter.setDiffPanel(0, false);
+    inputRouter.setMainCols(available);
+  }
+
+  scheduleRender();
 }
 
 // --- Session data helpers ---
@@ -477,12 +609,26 @@ function renderFrame(): void {
       modalCursorPos = { row: pos.startRow + cursorPos.row, col: pos.startCol + cursorPos.col };
     }
   }
+  let diffPanelArg: { grid: import("./types").CellGrid; mode: "split" | "full"; focused: boolean } | undefined;
+  if (diffPanel.isActive()) {
+    const dpCols = getDiffPanelCols();
+    const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+    if (diffPanel.hunkExited || !diffBridge) {
+      const emptyGrid = !Bun.which(hunkCommand)
+        ? diffPanel.getNotFoundGrid(dpCols, dpRows)
+        : diffPanel.getEmptyGrid(dpCols, dpRows);
+      diffPanelArg = { grid: emptyGrid, mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
+    } else {
+      diffPanelArg = { grid: diffBridge.getGrid(), mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
+    }
+  }
   renderer.render(
     grid, cursor,
     sidebarShown ? sidebar.getGrid() : null,
     tb,
     modalGrid,
     modalCursorPos,
+    diffPanelArg,
   );
 }
 
@@ -633,6 +779,27 @@ const inputRouter = new InputRouter(
     },
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),
+    onDiffToggle: () => toggleDiffPanel(),
+    onDiffPanelData: (data) => {
+      if (diffPty) diffPty.write(data);
+    },
+    onDiffPanelClick: (col, row) => {
+      if (diffPty) {
+        diffPty.write(`\x1b[<0;${col};${row}M`);
+      }
+    },
+    onDiffPanelScroll: (delta) => {
+      if (diffPty) {
+        const button = delta > 0 ? 65 : 64;
+        diffPty.write(`\x1b[<${button};1;1M`);
+      }
+    },
+    onDiffPanelFocusToggle: () => {
+      if (!diffPanel.isActive() || diffPanel.state === "full") return;
+      diffPanelFocused = !diffPanelFocused;
+      inputRouter.setDiffPanel(getDiffPanelCols(), diffPanelFocused);
+      scheduleRender();
+    },
   },
   sidebarShown,
 );
@@ -1162,6 +1329,9 @@ async function handleToolbarAction(id: string): Promise<void> {
     case "split-h":
       await control.sendCommand(`split-window -t ${ptyClientName} -v -c '#{pane_current_path}'`);
       return;
+    case "diff":
+      await toggleDiffPanel();
+      return;
     case "claude":
       await control.sendCommand(`split-window -t ${ptyClientName} -h -c '#{pane_current_path}' ${claudeCommand}`);
       return;
@@ -1251,15 +1421,45 @@ process.on("SIGWINCH", () => {
   const newCols = process.stdout.columns || 80;
   const newRows = process.stdout.rows || 24;
   const newSidebarVisible = newCols >= 80;
-  const newMainCols = newSidebarVisible ? newCols - sidebarTotal() : newCols;
   const newPtyRows = toolbarEnabled ? newRows - 1 : newRows;
+  const sidebarCols = newSidebarVisible ? sidebarTotal() : 0;
+  const available = newCols - sidebarCols;
 
-  mainCols = newMainCols;
   sidebarShown = newSidebarVisible;
   inputRouter.setSidebarVisible(newSidebarVisible);
-  pty.resize(newMainCols, newPtyRows);
-  bridge.resize(newMainCols, newPtyRows);
   sidebar.resize(sidebarWidth, newRows);
+
+  if (diffPanel.state === "split") {
+    const panelCols = diffPanel.calcPanelCols(available, diffPanelSplitRatio);
+    const newMainCols = available - panelCols - 1;
+    mainCols = newMainCols;
+    pty.resize(newMainCols, newPtyRows);
+    bridge.resize(newMainCols, newPtyRows);
+    inputRouter.setDiffPanel(panelCols, diffPanelFocused);
+    inputRouter.setMainCols(newMainCols);
+    if (diffPty && diffBridge) {
+      diffPty.resize(panelCols, newPtyRows);
+      diffBridge.resize(panelCols, newPtyRows);
+    }
+  } else if (diffPanel.state === "full") {
+    mainCols = available;
+    pty.resize(available, newPtyRows);
+    bridge.resize(available, newPtyRows);
+    inputRouter.setDiffPanel(available, diffPanelFocused);
+    inputRouter.setMainCols(available);
+    if (diffPty && diffBridge) {
+      diffPty.resize(available, newPtyRows);
+      diffBridge.resize(available, newPtyRows);
+    }
+  } else {
+    const newMainCols = available;
+    mainCols = newMainCols;
+    pty.resize(newMainCols, newPtyRows);
+    bridge.resize(newMainCols, newPtyRows);
+    inputRouter.setDiffPanel(0, false);
+    inputRouter.setMainCols(newMainCols);
+  }
+
   renderFrame();
 });
 
@@ -1415,6 +1615,11 @@ control.onEvent((event: ControlEvent) => {
         if (startupComplete) {
           await syncControlClient();
           fetchWindows();
+          if (diffPanel.isActive() && !diffPanel.hunkExited) {
+            const dpCols = getDiffPanelCols();
+            const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+            await spawnHunk(dpCols, dpRows);
+          }
         }
         renderFrame();
       });
@@ -1653,6 +1858,7 @@ async function start(): Promise<void> {
 // --- Cleanup ---
 
 function cleanup(): void {
+  killDiffProcess();
   otelReceiver.stop();
   stopCacheTimerTick();
   control.close().catch(() => {});
