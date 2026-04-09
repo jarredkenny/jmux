@@ -317,6 +317,18 @@ let diffBridge: ScreenBridge | null = null;
 let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
 
+function setDiffFocus(focused: boolean): void {
+  diffPanelFocused = focused;
+  inputRouter.setDiffPanel(getDiffPanelCols(), focused);
+  // Dim/undim the tmux active pane to visually show focus has moved
+  if (focused) {
+    control.sendCommand("select-pane -P 'fg=#6b7280'").catch(() => {});
+  } else {
+    control.sendCommand("select-pane -P ''").catch(() => {});
+  }
+  scheduleRender();
+}
+
 let currentSessionId: string | null = null;
 let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
@@ -464,8 +476,7 @@ async function toggleDiffPanel(): Promise<void> {
     mainCols = available;
     pty.resize(available, ptyRowsNow);
     bridge.resize(available, ptyRowsNow);
-    diffPanelFocused = true;
-    inputRouter.setDiffPanel(available, true);
+    setDiffFocus(true);
     inputRouter.setMainCols(available);
     if (diffPty && diffBridge) {
       diffPty.resize(available, ptyRowsNow);
@@ -475,9 +486,7 @@ async function toggleDiffPanel(): Promise<void> {
     // full → off: kill hunk, resize tmux back
     killDiffProcess();
     mainCols = available;
-    diffPanelFocused = false;
-    pty.resize(available, ptyRowsNow);
-    bridge.resize(available, ptyRowsNow);
+    setDiffFocus(false);
     inputRouter.setDiffPanel(0, false);
     inputRouter.setMainCols(available);
   }
@@ -786,9 +795,7 @@ const inputRouter = new InputRouter(
         const lines = await control.sendCommand("display-message -p '#{pane_at_right}'");
         if ((lines[0] || "").trim() === "1") {
           // At right edge — focus the diff panel
-          diffPanelFocused = true;
-          inputRouter.setDiffPanel(getDiffPanelCols(), true);
-          scheduleRender();
+          setDiffFocus(true);
         } else {
           // Not at right edge — forward Shift+Right to tmux for normal pane switch
           pty.write("\x1b[1;2C");
@@ -803,9 +810,7 @@ const inputRouter = new InputRouter(
     },
     onDiffPanelFocusToggle: () => {
       if (!diffPanel.isActive() || diffPanel.state === "full") return;
-      diffPanelFocused = !diffPanelFocused;
-      inputRouter.setDiffPanel(getDiffPanelCols(), diffPanelFocused);
-      scheduleRender();
+      setDiffFocus(!diffPanelFocused);
     },
   },
   sidebarShown,
@@ -1350,8 +1355,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
           diffPanel.setState("full");
           const fullCols = sidebarShown ? (process.stdout.columns || 80) - sidebarTotal() : (process.stdout.columns || 80);
           const ptyR = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-          diffPanelFocused = true;
-          inputRouter.setDiffPanel(fullCols, true);
+          setDiffFocus(true);
           inputRouter.setMainCols(0);
           await spawnHunk(fullCols, ptyR);
         } else {
@@ -1364,8 +1368,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
           bridge.resize(mainCols, ptyR);
           if (diffPty) { try { diffPty.resize(fullCols, ptyR); } catch {} }
           if (diffBridge) { diffBridge.resize(fullCols, ptyR); }
-          diffPanelFocused = true;
-          inputRouter.setDiffPanel(fullCols, true);
+          setDiffFocus(true);
           inputRouter.setMainCols(0);
         }
       }
