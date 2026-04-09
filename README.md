@@ -34,7 +34,7 @@ AI coding agents work best when you can run many of them at once — different f
 
 jmux solves this. A persistent sidebar shows every session at a glance with real-time status indicators. An orange `!` appears when an agent finishes and needs review. Click to switch. Review the work. Move on.
 
-**Use any tool.** jmux doesn't bundle an editor, a diff viewer, or a Git GUI. You bring vim, VS Code, lazygit, whatever you already use. This is a design choice, not a limitation — your workflow shouldn't change because you added an orchestrator.
+**Integrate the best, bundle nothing.** jmux doesn't build a diff viewer — it integrates [hunk](https://github.com/modem-dev/hunk). It doesn't build a worktree manager — it integrates [wtm](https://github.com/jarredkenny/worktree-manager). When a capability matters, jmux goes deep with the best tool for the job. Everything else, you bring yourself.
 
 **Work anywhere.** jmux runs in any terminal — local, SSH, containers, devboxes. Your workspace follows you because it's terminal-native, not because it syncs to a cloud.
 
@@ -78,7 +78,7 @@ Type to filter, arrow keys to navigate, Enter to execute. Settings like sidebar 
 
 jmux works with your existing `~/.tmux.conf`. Your plugins, theme, prefix key, and custom bindings carry over. jmux applies its defaults first, then your config overrides them. Only a small set of core settings are enforced.
 
-Use any editor. Any Git tool. Any AI agent. Any shell. jmux doesn't replace your tools — it organizes them.
+Use any editor. Any Git tool. Any AI agent. Any shell. jmux integrates the best and organizes the rest.
 
 ### Worktree-Native Workflows
 
@@ -97,7 +97,7 @@ The sidebar automatically detects worktrees and groups sessions by project. Each
 
 ### Integrated Diff Panel
 
-Press `Ctrl-a g` to open an embedded [hunk](https://github.com/modem-dev/hunk) diff panel — a full interactive diff viewer for reviewing agent-authored changes without leaving jmux.
+Press `Ctrl-a g` to open an embedded [hunk](https://github.com/modem-dev/hunk) diff panel — the best terminal diff viewer, integrated directly into jmux for reviewing agent-authored changes without leaving your workspace.
 
 ![jmux with diff panel in split mode showing code changes alongside Claude Code](docs/screenshots/diff-panel-split.png)
 
@@ -111,12 +111,12 @@ Two modes:
 
 Requires `hunkdiff` (`npm i -g hunkdiff`). If not installed, jmux shows an install hint when you toggle the panel.
 
-### Works Great With
+### Built With the Best
 
-- **[hunk](https://github.com/modem-dev/hunk)** — Review-first terminal diff viewer. Powers the integrated diff panel — syntax-highlighted, word-level diffs with split/stack views
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI coding agent with built-in attention flag support
-- **[lazygit](https://github.com/jesseduffield/lazygit)** — Terminal Git UI. Run it in a jmux pane alongside your agent
-- **[gh](https://cli.github.com/)** / **[glab](https://gitlab.com/gitlab-org/cli)** — GitHub and GitLab CLIs for PRs, issues, and reviews without leaving the terminal
+- **[hunk](https://github.com/modem-dev/hunk)** — The best terminal diff viewer. Powers jmux's integrated diff panel — syntax-highlighted, word-level diffs with split and full-screen views
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — The leading AI coding agent. jmux reads its telemetry for cache timers and attention flags — no configuration required
+- **[lazygit](https://github.com/jesseduffield/lazygit)** — The best terminal Git UI. Run it in a jmux pane alongside your agent
+- **[gh](https://cli.github.com/)** / **[glab](https://gitlab.com/gitlab-org/cli)** — The standard GitHub and GitLab CLIs. PRs, issues, and reviews without leaving the terminal
 
 ### Agent Integration
 
