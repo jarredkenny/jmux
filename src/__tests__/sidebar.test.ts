@@ -449,4 +449,33 @@ describe("Sidebar", () => {
     ).join("");
     expect(headerText).toContain("(2)");
   });
+
+  test("getGroupByRow returns group label for header rows", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "api", directory: "~/Code/work/api" },
+        { name: "web", directory: "~/Code/work/web" },
+      ]),
+    );
+    sidebar.getGrid(); // populate row maps
+    // Row 2 is the group header
+    expect(sidebar.getGroupByRow(2)).toBe("Code/work");
+    // Row 4 is a session, not a group header
+    expect(sidebar.getGroupByRow(4)).toBeNull();
+  });
+
+  test("group header row shows hover highlight", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "api", directory: "~/Code/work/api" },
+        { name: "web", directory: "~/Code/work/web" },
+      ]),
+    );
+    sidebar.setHoveredRow(2); // group header row
+    const grid = sidebar.getGrid();
+    // The header row should have HOVER_BG applied
+    expect(grid.cells[2][0].bg).not.toBe(0);
+  });
 });

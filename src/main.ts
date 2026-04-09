@@ -488,6 +488,12 @@ const inputRouter = new InputRouter(
         showVersionInfo();
         return;
       }
+      const groupLabel = sidebar.getGroupByRow(row);
+      if (groupLabel) {
+        sidebar.toggleGroup(groupLabel);
+        scheduleRender();
+        return;
+      }
       const session = sidebar.getSessionByRow(row);
       if (session) switchSession(session.id);
     },

@@ -187,6 +187,7 @@ export class Sidebar {
   private items: RenderItem[] = [];
   private displayOrder: number[] = [];
   private rowToSessionIndex = new Map<number, number>();
+  private rowToGroupLabel = new Map<number, string>();
   private activitySet = new Set<string>();
   private scrollOffset = 0;
   private hoveredRow: number | null = null;
@@ -265,6 +266,10 @@ export class Sidebar {
     return this.sessions[sessionIdx] ?? null;
   }
 
+  getGroupByRow(row: number): string | null {
+    return this.rowToGroupLabel.get(row) ?? null;
+  }
+
   setHoveredRow(row: number | null): void {
     this.hoveredRow = row;
   }
@@ -323,6 +328,7 @@ export class Sidebar {
   getGrid(): CellGrid {
     const grid = createGrid(this.width, this.height);
     this.rowToSessionIndex.clear();
+    this.rowToGroupLabel.clear();
 
     // Header
     writeString(grid, 0, 1, "jmux", { ...ACCENT_ATTRS, bold: true });
@@ -351,8 +357,19 @@ export class Sidebar {
       }
 
       if (item.type === "group-header") {
+        const isHovered = this.hoveredRow === screenRow;
+        if (isHovered) {
+          const bgFill = " ".repeat(this.width);
+          writeString(grid, screenRow, 0, bgFill, { bg: HOVER_BG, bgMode: ColorMode.RGB });
+        }
+        const headerAttrs: CellAttrs = isHovered
+          ? { ...GROUP_HEADER_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
+          : GROUP_HEADER_ATTRS;
+        const countAttrs: CellAttrs = isHovered
+          ? { ...DIM_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
+          : DIM_ATTRS;
         const chevron = item.collapsed ? "\u25b8" : "\u25be"; // ▸ or ▾
-        writeString(grid, screenRow, 1, chevron, GROUP_HEADER_ATTRS);
+        writeString(grid, screenRow, 1, chevron, headerAttrs);
         const labelStart = 3;
         let label = item.label;
         const countSuffix = item.collapsed ? ` (${item.sessionCount})` : "";
@@ -360,10 +377,11 @@ export class Sidebar {
         if (label.length > maxLabelLen) {
           label = label.slice(0, maxLabelLen - 1) + "\u2026";
         }
-        writeString(grid, screenRow, labelStart, label, GROUP_HEADER_ATTRS);
+        writeString(grid, screenRow, labelStart, label, headerAttrs);
         if (countSuffix) {
-          writeString(grid, screenRow, labelStart + label.length, countSuffix, DIM_ATTRS);
+          writeString(grid, screenRow, labelStart + label.length, countSuffix, countAttrs);
         }
+        this.rowToGroupLabel.set(screenRow, item.label);
       } else if (item.type === "spacer") {
         // nothing to render
       } else {
