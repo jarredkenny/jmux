@@ -478,4 +478,167 @@ describe("Sidebar", () => {
     // The header row should have HOVER_BG applied
     expect(grid.cells[2][0].bg).not.toBe(0);
   });
+
+  test("renders cache timer on detail row when set", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([{ name: "main", directory: "~/mydir", gitBranch: "dev" }]),
+    );
+    sidebar.setCacheTimer("$0", {
+      lastRequestTime: Date.now() - 60_000,
+      cacheWasHit: true,
+    });
+    const grid = sidebar.getGrid();
+    const detailText = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[3][i].char,
+    ).join("");
+    expect(detailText).toContain("4:0");
+  });
+
+  test("timer shows 0:00 when cache expired", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setCacheTimer("$0", {
+      lastRequestTime: Date.now() - 360_000,
+      cacheWasHit: true,
+    });
+    const grid = sidebar.getGrid();
+    const detailText = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[3][i].char,
+    ).join("");
+    expect(detailText).toContain("0:00");
+  });
+
+  test("no timer rendered when cache timer state is null", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([{ name: "main", directory: "~/mydir", gitBranch: "dev" }]),
+    );
+    const grid = sidebar.getGrid();
+    const detailText = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[3][i].char,
+    ).join("");
+    expect(detailText).not.toMatch(/\d:\d\d/);
+  });
+
+  test("timer uses green color when > 180s remaining", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setCacheTimer("$0", {
+      lastRequestTime: Date.now() - 30_000,
+      cacheWasHit: true,
+    });
+    const grid = sidebar.getGrid();
+    const row = grid.cells[3];
+    let timerColStart = -1;
+    for (let c = SIDEBAR_WIDTH - 1; c >= 0; c--) {
+      if (row[c].char === ":") {
+        timerColStart = c - 1;
+        break;
+      }
+    }
+    expect(timerColStart).toBeGreaterThan(0);
+    expect(row[timerColStart].fg).toBe(2);
+  });
+
+  test("timer uses yellow color when 30-180s remaining", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setCacheTimer("$0", {
+      lastRequestTime: Date.now() - 200_000,
+      cacheWasHit: true,
+    });
+    const grid = sidebar.getGrid();
+    const row = grid.cells[3];
+    let timerColStart = -1;
+    for (let c = SIDEBAR_WIDTH - 1; c >= 0; c--) {
+      if (row[c].char === ":") {
+        timerColStart = c - 1;
+        break;
+      }
+    }
+    expect(timerColStart).toBeGreaterThan(0);
+    expect(row[timerColStart].fg).toBe(3);
+  });
+
+  test("timer uses red color when < 30s remaining", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setCacheTimer("$0", {
+      lastRequestTime: Date.now() - 280_000,
+      cacheWasHit: true,
+    });
+    const grid = sidebar.getGrid();
+    const row = grid.cells[3];
+    let timerColStart = -1;
+    for (let c = SIDEBAR_WIDTH - 1; c >= 0; c--) {
+      if (row[c].char === ":") {
+        timerColStart = c - 1;
+        break;
+      }
+    }
+    expect(timerColStart).toBeGreaterThan(0);
+    expect(row[timerColStart].fg).toBe(1);
+  });
+
+  test("timer uses dim when expired at 0:00", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setCacheTimer("$0", {
+      lastRequestTime: Date.now() - 400_000,
+      cacheWasHit: true,
+    });
+    const grid = sidebar.getGrid();
+    const row = grid.cells[3];
+    let timerColStart = -1;
+    for (let c = SIDEBAR_WIDTH - 1; c >= 0; c--) {
+      if (row[c].char === ":") {
+        timerColStart = c - 1;
+        break;
+      }
+    }
+    expect(timerColStart).toBeGreaterThan(0);
+    expect(row[timerColStart].dim).toBe(true);
+  });
+
+  test("timer truncates branch text when space is tight", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "api", directory: "~/Code/work/api", gitBranch: "very-long-branch-name-here" },
+        { name: "web", directory: "~/Code/work/web", gitBranch: "main" },
+      ]),
+    );
+    sidebar.setCacheTimer("$0", {
+      lastRequestTime: Date.now() - 60_000,
+      cacheWasHit: true,
+    });
+    const grid = sidebar.getGrid();
+    // Row layout: row 2 = group header, row 3 = spacer, row 4 = api name, row 5 = api detail
+    const detailText = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[5][i].char,
+    ).join("");
+    expect(detailText).toContain("\u2026");
+    expect(detailText).toContain("4:0");
+  });
+
+  test("cacheTimersEnabled false suppresses timer rendering", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setCacheTimer("$0", {
+      lastRequestTime: Date.now() - 60_000,
+      cacheWasHit: true,
+    });
+    sidebar.cacheTimersEnabled = false;
+    const grid = sidebar.getGrid();
+    const detailText = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[3][i].char,
+    ).join("");
+    expect(detailText).not.toMatch(/\d:\d\d/);
+  });
 });
