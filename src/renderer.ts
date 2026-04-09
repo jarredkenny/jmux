@@ -132,13 +132,28 @@ export function compositeGrids(
   sidebar: CellGrid | null,
   toolbar?: ToolbarConfig | null,
   modalOverlay?: CellGrid | null,
+  diffPanel?: {
+    grid: CellGrid;
+    mode: "split" | "full";
+    focused: boolean;
+  },
 ): CellGrid {
   if (!sidebar) return main;
 
-  const totalCols = sidebar.cols + 1 + (toolbar ? toolbar.mainCols : main.cols);
+  const mainCols = toolbar ? toolbar.mainCols : main.cols;
+  let contentCols: number;
+  if (diffPanel) {
+    if (diffPanel.mode === "split") {
+      contentCols = mainCols + 1 + diffPanel.grid.cols; // main + divider + diff
+    } else {
+      contentCols = diffPanel.grid.cols; // full: diff replaces main
+    }
+  } else {
+    contentCols = mainCols;
+  }
+  const totalCols = sidebar.cols + 1 + contentCols;
   const toolbarRows = toolbar ? 1 : 0;
   const totalRows = main.rows + toolbarRows;
-  const mainCols = toolbar ? toolbar.mainCols : main.cols;
   const grid = createGrid(totalCols, totalRows);
 
   for (let y = 0; y < totalRows; y++) {
@@ -244,9 +259,37 @@ export function compositeGrids(
     } else {
       // Main content — offset by toolbar row
       const mainY = toolbar ? y - 1 : y;
-      if (mainY >= 0 && mainY < main.rows) {
-        for (let x = 0; x < main.cols; x++) {
-          grid.cells[y][borderCol + 1 + x] = { ...main.cells[mainY][x] };
+      if (mainY >= 0) {
+        if (diffPanel && diffPanel.mode === "full") {
+          // Full mode: copy diff grid instead of main
+          if (mainY < diffPanel.grid.rows) {
+            for (let x = 0; x < diffPanel.grid.cols; x++) {
+              grid.cells[y][borderCol + 1 + x] = { ...diffPanel.grid.cells[mainY][x] };
+            }
+          }
+        } else {
+          // Normal or split mode: copy main grid
+          if (mainY < main.rows) {
+            for (let x = 0; x < mainCols; x++) {
+              grid.cells[y][borderCol + 1 + x] = { ...main.cells[mainY][x] };
+            }
+          }
+          // Split mode: add divider + diff panel
+          if (diffPanel && diffPanel.mode === "split") {
+            const dividerCol = borderCol + 1 + mainCols;
+            const focusColor = (0x58 << 16) | (0xa6 << 8) | 0xff;
+            grid.cells[y][dividerCol] = {
+              ...DEFAULT_CELL,
+              char: "│",
+              fg: diffPanel.focused ? focusColor : 8,
+              fgMode: diffPanel.focused ? ColorMode.RGB : ColorMode.Palette,
+            };
+            if (mainY < diffPanel.grid.rows) {
+              for (let x = 0; x < diffPanel.grid.cols; x++) {
+                grid.cells[y][dividerCol + 1 + x] = { ...diffPanel.grid.cells[mainY][x] };
+              }
+            }
+          }
         }
       }
     }
@@ -355,8 +398,13 @@ export class Renderer {
     toolbar?: ToolbarConfig | null,
     modalOverlay?: CellGrid | null,
     modalCursor?: { row: number; col: number } | null,
+    diffPanel?: {
+      grid: CellGrid;
+      mode: "split" | "full";
+      focused: boolean;
+    },
   ): void {
-    const grid = compositeGrids(main, sidebar, toolbar, modalOverlay);
+    const grid = compositeGrids(main, sidebar, toolbar, modalOverlay, diffPanel);
     const cursorOffset = sidebar ? sidebar.cols + 1 : 0;
     const buf: string[] = [];
 
@@ -403,6 +451,8 @@ export class Renderer {
     if (modalCursor != null) {
       // Modal cursor is in absolute grid coordinates
       buf.push(`\x1b[${modalCursor.row + 1};${modalCursor.col + 1}H`);
+    } else if (diffPanel?.focused) {
+      buf.push("\x1b[?25l"); // hide cursor when diff panel focused
     } else {
       buf.push(
         `\x1b[${cursor.y + cursorRowOffset + 1};${cursor.x + cursorOffset + 1}H`,

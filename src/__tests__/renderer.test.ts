@@ -301,3 +301,111 @@ describe("stringDisplayWidth", () => {
     expect(stringDisplayWidth("🎉!")).toBe(3);  // 2+1
   });
 });
+
+describe("compositeGrids with diff panel", () => {
+  test("split mode: sidebar + main + divider + diff panel", () => {
+    const sidebar = createGrid(4, 3);
+    writeString(sidebar, 0, 0, "side");
+    const main = createGrid(20, 3);
+    writeString(main, 0, 0, "main content here...");
+    const diffGrid = createGrid(10, 3);
+    writeString(diffGrid, 0, 0, "diff stuff");
+
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const result = compositeGrids(main, sidebar, toolbar, null, {
+      grid: diffGrid,
+      mode: "split",
+      focused: false,
+    });
+
+    // sidebar(4) + border(1) + main(20) + divider(1) + diff(10) = 36
+    expect(result.cols).toBe(36);
+
+    // Divider column at position 25 (4+1+20)
+    expect(result.cells[1][25].char).toBe("│");
+    // Divider should be dim when diff panel is not focused
+    expect(result.cells[1][25].fg).toBe(8);
+    expect(result.cells[1][25].fgMode).toBe(ColorMode.Palette);
+
+    // Diff content starts at col 26
+    expect(result.cells[1][26].char).toBe("d");
+  });
+
+  test("split mode: divider is bright when diff panel is focused", () => {
+    const sidebar = createGrid(4, 3);
+    const main = createGrid(20, 3);
+    const diffGrid = createGrid(10, 3);
+
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const result = compositeGrids(main, sidebar, toolbar, null, {
+      grid: diffGrid,
+      mode: "split",
+      focused: true,
+    });
+
+    const dividerCol = 4 + 1 + 20;
+    const focusColor = (0x58 << 16) | (0xa6 << 8) | 0xff;
+    expect(result.cells[1][dividerCol].fg).toBe(focusColor);
+    expect(result.cells[1][dividerCol].fgMode).toBe(ColorMode.RGB);
+  });
+
+  test("full mode: sidebar + diff panel only, no main", () => {
+    const sidebar = createGrid(4, 3);
+    const main = createGrid(20, 3);
+    writeString(main, 0, 0, "should not appear");
+    const diffGrid = createGrid(30, 3);
+    writeString(diffGrid, 0, 0, "full diff view here");
+
+    const toolbar = { buttons: [], mainCols: 30, tabs: [] };
+    const result = compositeGrids(main, sidebar, toolbar, null, {
+      grid: diffGrid,
+      mode: "full",
+      focused: true,
+    });
+
+    // sidebar(4) + border(1) + diff(30) = 35
+    expect(result.cols).toBe(35);
+
+    // Diff content starts right after sidebar border at col 5
+    expect(result.cells[1][5].char).toBe("f");
+    // Main content should NOT appear
+    const row1Chars = result.cells[1].map(c => c.char).join("");
+    expect(row1Chars).not.toContain("should");
+  });
+
+  test("split mode: modal dimming covers both main and diff panel", () => {
+    const sidebar = createGrid(4, 10);
+    const main = createGrid(20, 8);
+    const diffGrid = createGrid(10, 8);
+    const modal = createGrid(6, 2);
+
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const result = compositeGrids(main, sidebar, toolbar, modal, {
+      grid: diffGrid,
+      mode: "split",
+      focused: false,
+    });
+
+    // Main area cell should be dimmed (col 5 = sidebar border + 1)
+    expect(result.cells[2][6].dim).toBe(true);
+    // Diff panel cell should be dimmed (col 26+ area)
+    expect(result.cells[2][30].dim).toBe(true);
+    // Sidebar should NOT be dimmed
+    expect(result.cells[2][0].dim).toBe(false);
+  });
+
+  test("toolbar row extends across divider and diff panel in split mode", () => {
+    const sidebar = createGrid(4, 4);
+    const main = createGrid(20, 3);
+    const diffGrid = createGrid(10, 3);
+
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const result = compositeGrids(main, sidebar, toolbar, null, {
+      grid: diffGrid,
+      mode: "split",
+      focused: false,
+    });
+
+    expect(result.cols).toBe(36);
+  });
+});
