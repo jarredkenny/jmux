@@ -1,3 +1,4 @@
+import { resolve } from "path";
 import { sanitizeTmuxSessionName, buildOtelResourceAttrs } from "../config";
 import { runTmuxDirect, type TmuxResult } from "./tmux";
 import { resolveCurrentSession, CliError, type CliContext } from "./context";
@@ -42,6 +43,8 @@ export function validateSessionCreate(flags: Record<string, string | boolean>): 
   name: string;
   dir: string;
   command?: string;
+  worktree?: boolean;
+  baseBranch?: string;
 } {
   if (!flags.name || typeof flags.name !== "string") {
     throw new CliError("--name is required");
@@ -52,6 +55,14 @@ export function validateSessionCreate(flags: Record<string, string | boolean>): 
   const name = sanitizeTmuxSessionName(flags.name);
   const dir = flags.dir;
   const command = typeof flags.command === "string" ? flags.command : undefined;
+
+  if (flags.worktree) {
+    if (!flags["base-branch"] || typeof flags["base-branch"] !== "string") {
+      throw new CliError("--base-branch is required when using --worktree");
+    }
+    return { name, dir, ...(command !== undefined ? { command } : {}), worktree: true, baseBranch: flags["base-branch"] };
+  }
+
   return { name, dir, ...(command !== undefined ? { command } : {}) };
 }
 
@@ -71,10 +82,25 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
     }
 
     case "create": {
-      const { name, dir, command } = validateSessionCreate(flags);
+      const { name, dir, command, worktree, baseBranch } = validateSessionCreate(flags);
       const otel = buildOtelResourceAttrs(name);
 
-      const createArgs = ["new-session", "-d", "-e", `OTEL_RESOURCE_ATTRIBUTES=${otel}`, "-s", name, "-c", dir];
+      let sessionDir = dir;
+
+      if (worktree && baseBranch) {
+        const worktreePath = resolve(dir, name);
+        const wtResult = Bun.spawnSync(
+          ["git", "worktree", "add", worktreePath, baseBranch],
+          { cwd: dir, stdout: "pipe", stderr: "pipe" },
+        );
+        if (wtResult.exitCode !== 0) {
+          const stderr = wtResult.stderr.toString().trim();
+          throw new CliError(`git worktree add failed: ${stderr}`);
+        }
+        sessionDir = worktreePath;
+      }
+
+      const createArgs = ["new-session", "-d", "-e", `OTEL_RESOURCE_ATTRIBUTES=${otel}`, "-s", name, "-c", sessionDir];
       if (command) {
         createArgs.push(command);
       }
@@ -92,7 +118,7 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
         id = parts[0];
       }
 
-      return { name, id };
+      return { name, id, ...(worktree ? { worktree: sessionDir } : {}) };
     }
 
     case "info": {
