@@ -24,31 +24,3 @@ describe("ToolPanel state", () => {
     expect(panel.activeTab).toBe("diff");
   });
 });
-
-describe("ToolPanel tab bar", () => {
-  test("renderTabBar produces a grid row", () => {
-    const panel = new ToolPanel();
-    const grid = panel.renderTabBar(40);
-    expect(grid.cols).toBe(40);
-    expect(grid.rows).toBe(1);
-    const text = grid.cells[0].map(c => c.char).join("");
-    expect(text).toContain("Diff");
-    expect(text).toContain("Agent");
-  });
-
-  test("active tab is highlighted", () => {
-    const panel = new ToolPanel();
-    const grid1 = panel.renderTabBar(40);
-    // Find the 'D' of 'Diff' — it should be bold (active)
-    const diffDIdx = grid1.cells[0].findIndex(c => c.char === "D");
-    expect(grid1.cells[0][diffDIdx].bold).toBe(true);
-
-    panel.switchTab("agent");
-    const grid2 = panel.renderTabBar(40);
-    const agentAIdx = grid2.cells[0].findIndex(c => c.char === "A");
-    expect(grid2.cells[0][agentAIdx].bold).toBe(true);
-    // Diff should no longer be bold
-    const diffDIdx2 = grid2.cells[0].findIndex(c => c.char === "D");
-    expect(grid2.cells[0][diffDIdx2].bold).toBe(false);
-  });
-});

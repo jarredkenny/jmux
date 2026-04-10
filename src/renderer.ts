@@ -17,6 +17,7 @@ export interface ToolbarConfig {
   hoveredButton?: string | null;
   tabs?: WindowTab[];
   hoveredTabId?: string | null;
+  panelTabs?: { label: string; active: boolean }[];
 }
 
 export function sgrForCell(cell: Cell): string {
@@ -254,6 +255,56 @@ export function compositeGrids(
             }
           }
           col += w;
+        }
+      }
+
+      // Render panel tabs in the diff panel column area of the toolbar row
+      if (diffPanel && diffPanel.mode === "split" && toolbar.panelTabs?.length) {
+        const dividerCol = borderCol + 1 + mainCols;
+        const panelStart = dividerCol + 1;
+        let col = 1; // 1-col left padding
+        for (let ti = 0; ti < toolbar.panelTabs.length; ti++) {
+          const pt = toolbar.panelTabs[ti];
+          const label = ` ${pt.label} `;
+          let charCol = 0;
+          for (const ch of label) {
+            const c = panelStart + col + charCol;
+            const w = charDisplayWidth(ch);
+            if (c < totalCols) {
+              grid.cells[0][c] = {
+                ...DEFAULT_CELL,
+                char: ch,
+                width: w,
+                fg: pt.active ? peachFg : 8,
+                fgMode: pt.active ? ColorMode.RGB : ColorMode.Palette,
+                bold: pt.active,
+                bg: pt.active ? activeBg : 0,
+                bgMode: pt.active ? ColorMode.RGB : ColorMode.Default,
+              };
+              if (w === 2 && c + 1 < totalCols) {
+                grid.cells[0][c + 1] = {
+                  ...DEFAULT_CELL, char: "", width: 0,
+                  bg: pt.active ? activeBg : 0,
+                  bgMode: pt.active ? ColorMode.RGB : ColorMode.Default,
+                };
+              }
+            }
+            charCol += w;
+          }
+          col += charCol;
+          if (ti < toolbar.panelTabs.length - 1) {
+            const sepCol = panelStart + col + 1;
+            if (sepCol < totalCols) {
+              grid.cells[0][sepCol] = {
+                ...DEFAULT_CELL,
+                char: "\u2502",
+                fg: 8,
+                fgMode: ColorMode.Palette,
+                dim: true,
+              };
+            }
+            col += 3; // " │ "
+          }
         }
       }
     } else {

@@ -300,6 +300,10 @@ function makeToolbar(): ToolbarConfig {
     hoveredButton: hoveredToolbarButton,
     tabs: currentWindows,
     hoveredTabId,
+    panelTabs: diffPanel.isActive() ? [
+      { label: "Diff", active: toolPanel.activeTab === "diff" },
+      { label: "Agent", active: toolPanel.activeTab === "agent" },
+    ] : undefined,
   };
 }
 
@@ -830,28 +834,8 @@ function renderFrame(): void {
   if (diffPanel.isActive() && toolPanel.activeTab === "agent") {
     const dpCols = getDiffPanelCols();
     const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-    const agentGrid = agentTab.render(dpCols, dpRows - 1);
+    const agentGrid = agentTab.render(dpCols, dpRows);
     diffPanelArg = { grid: agentGrid, mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
-  }
-
-  // Composite tab bar above the panel content
-  if (diffPanelArg) {
-    const tabBarGrid = toolPanel.renderTabBar(diffPanelArg.grid.cols);
-    const panelRows = diffPanelArg.grid.rows;
-    const withTabBar = createGrid(diffPanelArg.grid.cols, panelRows);
-    // Row 0: tab bar
-    for (let x = 0; x < tabBarGrid.cols; x++) {
-      withTabBar.cells[0][x] = { ...tabBarGrid.cells[0][x] };
-    }
-    // Rows 1+: panel content (shifted down, we lose the last row)
-    for (let y = 1; y < panelRows; y++) {
-      for (let x = 0; x < diffPanelArg.grid.cols; x++) {
-        if (diffPanelArg.grid.cells[y - 1]?.[x]) {
-          withTabBar.cells[y][x] = { ...diffPanelArg.grid.cells[y - 1][x] };
-        }
-      }
-    }
-    diffPanelArg = { ...diffPanelArg, grid: withTabBar };
   }
 
   renderer.render(
