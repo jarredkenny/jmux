@@ -11,6 +11,7 @@ import { ContentModal, type StyledLine } from "./content-modal";
 import {
   NewSessionModal,
   sanitizeTmuxSessionName,
+  tq,
   type NewSessionResult,
   type NewSessionProviders,
 } from "./new-session-modal";
@@ -390,7 +391,7 @@ function getDiffPanelCols(): number {
 async function getSessionCwd(): Promise<string | null> {
   try {
     const lines = await control.sendCommand(
-      `display-message -t '${currentSessionId}' -p '#{pane_current_path}'`,
+      `display-message -t ${tq(currentSessionId!)} -p '#{pane_current_path}'`,
     );
     const cwd = (lines[0] || "").trim();
     return cwd || null;
@@ -601,7 +602,7 @@ async function resolveClientName(): Promise<void> {
 async function syncControlClient(): Promise<void> {
   if (currentSessionId) {
     try {
-      await control.sendCommand(`switch-client -t '${currentSessionId}'`);
+      await control.sendCommand(`switch-client -t ${tq(currentSessionId)}`);
     } catch { /* non-critical */ }
   }
 }
@@ -612,7 +613,7 @@ async function switchSession(sessionId: string): Promise<void> {
 
   try {
     await control.sendCommand(
-      `switch-client -c ${ptyClientName} -t '${sessionId}'`,
+      `switch-client -c ${ptyClientName} -t ${tq(sessionId)}`,
     );
     currentSessionId = sessionId;
     sidebar.setActiveSession(sessionId);
@@ -693,7 +694,7 @@ function clearSessionIndicators(): void {
   scheduleRender();
 
   if (needsAttentionClear) {
-    control.sendCommand(`set-option -t '${id}' -u @jmux-attention`).catch(() => {});
+    control.sendCommand(`set-option -t ${tq(id)} -u @jmux-attention`).catch(() => {});
   }
 }
 
@@ -1174,14 +1175,14 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
           switch (result.type) {
             case "standard": {
               const session = sanitizeTmuxSessionName(result.name);
-              await control.sendCommand(`new-session -d -e 'OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}' -s '${session}' -c '${result.dir}'`);
-              await control.sendCommand(`switch-client -c ${parentClient} -t '${session}'`);
+              await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(result.dir)}`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t ${tq(session)}`);
               break;
             }
             case "existing_worktree": {
               const session = sanitizeTmuxSessionName(result.branch);
-              await control.sendCommand(`new-session -d -e 'OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}' -s '${session}' -c '${result.path}'`);
-              await control.sendCommand(`switch-client -c ${parentClient} -t '${session}'`);
+              await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(result.path)}`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t ${tq(session)}`);
               break;
             }
             case "new_worktree": {
@@ -1192,11 +1193,11 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
               const session = sanitizeTmuxSessionName(result.name);
               const wtPath = `${result.dir}/${session}`;
               const cmd = `wtm create ${session} --from ${result.baseBranch} --no-shell; cd ${session}; exec $SHELL`;
-              await control.sendCommand(`new-session -d -e 'OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}' -s '${session}' -c '${result.dir}' '${cmd}'`);
-              const waitCmd = `while [ ! -d '${wtPath}' ]; do sleep 0.2; done; cd '${wtPath}' && exec $SHELL`;
-              await control.sendCommand(`split-window -h -d -t '${session}' -c '${result.dir}' '${waitCmd}'`);
-              await control.sendCommand(`select-pane -t '${session}.0'`);
-              await control.sendCommand(`switch-client -c ${parentClient} -t '${session}'`);
+              await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(result.dir)} ${tq(cmd)}`);
+              const waitCmd = `while [ ! -d ${tq(wtPath)} ]; do sleep 0.2; done; cd ${tq(wtPath)} && exec $SHELL`;
+              await control.sendCommand(`split-window -h -d -t ${tq(session)} -c ${tq(result.dir)} ${tq(waitCmd)}`);
+              await control.sendCommand(`select-pane -t ${tq(session + ".0")}`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t ${tq(session)}`);
               break;
             }
           }
@@ -1207,7 +1208,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       return;
     }
     case "kill-session":
-      await control.sendCommand(`kill-session -t '${currentSessionId}'`);
+      await control.sendCommand(`kill-session -t ${tq(currentSessionId!)}`);
       return;
     case "rename-session": {
       const currentName = currentSessions.find(s => s.id === currentSessionId)?.name ?? "";
@@ -1218,7 +1219,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       });
       modal.open();
       openModal(modal, async (name) => {
-        await control.sendCommand(`rename-session -t '${currentSessionId}' '${name}'`);
+        await control.sendCommand(`rename-session -t ${tq(currentSessionId!)} ${tq(name as string)}`);
       });
       return;
     }
@@ -1234,7 +1235,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       });
       modal.open();
       openModal(modal, async (name) => {
-        await control.sendCommand(`rename-window '${name}'`);
+        await control.sendCommand(`rename-window ${tq(name as string)}`);
         fetchWindows();
       });
       return;
@@ -1257,7 +1258,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       modal.open();
       openModal(modal, async (value) => {
         const selected = value as ListItem;
-        await control.sendCommand(`move-window -t '${selected.label}:'`);
+        await control.sendCommand(`move-window -t ${tq(selected.label + ":")}`);
         fetchWindows();
       });
       return;
@@ -1828,7 +1829,7 @@ async function start(): Promise<void> {
   // already-running shells won't pick up the change until they restart.
   for (const session of currentSessions) {
     await control.sendCommand(
-      `set-environment -t '${session.name}' OTEL_RESOURCE_ATTRIBUTES 'tmux_session_name=${session.name}'`,
+      `set-environment -t ${tq(session.name)} OTEL_RESOURCE_ATTRIBUTES ${tq(`tmux_session_name=${session.name}`)}`,
     );
   }
 

@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 import {
   NewSessionModal,
   sanitizeTmuxSessionName,
+  tq,
   type NewSessionProviders,
   type NewSessionResult,
 } from "../new-session-modal";
@@ -357,5 +358,37 @@ describe("sanitizeTmuxSessionName", () => {
     expect(sanitizeTmuxSessionName("clean-name")).toBe("clean-name");
     expect(sanitizeTmuxSessionName("release/v1")).toBe("release/v1");
     expect(sanitizeTmuxSessionName("")).toBe("");
+  });
+});
+
+describe("tq", () => {
+  test("wraps plain strings in single quotes", () => {
+    expect(tq("hello")).toBe("'hello'");
+    expect(tq("my-session")).toBe("'my-session'");
+  });
+
+  test("escapes single quotes with '\\''", () => {
+    expect(tq("it's-cool")).toBe("'it'\\''s-cool'");
+    expect(tq("can't-stop")).toBe("'can'\\''t-stop'");
+  });
+
+  test("handles multiple single quotes", () => {
+    expect(tq("it's it's")).toBe("'it'\\''s it'\\''s'");
+  });
+
+  test("handles empty string", () => {
+    expect(tq("")).toBe("''");
+  });
+
+  test("does not alter strings without quotes", () => {
+    expect(tq("$1")).toBe("'$1'");
+    expect(tq("/home/user/project")).toBe("'/home/user/project'");
+    expect(tq("name with spaces")).toBe("'name with spaces'");
+  });
+
+  test("produces correct command strings for tmux", () => {
+    const name = "it's-cool";
+    const cmd = `rename-session -t ${tq("$1")} ${tq(name)}`;
+    expect(cmd).toBe("rename-session -t '$1' 'it'\\''s-cool'");
   });
 });
