@@ -22,6 +22,7 @@ import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
+import { loadUserConfig } from "./config";
 import { OtelReceiver } from "./otel-receiver";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
@@ -148,18 +149,6 @@ process.env.JMUX = "1";
 
 // --- TUI startup ---
 
-// Read sidebar width from user config, fall back to default
-function loadUserConfig(): Record<string, any> {
-  const configPath = resolve(homedir(), ".config", "jmux", "config.json");
-  try {
-    if (existsSync(configPath)) {
-      return JSON.parse(readFileSync(configPath, "utf-8"));
-    }
-  } catch {
-    // Invalid config — use defaults
-  }
-  return {};
-}
 const userConfig = loadUserConfig();
 let sidebarWidth = (userConfig.sidebarWidth as number) || 26;
 const BORDER_WIDTH = 1;
@@ -167,6 +156,7 @@ function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
 const toolbarEnabled = true;
 let claudeCommand = (userConfig.claudeCommand as string) || "claude";
 let cacheTimersEnabled = (userConfig.cacheTimers as boolean) !== false;
+let pinnedSessions = new Set<string>((userConfig.pinnedSessions as string[]) ?? []);
 let diffPanelSplitRatio = (userConfig.diffPanel as any)?.splitRatio ?? 0.4;
 let hunkCommand = (userConfig.diffPanel as any)?.hunkCommand ?? "hunk";
 
@@ -313,6 +303,7 @@ const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, rows);
 const otelReceiver = new OtelReceiver();
 sidebar.cacheTimersEnabled = cacheTimersEnabled;
+sidebar.setPinnedSessions(pinnedSessions);
 const control = new TmuxControl();
 const diffPanel = new DiffPanel();
 let diffBridge: ScreenBridge | null = null;
@@ -944,6 +935,26 @@ function buildPaletteCommands(): PaletteCommand[] {
     });
   }
 
+  // Dynamic: pin/unpin current session
+  {
+    const currentName = currentSessions.find(s => s.id === currentSessionId)?.name;
+    if (currentName) {
+      if (pinnedSessions.has(currentName)) {
+        commands.push({
+          id: "unpin-session",
+          label: `Unpin session: ${currentName}`,
+          category: "session",
+        });
+      } else {
+        commands.push({
+          id: "pin-session",
+          label: `Pin session: ${currentName}`,
+          category: "session",
+        });
+      }
+    }
+  }
+
   // Static commands
   commands.push(
     { id: "new-session", label: "New session", category: "session" },
@@ -1146,6 +1157,22 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     const label = commandId.slice("toggle-group:".length);
     sidebar.toggleGroup(label);
     scheduleRender();
+    return;
+  }
+
+  // Pin/unpin session
+  if (commandId === "pin-session" || commandId === "unpin-session") {
+    const currentName = currentSessions.find(s => s.id === currentSessionId)?.name;
+    if (currentName) {
+      if (commandId === "pin-session") {
+        pinnedSessions.add(currentName);
+      } else {
+        pinnedSessions.delete(currentName);
+      }
+      sidebar.setPinnedSessions(pinnedSessions);
+      await applySetting("pinnedSessions", [...pinnedSessions], "array");
+      scheduleRender();
+    }
     return;
   }
 
@@ -1536,6 +1563,13 @@ try {
       } else if (!newCacheTimers) {
         stopCacheTimerTick();
       }
+      scheduleRender();
+    }
+
+    const newPinned = new Set<string>((updated.pinnedSessions as string[]) ?? []);
+    if (newPinned.size !== pinnedSessions.size || [...newPinned].some(n => !pinnedSessions.has(n))) {
+      pinnedSessions = newPinned;
+      sidebar.setPinnedSessions(pinnedSessions);
       scheduleRender();
     }
 
