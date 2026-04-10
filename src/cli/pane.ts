@@ -135,8 +135,11 @@ export function handlePane(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
         captureArgs.push("-e");
       }
       if (typeof flags.lines === "string") {
-        const n = Math.min(parseInt(flags.lines, 10), 1000);
-        captureArgs.push("-S", `-${n}`);
+        const n = parseInt(flags.lines, 10);
+        if (isNaN(n) || n < 0) {
+          throw new CliError("--lines must be a positive integer");
+        }
+        captureArgs.push("-S", `-${Math.min(n, 1000)}`);
       }
       const result = runTmuxDirect(captureArgs, ctx.socket);
       tmuxOrThrow(result);

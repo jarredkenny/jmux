@@ -107,7 +107,10 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       );
       tmuxOrThrow(sessionResult);
       const sessions = parseSessionListOutput(sessionResult.lines);
-      const session = sessions[0] ?? null;
+      const session = sessions[0];
+      if (!session) {
+        throw new CliError(`session "${target}" not found`);
+      }
 
       const windowsResult = runTmuxDirect(
         ["list-windows", "-t", target, "-F", "#{window_id}:#{window_index}:#{window_name}:#{window_active}:#{window_bell_flag}:#{window_zoomed_flag}"],
