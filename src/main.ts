@@ -71,6 +71,12 @@ Keybindings:
 
 https://github.com/jarredkenny/jmux`;
 
+if (process.argv[2] === "ctl") {
+  const { runCtl } = await import("./cli");
+  await runCtl(process.argv.slice(3));
+  process.exit(0);
+}
+
 if (process.argv.includes("-h") || process.argv.includes("--help")) {
   console.log(HELP);
   process.exit(0);
@@ -83,12 +89,6 @@ if (process.argv.includes("-v") || process.argv.includes("--version")) {
 
 if (process.argv.includes("--install-agent-hooks")) {
   installAgentHooks();
-  process.exit(0);
-}
-
-if (process.argv[2] === "ctl") {
-  const { runCtl } = await import("./cli");
-  await runCtl(process.argv.slice(3));
   process.exit(0);
 }
 
