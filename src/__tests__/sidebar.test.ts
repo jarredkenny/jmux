@@ -733,6 +733,23 @@ describe("Sidebar", () => {
     expect(allText).not.toContain("Pinned");
   });
 
+  test("shows ticket ID on detail row when ticketId is set", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    const sessions = makeSessions([{ name: "my-task", directory: "~/mydir", gitBranch: "feat/x" }]);
+    sessions[0].ticketId = "MYAPP-123";
+    sidebar.updateSessions(sessions);
+    const grid = sidebar.getGrid();
+    // Row 2: session name, Row 3: detail
+    const detailRow = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[3][i].char,
+    ).join("");
+    expect(detailRow).toContain("MYAPP-123");
+    // branch and directory should NOT appear when ticketId takes over
+    expect(detailRow).not.toContain("feat/x");
+    expect(detailRow).not.toContain("~/mydir");
+  });
+
   test("cacheTimersEnabled false suppresses timer rendering", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));

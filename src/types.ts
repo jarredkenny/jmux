@@ -47,6 +47,7 @@ export interface SessionInfo {
   windowCount: number;
   directory?: string;
   project?: string; // wtm project name (bare repo basename)
+  ticketId?: string; // from task registry
 }
 
 export interface CacheTimerState {

@@ -604,6 +604,24 @@ export class Sidebar {
 
     const detailStart = 3;
 
+    // When ticket is linked, show ticket ID on detail line instead of branch/directory
+    if (session.ticketId) {
+      const ticketAttrs: CellAttrs = isActive
+        ? { fg: (0x58 << 16) | (0xa6 << 8) | 0xff, fgMode: ColorMode.RGB, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
+        : isHovered
+          ? { fg: (0x58 << 16) | (0xa6 << 8) | 0xff, fgMode: ColorMode.RGB, bg: HOVER_BG, bgMode: ColorMode.RGB }
+          : { fg: (0x58 << 16) | (0xa6 << 8) | 0xff, fgMode: ColorMode.RGB };
+      let ticketDisplay = session.ticketId;
+      const maxTicketLen = this.width - detailStart - 1;
+      if (ticketDisplay.length > maxTicketLen) {
+        ticketDisplay = ticketDisplay.slice(0, maxTicketLen - 1) + "\u2026";
+      }
+      if (maxTicketLen > 0) {
+        writeString(grid, detailRow, detailStart, ticketDisplay, ticketAttrs);
+      }
+      return; // skip the rest of the detail line rendering
+    }
+
     if (item.grouped && item.groupLabel !== PINNED_GROUP_LABEL) {
       if (timerText !== null) {
         const timerAttrs = cacheTimerAttrs(timerRemaining, isActive, isHovered);

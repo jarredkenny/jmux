@@ -685,6 +685,19 @@ async function fetchSessions(): Promise<void> {
       });
     currentSessions = sessions;
 
+    // Enrich sessions with ticket IDs from task registry
+    try {
+      const tasks = listTasks(DEFAULT_REGISTRY_PATH);
+      for (const session of sessions) {
+        for (const [ticketId, task] of Object.entries(tasks)) {
+          if (task.session === session.name) {
+            session.ticketId = ticketId;
+            break;
+          }
+        }
+      }
+    } catch { /* registry may not exist yet */ }
+
     // Mark sessions with activity since last viewed
     for (const session of sessions) {
       const lastViewed = lastViewedTimestamps.get(session.id) ?? 0;
