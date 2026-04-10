@@ -14,6 +14,18 @@ export function sanitizeTmuxSessionName(name: string): string {
   return name.replace(/[.:]/g, "_");
 }
 
+/**
+ * Escape a string for safe interpolation inside tmux single-quoted arguments.
+ * Replaces each ' with the sequence '\'' (end quote, escaped literal quote,
+ * reopen quote) — the standard POSIX single-quote escape.
+ *
+ * Usage: control.sendCommand(`rename-session -t ${tq(id)} ${tq(name)}`)
+ * The function wraps the value in single quotes, so callers must NOT add their own.
+ */
+export function tq(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
 export interface NewSessionProviders {
   scanProjectDirs: () => string[];
   isBareRepo: (dir: string) => boolean;
