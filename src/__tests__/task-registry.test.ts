@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync } from "fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { resolve } from "path";
 import {
@@ -58,8 +58,19 @@ describe("TaskRegistry storage", () => {
   test("saveRegistry uses atomic write (temp + rename)", () => {
     const reg: TaskRegistry = { tasks: { "X-1": { source: "linear", externalId: "a", url: "", title: "t", session: null, worktree: null, project: "p", mrs: [], status: "pickup", createdAt: "", updatedAt: "" } } };
     saveRegistry(filePath, reg);
+    // File should exist and be valid JSON
     const raw = readFileSync(filePath, "utf-8");
     expect(JSON.parse(raw)).toEqual(reg);
+    // No leftover temp files
+    const files = readdirSync(dir);
+    const tmpFiles = files.filter(f => f.includes(".tmp."));
+    expect(tmpFiles).toEqual([]);
+  });
+
+  test("loadRegistry returns empty tasks when file is corrupt", () => {
+    writeFileSync(filePath, "{{not valid json!!", "utf-8");
+    const reg = loadRegistry(filePath);
+    expect(reg).toEqual({ tasks: {} });
   });
 });
 
