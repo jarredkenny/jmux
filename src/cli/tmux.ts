@@ -41,6 +41,43 @@ export interface TmuxResult {
  * `list-sessions -F '#{session_name}'` are handled correctly by the shell
  * before being forwarded to tmux.
  */
+/**
+ * Run a tmux command synchronously with a pre-built argument array.
+ * Unlike runTmux, this bypasses `sh -c` — safe for arguments that may contain
+ * shell-special characters (e.g. arbitrary text for send-keys).
+ */
+export function runTmuxDirect(args: string[], socket: string | null): TmuxResult {
+  const socketArgs: string[] = socket
+    ? socket.includes("/")
+      ? ["-S", socket]
+      : ["-L", socket]
+    : [];
+
+  const result = Bun.spawnSync(["tmux", ...socketArgs, ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const exitCode = result.exitCode ?? 1;
+
+  if (exitCode !== 0) {
+    const stderr = result.stderr.toString().trim();
+    return {
+      ok: false,
+      lines: [],
+      error: stderr || `tmux exited with code ${exitCode}`,
+    };
+  }
+
+  const lines = result.stdout
+    .toString()
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  return { ok: true, lines, error: "" };
+}
+
 export function runTmux(command: string, socket: string | null): TmuxResult {
   const socketPrefix = socket
     ? socket.includes("/")
