@@ -686,6 +686,8 @@ async function fetchSessions(): Promise<void> {
     currentSessions = sessions;
 
     // Enrich sessions with ticket IDs from task registry
+    // Note: readFileSync on every session refresh — acceptable for now since the
+    // file is small and OS-cached; revisit if this causes lag on slow filesystems.
     try {
       const tasks = listTasks(DEFAULT_REGISTRY_PATH);
       for (const session of sessions) {

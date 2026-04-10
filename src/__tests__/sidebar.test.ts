@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { Sidebar } from "../sidebar";
 import type { SessionInfo } from "../types";
+import { ColorMode } from "../types";
 
 const SIDEBAR_WIDTH = 24;
 
@@ -748,6 +749,11 @@ describe("Sidebar", () => {
     // branch and directory should NOT appear when ticketId takes over
     expect(detailRow).not.toContain("feat/x");
     expect(detailRow).not.toContain("~/mydir");
+    // Verify ticket ID is rendered in the expected blue color
+    // 'M' is the first char of "MYAPP-123", starts at detailStart col 3
+    const mCell = grid.cells[3][3];
+    expect(mCell.fg).toBe((0x58 << 16) | (0xa6 << 8) | 0xff);
+    expect(mCell.fgMode).toBe(ColorMode.RGB);
   });
 
   test("cacheTimersEnabled false suppresses timer rendering", () => {

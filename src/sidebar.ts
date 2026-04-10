@@ -605,13 +605,14 @@ export class Sidebar {
     const detailStart = 3;
 
     // When ticket is linked, show ticket ID on detail line instead of branch/directory
-    if (session.ticketId) {
+    const showTicketId = !!session.ticketId;
+    if (showTicketId) {
       const ticketAttrs: CellAttrs = isActive
         ? { fg: (0x58 << 16) | (0xa6 << 8) | 0xff, fgMode: ColorMode.RGB, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
         : isHovered
           ? { fg: (0x58 << 16) | (0xa6 << 8) | 0xff, fgMode: ColorMode.RGB, bg: HOVER_BG, bgMode: ColorMode.RGB }
           : { fg: (0x58 << 16) | (0xa6 << 8) | 0xff, fgMode: ColorMode.RGB };
-      let ticketDisplay = session.ticketId;
+      let ticketDisplay = session.ticketId!;
       const maxTicketLen = this.width - detailStart - 1;
       if (ticketDisplay.length > maxTicketLen) {
         ticketDisplay = ticketDisplay.slice(0, maxTicketLen - 1) + "\u2026";
@@ -619,7 +620,7 @@ export class Sidebar {
       if (maxTicketLen > 0) {
         writeString(grid, detailRow, detailStart, ticketDisplay, ticketAttrs);
       }
-      return; // skip the rest of the detail line rendering
+      // DO NOT return — cache timer rendering continues below
     }
 
     if (item.grouped && item.groupLabel !== PINNED_GROUP_LABEL) {
@@ -627,7 +628,7 @@ export class Sidebar {
         const timerAttrs = cacheTimerAttrs(timerRemaining, isActive, isHovered);
         const timerCol = this.width - timerText.length - 1;
         writeString(grid, detailRow, timerCol, timerText, timerAttrs);
-        if (session.gitBranch) {
+        if (!showTicketId && session.gitBranch) {
           const maxLen = timerCol - detailStart - 1;
           let branch = session.gitBranch;
           if (branch.length > maxLen) {
@@ -637,7 +638,7 @@ export class Sidebar {
             writeString(grid, detailRow, detailStart, branch, detailAttrs);
           }
         }
-      } else if (session.gitBranch) {
+      } else if (!showTicketId && session.gitBranch) {
         const maxLen = this.width - detailStart - 1;
         let branch = session.gitBranch;
         if (branch.length > maxLen) {
@@ -651,7 +652,7 @@ export class Sidebar {
         const timerCol = this.width - timerText.length - 1;
         writeString(grid, detailRow, timerCol, timerText, timerAttrs);
         // Drop branch when timer is present; show only directory
-        if (session.directory !== undefined) {
+        if (!showTicketId && session.directory !== undefined) {
           const dirMaxLen = timerCol - detailStart - 1;
           let displayDir = session.directory;
           if (displayDir.length > dirMaxLen) {
@@ -661,7 +662,7 @@ export class Sidebar {
             writeString(grid, detailRow, detailStart, displayDir, detailAttrs);
           }
         }
-      } else {
+      } else if (!showTicketId) {
         let branchCols = 0;
         if (session.gitBranch) {
           const branchCol = this.width - session.gitBranch.length - 1;
