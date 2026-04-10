@@ -27,6 +27,7 @@ import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./ty
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { loadUserConfig } from "./config";
 import { listTasks, DEFAULT_REGISTRY_PATH } from "./task-registry";
+import { discoverWorkflowConfigs } from "./workflow-config";
 import { OtelReceiver } from "./otel-receiver";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
@@ -484,17 +485,12 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
     try { metaAgentSkill = readFileSync(skillPath, "utf-8"); } catch { /* skill not yet present */ }
 
     // Load workflow configs from project dirs
-    const workflowConfigs: { project: string; path: string; content: string }[] = [];
-    for (const dir of cachedProjectDirs) {
-      const wfPath = resolve(dir, ".jmux", "workflow.yml");
-      try {
-        if (existsSync(wfPath)) {
-          const content = readFileSync(wfPath, "utf-8");
-          const project = dir.split("/").pop() ?? dir;
-          workflowConfigs.push({ project, path: wfPath, content });
-        }
-      } catch { /* skip unreadable configs */ }
-    }
+    const discovered = discoverWorkflowConfigs(cachedProjectDirs);
+    const workflowConfigs = discovered.map(d => ({
+      project: d.config.project,
+      path: resolve(d.dir, ".jmux", "workflow.yml"),
+      content: d.raw,
+    }));
 
     // Load active tasks (pickup, in_progress, review only)
     const allTasks = listTasks(DEFAULT_REGISTRY_PATH);
