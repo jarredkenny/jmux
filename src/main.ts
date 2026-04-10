@@ -56,6 +56,13 @@ Examples:
   jmux -L work             Use isolated tmux server
   jmux --install-agent-hooks  Set up Claude Code integration
 
+Agent Control (JSON output):
+  jmux ctl session list          List sessions
+  jmux ctl session create        Create a session
+  jmux ctl run-claude            Launch Claude Code in a new session
+  jmux ctl pane capture          Read pane contents
+  jmux ctl --help                Show all ctl subcommands
+
 Keybindings:
   Ctrl-Shift-Up/Down       Switch sessions
   Ctrl-a n                 New session / worktree

@@ -17,6 +17,8 @@ bun test src/__tests__/sidebar.test.ts   # Run a single test file
 bun test -t "group label"                # Filter tests by name
 bun run typecheck          # tsc --noEmit (strict mode)
 bun run docker             # Build + run Dockerfile.test for a clean-env sanity check
+bun run src/main.ts ctl --help           # Show agent control CLI help
+bun run src/main.ts ctl session list     # List sessions (JSON)
 ```
 
 There is no build step for running — `bin/jmux` is `import "../src/main.ts"`. The `dist/` dir is only produced by `tsc` and is not shipped in the npm package (see `package.json` `files`).
