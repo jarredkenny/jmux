@@ -326,6 +326,7 @@ const control = new TmuxControl();
 const diffPanel = new DiffPanel();
 const toolPanel = new ToolPanel();
 const agentTab = new AgentTab();
+let activeAgentProc: ReturnType<typeof Bun.spawn> | null = null;
 let diffBridge: ScreenBridge | null = null;
 let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
@@ -504,12 +505,14 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
     // Get session state via ctl
     let sessionState = "[]";
     try {
-      const result = Bun.spawnSync(
+      const sessionProc = Bun.spawn(
         [process.argv[0], process.argv[1], "ctl", "session", "list"],
         { stdout: "pipe", stderr: "pipe" },
       );
-      if (result.exitCode === 0) {
-        sessionState = result.stdout.toString().trim();
+      const exitCode = await sessionProc.exited;
+      if (exitCode === 0) {
+        sessionState = await new Response(sessionProc.stdout).text();
+        sessionState = sessionState.trim();
       }
     } catch { /* session list failed */ }
 
@@ -533,6 +536,7 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
         env: { ...process.env },
       },
     );
+    activeAgentProc = proc;
 
     // Start a fresh assistant message in scrollback
     agentTab.scrollback.addAssistantMessage("");
@@ -552,10 +556,20 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
           if (event.type === "assistant") {
             const msg = event.message as Record<string, unknown> | undefined;
             const content = Array.isArray(msg?.content) ? msg.content as unknown[] : [];
+
+            // Check if this is a new assistant turn (text block reset)
+            const firstText = content.find(b => (b as Record<string, unknown>).type === "text") as Record<string, unknown> | undefined;
+            if (firstText && typeof firstText.text === "string") {
+              if (firstText.text.length < lastTextLength) {
+                // New turn — text reset
+                agentTab.scrollback.addAssistantMessage("");
+                lastTextLength = 0;
+              }
+            }
+
             for (const block of content) {
               const b = block as Record<string, unknown>;
               if (b.type === "text" && typeof b.text === "string") {
-                // Diff against what we've already appended
                 const newText = b.text.slice(lastTextLength);
                 if (newText) {
                   agentTab.scrollback.appendToLast(newText);
@@ -565,6 +579,8 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
               } else if (b.type === "tool_use" && typeof b.name === "string") {
                 const inputStr = b.input ? ` ${JSON.stringify(b.input).slice(0, 80)}` : "";
                 agentTab.scrollback.addToolUse(b.name + inputStr);
+                // After tool_use, next assistant event will start a new text block
+                lastTextLength = 0;
                 scheduleRender();
               }
             }
@@ -578,6 +594,7 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
     agentTab.state = "error";
   } finally {
     clearInterval(spinnerInterval);
+    activeAgentProc = null;
     if (agentTab.state !== "error") {
       agentTab.state = "idle";
     }
@@ -613,6 +630,7 @@ async function toggleDiffPanel(): Promise<void> {
     inputRouter.setMainCols(available);
     pty.resize(available, ptyRowsNow);
     bridge.resize(available, ptyRowsNow);
+    toolPanel.switchTab("diff");
   }
 
   scheduleRender();
@@ -812,7 +830,7 @@ function renderFrame(): void {
   if (diffPanel.isActive() && toolPanel.activeTab === "agent") {
     const dpCols = getDiffPanelCols();
     const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-    const agentGrid = agentTab.render(dpCols, dpRows);
+    const agentGrid = agentTab.render(dpCols, dpRows - 1);
     diffPanelArg = { grid: agentGrid, mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
   }
 
@@ -2193,6 +2211,7 @@ async function start(): Promise<void> {
 // --- Cleanup ---
 
 function cleanup(): void {
+  try { activeAgentProc?.kill(); } catch {}
   killDiffProcess();
   otelReceiver.stop();
   stopCacheTimerTick();

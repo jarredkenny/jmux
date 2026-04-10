@@ -33,7 +33,8 @@ export const DEFAULT_REGISTRY_PATH = resolve(homedir(), ".config", "jmux", "task
 export function loadRegistry(filePath: string): TaskRegistry {
   try {
     if (existsSync(filePath)) {
-      return JSON.parse(readFileSync(filePath, "utf-8")) as TaskRegistry;
+      const raw = JSON.parse(readFileSync(filePath, "utf-8"));
+      return { tasks: raw?.tasks ?? {} };
     }
   } catch {}
   return { tasks: {} };
