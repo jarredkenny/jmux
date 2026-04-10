@@ -86,6 +86,12 @@ if (process.argv.includes("--install-agent-hooks")) {
   process.exit(0);
 }
 
+if (process.argv[2] === "ctl") {
+  const { runCtl } = await import("./cli");
+  await runCtl(process.argv.slice(3));
+  process.exit(0);
+}
+
 function installAgentHooks(): void {
   const claudeDir = resolve(homedir(), ".claude");
   const settingsPath = resolve(claudeDir, "settings.json");
