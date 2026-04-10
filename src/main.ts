@@ -21,6 +21,7 @@ import { MODAL_BG } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
 import { ToolPanel } from "./tool-panel";
+import { AgentTab } from "./agent-tab";
 import { ColorMode } from "./types";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
@@ -322,6 +323,7 @@ sidebar.setPinnedSessions(pinnedSessions);
 const control = new TmuxControl();
 const diffPanel = new DiffPanel();
 const toolPanel = new ToolPanel();
+const agentTab = new AgentTab();
 let diffBridge: ScreenBridge | null = null;
 let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
@@ -458,6 +460,19 @@ function resizeDiffPanel(): void {
   const rows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
   diffPty.resize(cols, rows);
   diffBridge.resize(cols, rows);
+}
+
+async function spawnAgentMessage(userMessage: string): Promise<void> {
+  agentTab.state = "streaming";
+  scheduleRender();
+
+  // TODO: Task 8 will implement the actual Claude Code subprocess spawning
+  // For now, simulate a response after a short delay
+  setTimeout(() => {
+    agentTab.scrollback.addAssistantMessage("Agent not yet connected. The meta agent will be wired up in the next task.");
+    agentTab.state = "idle";
+    scheduleRender();
+  }, 500);
 }
 
 async function toggleDiffPanel(): Promise<void> {
@@ -668,16 +683,12 @@ function renderFrame(): void {
     }
   }
 
-  // When agent tab is active, show placeholder instead of diff content
+  // When agent tab is active, render it instead of diff content
   if (diffPanel.isActive() && toolPanel.activeTab === "agent") {
     const dpCols = getDiffPanelCols();
     const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-    const placeholderGrid = createGrid(dpCols, dpRows);
-    const centerRow = Math.floor(dpRows / 2);
-    const hint = "Agent tab — coming soon";
-    const col = Math.max(0, Math.floor((dpCols - hint.length) / 2));
-    writeString(placeholderGrid, centerRow, col, hint, { fg: 8, fgMode: ColorMode.Palette, dim: true });
-    diffPanelArg = { grid: placeholderGrid, mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
+    const agentGrid = agentTab.render(dpCols, dpRows);
+    diffPanelArg = { grid: agentGrid, mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
   }
 
   // Composite tab bar above the panel content
@@ -892,6 +903,53 @@ const inputRouter = new InputRouter(
     onPanelTabSwitch: () => {
       toolPanel.nextTab();
       scheduleRender();
+    },
+    isAgentTabActive: () => toolPanel.activeTab === "agent",
+    onAgentTabData: (data: string) => {
+      if (agentTab.state === "streaming") return; // reject input while streaming
+
+      // Enter — submit message
+      if (data === "\r" || data === "\n") {
+        const text = agentTab.input.submit();
+        if (text.trim().length > 0) {
+          agentTab.scrollback.addUserMessage(text);
+          agentTab.scrollToBottom();
+          spawnAgentMessage(text);
+        }
+        scheduleRender();
+        return;
+      }
+
+      // Backspace
+      if (data === "\x7f" || data === "\b") {
+        agentTab.input.backspace();
+        scheduleRender();
+        return;
+      }
+
+      // Delete
+      if (data === "\x1b[3~") {
+        agentTab.input.del();
+        scheduleRender();
+        return;
+      }
+
+      // Arrow keys
+      if (data === "\x1b[D") { agentTab.input.left(); scheduleRender(); return; }
+      if (data === "\x1b[C") { agentTab.input.right(); scheduleRender(); return; }
+      if (data === "\x1b[H" || data === "\x1b[1~") { agentTab.input.home(); scheduleRender(); return; }
+      if (data === "\x1b[F" || data === "\x1b[4~") { agentTab.input.end(); scheduleRender(); return; }
+
+      // Shift+Up/Down for scrollback
+      if (data === "\x1b[1;2A") { agentTab.scrollUp(3); scheduleRender(); return; }
+      if (data === "\x1b[1;2B") { agentTab.scrollDown(3); scheduleRender(); return; }
+
+      // Printable characters
+      if (data.length > 0 && data.charCodeAt(0) >= 32) {
+        agentTab.input.insert(data);
+        scheduleRender();
+        return;
+      }
     },
   },
   sidebarShown,

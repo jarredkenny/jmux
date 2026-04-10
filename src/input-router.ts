@@ -50,6 +50,8 @@ export interface InputRouterOptions {
   onPaneNavRight?: () => void;  // Shift+Right when diff panel is open — main.ts queries pane_at_right
   onAgentToggle?: () => void;
   onPanelTabSwitch?: () => void;
+  onAgentTabData?: (data: string) => void;
+  isAgentTabActive?: () => boolean;
 }
 
 export class InputRouter {
@@ -268,9 +270,13 @@ export class InputRouter {
       return;
     }
 
-    // When diff panel is focused, route keyboard to diff panel
+    // When diff panel is focused, route keyboard to agent tab or diff panel
     if (this.diffPanelFocused && this.diffPanelCols > 0) {
-      this.opts.onDiffPanelData?.(data);
+      if (this.opts.isAgentTabActive?.()) {
+        this.opts.onAgentTabData?.(data);
+      } else {
+        this.opts.onDiffPanelData?.(data);
+      }
       return;
     }
 
