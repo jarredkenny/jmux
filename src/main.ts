@@ -30,7 +30,7 @@ import { listTasks, DEFAULT_REGISTRY_PATH } from "./task-registry";
 import { OtelReceiver } from "./otel-receiver";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { homedir, tmpdir } from "os";
+import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
@@ -530,7 +530,7 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
 
     // Spawn Claude Code subprocess
     const proc = Bun.spawn(
-      [claudeCmd, "--output-format", "stream-json", "-p", prompt],
+      [claudeCmd, "--output-format", "stream-json", "--verbose", "--include-partial-messages", "-p", prompt],
       {
         stdout: "pipe",
         stderr: "pipe",
@@ -543,6 +543,7 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
     const reader = proc.stdout.getReader();
     const decoder = new TextDecoder();
 
+    let lastTextLength = 0;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -552,24 +553,25 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
         if (!line.trim()) continue;
         try {
           const event = JSON.parse(line) as Record<string, unknown>;
-          // Stream-json delta events
-          if (
-            event.type === "content_block_delta" &&
-            event.delta !== null &&
-            typeof event.delta === "object" &&
-            (event.delta as Record<string, unknown>).type === "text_delta"
-          ) {
-            const text = (event.delta as Record<string, unknown>).text;
-            if (typeof text === "string" && text) {
-              agentTab.scrollback.appendToLast(text);
-              scheduleRender();
+          if (event.type === "assistant") {
+            const msg = event.message as Record<string, unknown> | undefined;
+            const content = Array.isArray(msg?.content) ? msg.content as unknown[] : [];
+            for (const block of content) {
+              const b = block as Record<string, unknown>;
+              if (b.type === "text" && typeof b.text === "string") {
+                // Diff against what we've already appended
+                const newText = b.text.slice(lastTextLength);
+                if (newText) {
+                  agentTab.scrollback.appendToLast(newText);
+                  lastTextLength = b.text.length;
+                  scheduleRender();
+                }
+              } else if (b.type === "tool_use" && typeof b.name === "string") {
+                const inputStr = b.input ? ` ${JSON.stringify(b.input).slice(0, 80)}` : "";
+                agentTab.scrollback.addToolUse(b.name + inputStr);
+                scheduleRender();
+              }
             }
-          }
-          // Tool use display
-          else if (event.type === "tool_use" && typeof event.name === "string") {
-            const inputStr = event.input ? ` ${JSON.stringify(event.input).slice(0, 80)}` : "";
-            agentTab.scrollback.addToolUse(event.name + inputStr);
-            scheduleRender();
           }
         } catch { /* non-JSON line */ }
       }
