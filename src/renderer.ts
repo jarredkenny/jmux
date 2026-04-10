@@ -451,12 +451,14 @@ export class Renderer {
     if (modalCursor != null) {
       // Modal cursor is in absolute grid coordinates
       buf.push(`\x1b[${modalCursor.row + 1};${modalCursor.col + 1}H`);
+      buf.push("\x1b[?25h");
     } else if (diffPanel?.focused) {
       buf.push("\x1b[?25l"); // hide cursor when diff panel focused
     } else {
       buf.push(
         `\x1b[${cursor.y + cursorRowOffset + 1};${cursor.x + cursorOffset + 1}H`,
       );
+      buf.push("\x1b[?25h");
     }
 
     process.stdout.write(buf.join(""));

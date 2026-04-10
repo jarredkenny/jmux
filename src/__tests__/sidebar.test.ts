@@ -626,6 +626,113 @@ describe("Sidebar", () => {
     expect(detailText).toContain("4:0");
   });
 
+  test("pinned sessions appear in Pinned group at the top", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.setPinnedSessions(new Set(["beta"]));
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "alpha", directory: "~/Code/work/alpha" },
+        { name: "beta", directory: "~/Code/work/beta" },
+        { name: "gamma" },
+      ]),
+    );
+    const grid = sidebar.getGrid();
+    // Row 2 should be the "Pinned" group header
+    const row2 = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[2][i].char,
+    ).join("");
+    expect(row2).toContain("Pinned");
+    // Row 4 should be the pinned session "beta"
+    const row4 = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[4][i].char,
+    ).join("");
+    expect(row4).toContain("beta");
+  });
+
+  test("pinned sessions are excluded from their normal group", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.setPinnedSessions(new Set(["api"]));
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "api", directory: "~/Code/work/server" },
+        { name: "web", directory: "~/Code/work/web" },
+      ]),
+    );
+    const grid = sidebar.getGrid();
+    // Collect all rendered text
+    let allText = "";
+    for (let r = 0; r < 30; r++) {
+      const rowText = Array.from(
+        { length: SIDEBAR_WIDTH },
+        (_, i) => grid.cells[r][i].char,
+      ).join("");
+      allText += rowText + "\n";
+    }
+    // "api" session name should appear once (in Pinned), not also in Code/work
+    const apiMatches = allText.split("api").length - 1;
+    expect(apiMatches).toBe(1);
+    // "Code/work" group should still exist with "web"
+    expect(allText).toContain("Code/work");
+    expect(allText).toContain("web");
+  });
+
+  test("isPinned returns correct state", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.setPinnedSessions(new Set(["main"]));
+    expect(sidebar.isPinned("main")).toBe(true);
+    expect(sidebar.isPinned("other")).toBe(false);
+  });
+
+  test("Pinned group can be collapsed", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.setPinnedSessions(new Set(["alpha"]));
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "alpha" },
+        { name: "beta" },
+      ]),
+    );
+    sidebar.toggleGroup("Pinned");
+    const grid = sidebar.getGrid();
+    let foundAlpha = false;
+    for (let r = 0; r < 30; r++) {
+      const text = Array.from(
+        { length: SIDEBAR_WIDTH },
+        (_, i) => grid.cells[r][i].char,
+      ).join("");
+      if (text.includes("alpha")) foundAlpha = true;
+    }
+    expect(foundAlpha).toBe(false);
+    // Header should still be visible with count
+    const headerRow = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[2][i].char,
+    ).join("");
+    expect(headerRow).toContain("Pinned");
+    expect(headerRow).toContain("(1)");
+  });
+
+  test("no Pinned group when no sessions are pinned", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "alpha" },
+        { name: "beta" },
+      ]),
+    );
+    const grid = sidebar.getGrid();
+    let allText = "";
+    for (let r = 0; r < 30; r++) {
+      allText += Array.from(
+        { length: SIDEBAR_WIDTH },
+        (_, i) => grid.cells[r][i].char,
+      ).join("");
+    }
+    expect(allText).not.toContain("Pinned");
+  });
+
   test("cacheTimersEnabled false suppresses timer rendering", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));

@@ -131,14 +131,25 @@ type RenderItem =
   | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string }
   | { type: "spacer" };
 
-function buildRenderPlan(sessions: SessionInfo[], collapsedGroups: Set<string>): {
+const PINNED_GROUP_LABEL = "Pinned";
+
+function buildRenderPlan(
+  sessions: SessionInfo[],
+  collapsedGroups: Set<string>,
+  pinnedNames: Set<string>,
+): {
   items: RenderItem[];
   displayOrder: number[];
 } {
+  const pinnedIndices: number[] = [];
   const groupMap = new Map<string, number[]>();
   const ungrouped: number[] = [];
 
   for (let i = 0; i < sessions.length; i++) {
+    if (pinnedNames.has(sessions[i].name)) {
+      pinnedIndices.push(i);
+      continue;
+    }
     // Prefer project name (wtm) over directory-based grouping
     const label = sessions[i].project ?? (() => {
       const dir = sessions[i].directory;
@@ -156,6 +167,8 @@ function buildRenderPlan(sessions: SessionInfo[], collapsedGroups: Set<string>):
     }
   }
 
+  pinnedIndices.sort((a, b) => sessions[a].name.localeCompare(sessions[b].name));
+
   const sortedGroups: SessionGroup[] = [...groupMap.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([label, indices]) => ({
@@ -169,6 +182,25 @@ function buildRenderPlan(sessions: SessionInfo[], collapsedGroups: Set<string>):
 
   const items: RenderItem[] = [];
   const displayOrder: number[] = [];
+
+  // Pinned group first
+  if (pinnedIndices.length > 0) {
+    const isCollapsed = collapsedGroups.has(PINNED_GROUP_LABEL);
+    items.push({
+      type: "group-header",
+      label: PINNED_GROUP_LABEL,
+      collapsed: isCollapsed,
+      sessionCount: pinnedIndices.length,
+    });
+    items.push({ type: "spacer" });
+    if (!isCollapsed) {
+      for (const idx of pinnedIndices) {
+        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: PINNED_GROUP_LABEL });
+        displayOrder.push(idx);
+        items.push({ type: "spacer" });
+      }
+    }
+  }
 
   for (const group of sortedGroups) {
     const isCollapsed = collapsedGroups.has(group.label);
@@ -221,6 +253,7 @@ export class Sidebar {
   private scrollOffset = 0;
   private hoveredRow: number | null = null;
   private collapsedGroups = new Set<string>();
+  private pinnedSessions = new Set<string>();
   private currentVersion: string = "";
   private latestVersion: string | null = null;
   private cacheTimers = new Map<string, CacheTimerState>();
@@ -233,7 +266,7 @@ export class Sidebar {
 
   updateSessions(sessions: SessionInfo[]): void {
     this.sessions = sessions;
-    const { items, displayOrder } = buildRenderPlan(sessions, this.collapsedGroups);
+    const { items, displayOrder } = buildRenderPlan(sessions, this.collapsedGroups, this.pinnedSessions);
     this.items = items;
     this.displayOrder = displayOrder;
     this.clampScroll();
@@ -249,10 +282,22 @@ export class Sidebar {
     } else {
       this.collapsedGroups.add(label);
     }
-    const { items, displayOrder } = buildRenderPlan(this.sessions, this.collapsedGroups);
+    const { items, displayOrder } = buildRenderPlan(this.sessions, this.collapsedGroups, this.pinnedSessions);
     this.items = items;
     this.displayOrder = displayOrder;
     this.clampScroll();
+  }
+
+  setPinnedSessions(names: Set<string>): void {
+    this.pinnedSessions = new Set(names);
+    const { items, displayOrder } = buildRenderPlan(this.sessions, this.collapsedGroups, this.pinnedSessions);
+    this.items = items;
+    this.displayOrder = displayOrder;
+    this.clampScroll();
+  }
+
+  isPinned(sessionName: string): boolean {
+    return this.pinnedSessions.has(sessionName);
   }
 
   setActivity(sessionId: string, active: boolean): void {
@@ -559,7 +604,7 @@ export class Sidebar {
 
     const detailStart = 3;
 
-    if (item.grouped) {
+    if (item.grouped && item.groupLabel !== PINNED_GROUP_LABEL) {
       if (timerText !== null) {
         const timerAttrs = cacheTimerAttrs(timerRemaining, isActive, isHovered);
         const timerCol = this.width - timerText.length - 1;
