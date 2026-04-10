@@ -3,6 +3,7 @@ import { handleSession } from "./cli/session";
 import { handleWindow } from "./cli/window";
 import { handlePane } from "./cli/pane";
 import { handleRunClaude } from "./cli/run-claude";
+import { handleTask } from "./cli/task";
 
 export interface ParsedCtlArgs {
   group: string;
@@ -11,7 +12,7 @@ export interface ParsedCtlArgs {
   positional: string[];
 }
 
-const KNOWN_GROUPS = ["session", "window", "pane", "run-claude"] as const;
+const KNOWN_GROUPS = ["session", "window", "pane", "run-claude", "task"] as const;
 const STANDALONE_GROUPS = new Set(["run-claude"]);
 
 // Flags that take a value argument (after group/action, or global)
@@ -27,8 +28,17 @@ const VALUE_FLAGS = new Set([
   "file",
   "lines",
   "window",
+  "ticket",
+  "source",
+  "status",
+  "mr",
+  "mr-state",
+  "external-id",
+  "url",
+  "project",
+  "base-branch",
 ]);
-const BOOL_FLAGS = new Set(["force", "no-enter", "enter", "raw", "clear", "stdin"]);
+const BOOL_FLAGS = new Set(["force", "no-enter", "enter", "raw", "clear", "stdin", "worktree"]);
 
 const CTL_HELP = `
 jmux ctl — programmatic interface to jmux/tmux
@@ -41,6 +51,7 @@ GROUPS
   window     Manage tmux windows
   pane       Manage tmux panes
   run-claude Run a Claude Code agent in a session
+  task       Manage work items (create, list, get, update, remove)
 
 GLOBAL FLAGS
   --session <name>   Target session name
@@ -64,6 +75,16 @@ FLAGS
   --raw                Raw output mode
   --clear              Clear before running
   --stdin              Read from stdin
+  --worktree           Use git worktree for session
+  --ticket <val>       Task ticket ID
+  --source <val>       Task source (e.g. linear, github)
+  --status <val>       Task status (pickup|in_progress|review|merged|closed)
+  --mr <val>           Merge request URL
+  --mr-state <val>     Merge request state
+  --external-id <val>  External ID for the task
+  --url <val>          Task URL
+  --project <val>      Project name
+  --base-branch <val>  Base branch for worktree
 `.trim();
 
 export function parseCtlArgs(argv: string[]): ParsedCtlArgs {
@@ -103,7 +124,7 @@ export function parseCtlArgs(argv: string[]): ParsedCtlArgs {
   }
 
   if (i >= argv.length) {
-    throw new CliError("Missing required group (session|window|pane|run-claude)");
+    throw new CliError("Missing required group (session|window|pane|run-claude|task)");
   }
 
   const group = argv[i++];
@@ -179,6 +200,9 @@ export async function runCtl(argv: string[]): Promise<void> {
         break;
       case "run-claude":
         result = handleRunClaude(ctx, parsed);
+        break;
+      case "task":
+        result = handleTask(ctx, parsed);
         break;
       default:
         throw new CliError(`Unknown group: ${parsed.group}`);
