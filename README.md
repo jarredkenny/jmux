@@ -128,6 +128,39 @@ jmux --install-agent-hooks
 
 When Claude Code finishes a response, the orange `!` appears on that session in the sidebar. Switch to it, review the work, move on. Works with any agent that can run a shell command on completion. See [docs/claude-code-integration.md](docs/claude-code-integration.md) for details.
 
+### Agent Control CLI
+
+`jmux ctl` is a programmatic JSON API that lets agents running inside jmux manage sibling sessions, windows, and panes. Agents can spin up other agents, monitor their progress, and interact with them — all without human intervention.
+
+```bash
+# Create a session and launch Claude Code with a task
+jmux ctl run-claude --name fix-auth --dir /repo --message "Fix the auth bug in src/auth.ts"
+
+# Check if an agent finished (attention flag = needs review)
+jmux ctl session info --target fix-auth | jq .attention
+
+# Capture what's on screen in another pane
+jmux ctl pane capture --target %12
+
+# Send a follow-up prompt to a running agent
+jmux ctl pane send-keys --target %12 "Now add tests for that fix"
+```
+
+Subcommands: `session` (list/create/kill/rename/switch/info/set-attention), `window` (list/create/select/kill), `pane` (list/split/send-keys/capture/kill), `run-claude` (dispatch Claude Code in a new session).
+
+All output is JSON. Context (socket, session) is auto-detected from `$TMUX` when running inside jmux.
+
+```bash
+jmux ctl --help              # Full usage
+jmux ctl session list        # List all sessions as JSON
+```
+
+### Agent Skills
+
+jmux ships a [Claude Code skill](skills/jmux-control.md) that agents auto-discover when running inside a jmux session. The skill teaches agents the full `jmux ctl` API — commands, conventions, response shapes, and multi-agent patterns like fan-out and pipeline orchestration.
+
+When `$JMUX=1` is set (automatic inside jmux), Claude Code can use the skill to dispatch parallel agents, poll for completion via attention flags, capture pane output, and chain tasks together — no human prompting required.
+
 ---
 
 ## Keybindings
@@ -213,10 +246,12 @@ Terminal (Ghostty, iTerm, etc.)
        |         +-- PTY client ---- @xterm/headless for VT emulation
        |         +-- Control client - tmux -C for real-time metadata
        +-- Diff Panel (optional, split/full)
-            +-- hunk PTY ----------- @xterm/headless for VT emulation
+       |    +-- hunk PTY ----------- @xterm/headless for VT emulation
+       +-- jmux ctl (JSON API, used by agents inside sessions)
+            +-- session / window / pane / run-claude
 ```
 
-~2400 lines of TypeScript. No opinions about what you run inside tmux.
+~6600 lines of TypeScript. No opinions about what you run inside tmux.
 
 ---
 

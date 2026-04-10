@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 jmux is a tmux-wrapping TUI for running multiple coding agents in parallel. It replaces tmux's status bar with its own sidebar (session list) and toolbar (window tabs + actions). Target runtime is **Bun 1.2+**, not Node. Requires tmux 3.2+ at runtime.
 
-~2400 lines of TypeScript. No bundler — the `bin/jmux` shim runs `src/main.ts` directly under Bun.
+~6600 lines of TypeScript across core (`src/`) and CLI (`src/cli/`). No bundler — the `bin/jmux` shim runs `src/main.ts` directly under Bun.
 
 ## Commands
 
@@ -39,8 +39,8 @@ Every running jmux instance talks to tmux in two ways simultaneously:
 These are two different tmux *clients* attached to the same *server*. Several subtleties fall out of this that any change in this area must respect:
 
 - Responses on the control channel carry a `flags` field. `flags=1` means "this is a reply to a command sent by this client"; `flags=0` is noise from other clients or the initial attach. `TmuxControl` filters on `flags === 1` (see `tmux-control.ts:166`).
-- `%client-session-changed` is authoritative for the PTY client's current session. `%session-changed` on the control channel refers to the *control* client and is deliberately ignored during normal operation (see the event handler in `main.ts` around line 1309).
-- Session switches must target the PTY client by name: `switch-client -c <ptyClientName> -t <session>`. The name is resolved by matching `list-clients` entries against the PTY's PID in `resolveClientName()` (`main.ts:368`).
+- `%client-session-changed` is authoritative for the PTY client's current session. `%session-changed` on the control channel refers to the *control* client and is deliberately ignored during normal operation (see the event handler in `main.ts` around line 1711).
+- Session switches must target the PTY client by name: `switch-client -c <ptyClientName> -t <session>`. The name is resolved by matching `list-clients` entries against the PTY's PID in `resolveClientName()` (`main.ts:582`).
 - `refresh-client -f no-output` is sent at control startup to suppress `%output` notifications so they don't flood the parser.
 
 ### The rendering pipeline
@@ -73,6 +73,22 @@ Rendering is coalesced to ~60fps via `scheduleRender()`. `writesPending` gates r
 
 Modals implement the `Modal` interface in `src/modal.ts` and are rendered as an overlay by the main renderer. When a modal is open, `InputRouter` routes input to `onModalInput` instead of the PTY. Existing modals: `CommandPalette`, `InputModal`, `ListModal`, `ContentModal`, `NewSessionModal`. Each returns `{type: "consumed" | "closed" | "result"}` from `handleInput`.
 
+### Agent control CLI
+
+`src/cli/*.ts` implements the `jmux ctl` subcommand — a structured JSON API for agents running inside jmux sessions to manage sibling sessions, windows, and panes programmatically. Subcommands: `session` (list/create/kill/rename/switch), `window` (list/create/select/kill), `pane` (list/split/send-keys/capture/kill), `run-claude` (dispatch Claude Code in a new session).
+
+All output is JSON to stdout. Context resolution (`src/cli/context.ts`) auto-detects the current tmux socket and session from the environment, or accepts `--socket` / `--session` flags.
+
+The skill file `skills/jmux-control.md` documents usage patterns for agents — it's loaded as a Claude Code skill so agents inside jmux can discover and use the CLI.
+
+### Diff panel
+
+**`src/diff-panel.ts`** provides an integrated hunk diff viewer that docks to the right side of the terminal or zooms to full width. It spawns an external `hunk` process and captures its output. The panel has focus toggling (keyboard input routes to hunk when focused) and survives session switches by re-spawning.
+
+### OTEL receiver
+
+**`src/otel-receiver.ts`** listens for OpenTelemetry spans from Claude Code to extract cache read/write timing. This drives the cache timer display in the sidebar's session status. It binds a local HTTP server that accepts OTLP trace exports.
+
 ### Config layering
 
 jmux's config layering for tmux is **three-tier** and order matters:
@@ -90,7 +106,7 @@ jmux's own settings live in `~/.config/jmux/config.json` (sidebar width, claude 
 ## Things to know when editing
 
 - **Target Bun, not Node.** Code uses `Bun.spawn`, `Bun.spawnSync`, `Bun.$`, `FileSink`-style stdin writes, and `bun-pty`. Don't replace these with Node equivalents or add a Node-targeted build.
-- **The session sanitization rule.** tmux session names reject `.` and `:`. Worktree creation uses `sanitizeTmuxSessionName` once and reuses that single name for the worktree directory, the `wtm create` argument, *and* the tmux session. Splitting these creates drift between the directory on disk and the session name. See `main.ts:905` and commit `f43c5c1`.
+- **The session sanitization rule.** tmux session names reject `.` and `:`. Worktree creation uses `sanitizeTmuxSessionName` once and reuses that single name for the worktree directory, the `wtm create` argument, *and* the tmux session. Splitting these creates drift between the directory on disk and the session name. See `main.ts:1217` and commit `f43c5c1`.
 - **Wide characters.** Column bookkeeping is sensitive. Any new code that writes to a `CellGrid` needs to handle width-2 cells by leaving a width-0 continuation cell after them. See existing patterns in `renderer.ts` toolbar rendering and `sidebar.ts`.
 - **OSC 52 clipboard passthrough.** `forwardOsc52` in `main.ts` buffers across chunked PTY data so copy sequences survive split reads. Don't replace it with a naive regex scan.
 - **Tests are pure unit tests over the logic modules.** `src/__tests__/*` exercises `ControlParser`, `CellGrid`, `InputRouter`, `ScreenBridge`, modals, and the sidebar's render plan. They don't spawn tmux. When adding logic that depends on tmux protocol parsing or grid math, add a test at the same level — don't reach for integration tests.
