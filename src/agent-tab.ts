@@ -123,21 +123,23 @@ export class ScrollbackBuffer {
       const fullText = prefix + msg.content + suffix;
 
       // Word-wrap at width
-      let remaining = fullText;
-      while (remaining.length > 0) {
-        if (remaining.length <= width) {
-          lines.push({ text: remaining, attrs });
-          remaining = "";
-        } else {
-          // Find last space within width, or force-break
-          let breakAt = remaining.lastIndexOf(" ", width);
-          if (breakAt <= 0) breakAt = width;
-          lines.push({ text: remaining.slice(0, breakAt), attrs });
-          remaining = remaining.slice(breakAt).trimStart();
+      if (fullText.length > 0) {
+        let remaining = fullText;
+        while (remaining.length > 0) {
+          if (remaining.length <= width) {
+            lines.push({ text: remaining, attrs });
+            remaining = "";
+          } else {
+            // Find last space within width, or force-break
+            let breakAt = remaining.lastIndexOf(" ", width);
+            if (breakAt < 0) breakAt = width;
+            lines.push({ text: remaining.slice(0, breakAt), attrs });
+            remaining = remaining.slice(breakAt).trimStart();
+          }
         }
+        // Empty line between messages
+        lines.push({ text: "", attrs: assistantAttrs });
       }
-      // Empty line between messages
-      lines.push({ text: "", attrs: assistantAttrs });
     }
     return lines;
   }
@@ -191,7 +193,9 @@ export class AgentTab {
 
     // Render scrollback
     const allLines = this.scrollback.renderToLines(cols - 1); // 1 col left margin
-    const visibleStart = Math.max(0, allLines.length - scrollbackRows - this._scrollOffset);
+    const maxOffset = Math.max(0, allLines.length - scrollbackRows);
+    const clampedOffset = Math.min(this._scrollOffset, maxOffset);
+    const visibleStart = Math.max(0, allLines.length - scrollbackRows - clampedOffset);
     const visibleEnd = Math.min(allLines.length, visibleStart + scrollbackRows);
 
     for (let i = visibleStart; i < visibleEnd; i++) {
