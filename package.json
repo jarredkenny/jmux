@@ -9,7 +9,8 @@
   "files": [
     "bin",
     "src",
-    "config"
+    "config",
+    "skills"
   ],
   "scripts": {
     "dev": "bun run src/main.ts",
