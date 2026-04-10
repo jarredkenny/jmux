@@ -1,4 +1,4 @@
-import { runTmux, type TmuxResult } from "./tmux";
+import { runTmuxDirect, type TmuxResult } from "./tmux";
 import { resolveCurrentSession, requireSession, CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
 
@@ -45,7 +45,7 @@ export function handleWindow(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       const session =
         typeof flags.session === "string" ? flags.session : requireSession(ctx);
       const lines = tmuxOrThrow(
-        runTmux(`list-windows -t '${session}' -F '${WINDOW_FORMAT}'`, ctx.socket),
+        runTmuxDirect(["list-windows", "-t", session, "-F", WINDOW_FORMAT], ctx.socket),
       );
       return { windows: parseWindowListOutput(lines) };
     }
@@ -53,18 +53,18 @@ export function handleWindow(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
     case "create": {
       const session =
         typeof flags.session === "string" ? flags.session : requireSession(ctx);
-      let cmd = `new-window -t '${session}'`;
+      const createArgs = ["new-window", "-t", session];
       if (typeof flags.dir === "string") {
-        cmd += ` -c '${flags.dir}'`;
+        createArgs.push("-c", flags.dir);
       }
       if (typeof flags.name === "string") {
-        cmd += ` -n '${flags.name}'`;
+        createArgs.push("-n", flags.name);
       }
-      tmuxOrThrow(runTmux(cmd, ctx.socket));
+      tmuxOrThrow(runTmuxDirect(createArgs, ctx.socket));
 
       // Get the newly created window — it will be the last by index
       const lines = tmuxOrThrow(
-        runTmux(`list-windows -t '${session}' -F '${WINDOW_FORMAT}'`, ctx.socket),
+        runTmuxDirect(["list-windows", "-t", session, "-F", WINDOW_FORMAT], ctx.socket),
       );
       const windows = parseWindowListOutput(lines);
       const newest = windows.reduce((a, b) => (b.index > a.index ? b : a));
@@ -76,7 +76,7 @@ export function handleWindow(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
         throw new CliError("--target is required");
       }
       const target = flags.target;
-      tmuxOrThrow(runTmux(`select-window -t '${target}'`, ctx.socket));
+      tmuxOrThrow(runTmuxDirect(["select-window", "-t", target], ctx.socket));
       return { selected: target };
     }
 
@@ -88,8 +88,8 @@ export function handleWindow(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
 
       if (!flags.force && ctx.paneId) {
         // Self-destruction guard: check if the current window matches the target
-        const result = runTmux(
-          `display-message -t '${ctx.paneId}' -p '#{window_id}'`,
+        const result = runTmuxDirect(
+          ["display-message", "-t", ctx.paneId, "-p", "#{window_id}"],
           ctx.socket,
         );
         if (result.ok && result.lines.length > 0 && result.lines[0] === target) {
@@ -99,7 +99,7 @@ export function handleWindow(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
         }
       }
 
-      tmuxOrThrow(runTmux(`kill-window -t '${target}'`, ctx.socket));
+      tmuxOrThrow(runTmuxDirect(["kill-window", "-t", target], ctx.socket));
       return { killed: target };
     }
 

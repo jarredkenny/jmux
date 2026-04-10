@@ -2,7 +2,7 @@ import { writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { resolve } from "path";
 import { sanitizeTmuxSessionName, buildOtelResourceAttrs, loadUserConfig } from "../config";
-import { runTmux, type TmuxResult } from "./tmux";
+import { runTmuxDirect, type TmuxResult } from "./tmux";
 import { CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
 
@@ -64,13 +64,13 @@ export function handleRunClaude(ctx: CliContext, parsed: ParsedCtlArgs): unknown
   const launchCmd = buildClaudeLaunchCommand(claudeCmd, promptTempFile, shell);
 
   tmuxOrThrow(
-    runTmux(
-      `new-session -d -e 'OTEL_RESOURCE_ATTRIBUTES=${otel}' -s '${name}' -c '${dir}' '${launchCmd}'`,
+    runTmuxDirect(
+      ["new-session", "-d", "-e", `OTEL_RESOURCE_ATTRIBUTES=${otel}`, "-s", name, "-c", dir, launchCmd],
       ctx.socket,
     ),
   );
 
-  const paneResult = runTmux(`display-message -t '${name}' -p '#{pane_id}'`, ctx.socket);
+  const paneResult = runTmuxDirect(["display-message", "-t", name, "-p", "#{pane_id}"], ctx.socket);
   const paneId = paneResult.ok && paneResult.lines.length > 0 ? paneResult.lines[0] : null;
 
   return {

@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { runTmux, runTmuxDirect, type TmuxResult } from "./tmux";
+import { runTmuxDirect, type TmuxResult } from "./tmux";
 import { requireSession, CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
 
@@ -52,7 +52,7 @@ export function handlePane(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       const target =
         typeof flags.window === "string" ? flags.window : session;
       const lines = tmuxOrThrow(
-        runTmux(`list-panes -t '${target}' -F '${PANE_FORMAT}'`, ctx.socket),
+        runTmuxDirect(["list-panes", "-t", target, "-F", PANE_FORMAT], ctx.socket),
       );
       return { panes: parsePaneListOutput(lines) };
     }
@@ -61,19 +61,19 @@ export function handlePane(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       const session =
         typeof flags.session === "string" ? flags.session : requireSession(ctx);
       const dir = flags.direction === "h" ? "-h" : "-v";
-      let cmd = `split-window ${dir} -t '${session}'`;
+      const splitArgs = ["split-window", dir, "-t", session];
       if (typeof flags.dir === "string") {
-        cmd += ` -c '${flags.dir}'`;
+        splitArgs.push("-c", flags.dir);
       }
       if (typeof flags.command === "string") {
-        cmd += ` '${flags.command}'`;
+        splitArgs.push(flags.command);
       }
-      tmuxOrThrow(runTmux(cmd, ctx.socket));
+      tmuxOrThrow(runTmuxDirect(splitArgs, ctx.socket));
 
       // Query the newly active pane
       const idResult = tmuxOrThrow(
-        runTmux(
-          `display-message -t '${session}' -p '#{pane_id}:#{window_id}'`,
+        runTmuxDirect(
+          ["display-message", "-t", session, "-p", "#{pane_id}:#{window_id}"],
           ctx.socket,
         ),
       );
@@ -130,16 +130,17 @@ export function handlePane(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
         throw new CliError("--target is required");
       }
       const target = flags.target;
-      let cmd = `capture-pane -t '${target}' -p`;
+      const captureArgs = ["capture-pane", "-t", target, "-p"];
       if (flags.raw) {
-        cmd += " -e";
+        captureArgs.push("-e");
       }
       if (typeof flags.lines === "string") {
         const n = Math.min(parseInt(flags.lines, 10), 1000);
-        cmd += ` -S -${n}`;
+        captureArgs.push("-S", `-${n}`);
       }
-      const lines = tmuxOrThrow(runTmux(cmd, ctx.socket));
-      return { target, content: lines.join("\n") };
+      const result = runTmuxDirect(captureArgs, ctx.socket);
+      tmuxOrThrow(result);
+      return { target, content: result.rawOutput };
     }
 
     case "kill": {
@@ -152,7 +153,7 @@ export function handlePane(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
           `Refusing to kill current pane "${target}". Use --force to override.`,
         );
       }
-      tmuxOrThrow(runTmux(`kill-pane -t '${target}'`, ctx.socket));
+      tmuxOrThrow(runTmuxDirect(["kill-pane", "-t", target], ctx.socket));
       return { killed: target };
     }
 

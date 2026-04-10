@@ -1,5 +1,5 @@
 import { sanitizeTmuxSessionName, buildOtelResourceAttrs } from "../config";
-import { runTmux, type TmuxResult } from "./tmux";
+import { runTmuxDirect, type TmuxResult } from "./tmux";
 import { resolveCurrentSession, CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
 
@@ -60,8 +60,8 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
 
   switch (action) {
     case "list": {
-      const result = runTmux(
-        "list-sessions -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{@jmux-attention}:#{pane_current_path}'",
+      const result = runTmuxDirect(
+        ["list-sessions", "-F", "#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{@jmux-attention}:#{pane_current_path}"],
         ctx.socket,
       );
       // If no sessions exist, tmux exits non-zero — treat as empty list
@@ -74,16 +74,16 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       const { name, dir, command } = validateSessionCreate(flags);
       const otel = buildOtelResourceAttrs(name);
 
-      let createCmd = `new-session -d -e 'OTEL_RESOURCE_ATTRIBUTES=${otel}' -s '${name}' -c '${dir}'`;
+      const createArgs = ["new-session", "-d", "-e", `OTEL_RESOURCE_ATTRIBUTES=${otel}`, "-s", name, "-c", dir];
       if (command) {
-        createCmd += ` '${command}'`;
+        createArgs.push(command);
       }
 
-      tmuxOrThrow(runTmux(createCmd, ctx.socket));
+      tmuxOrThrow(runTmuxDirect(createArgs, ctx.socket));
 
       // Resolve the session ID
-      const idResult = runTmux(
-        `list-sessions -F '#{session_id}:#{session_name}' -f '#{==:#{session_name},${name}}'`,
+      const idResult = runTmuxDirect(
+        ["list-sessions", "-F", "#{session_id}:#{session_name}", "-f", `#{==:#{session_name},${name}}`],
         ctx.socket,
       );
       let id: string | null = null;
@@ -101,16 +101,16 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       }
       const target = flags.target;
 
-      const sessionResult = runTmux(
-        `list-sessions -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{@jmux-attention}:#{pane_current_path}' -f '#{==:#{session_name},${target}}'`,
+      const sessionResult = runTmuxDirect(
+        ["list-sessions", "-F", "#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{@jmux-attention}:#{pane_current_path}", "-f", `#{==:#{session_name},${target}}`],
         ctx.socket,
       );
       tmuxOrThrow(sessionResult);
       const sessions = parseSessionListOutput(sessionResult.lines);
       const session = sessions[0] ?? null;
 
-      const windowsResult = runTmux(
-        `list-windows -t '${target}' -F '#{window_id}:#{window_index}:#{window_name}:#{window_active}:#{window_bell_flag}:#{window_zoomed_flag}'`,
+      const windowsResult = runTmuxDirect(
+        ["list-windows", "-t", target, "-F", "#{window_id}:#{window_index}:#{window_name}:#{window_active}:#{window_bell_flag}:#{window_zoomed_flag}"],
         ctx.socket,
       );
       tmuxOrThrow(windowsResult);
@@ -138,7 +138,7 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
         throw new CliError("switch requires an active tmux session (not inside tmux)");
       }
       const target = flags.target;
-      tmuxOrThrow(runTmux(`switch-client -t '${target}'`, ctx.socket));
+      tmuxOrThrow(runTmuxDirect(["switch-client", "-t", target], ctx.socket));
       return { switched: target };
     }
 
@@ -158,7 +158,7 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
         }
 
         // Last-session guard
-        const listResult = runTmux("list-sessions -F '#{session_name}'", ctx.socket);
+        const listResult = runTmuxDirect(["list-sessions", "-F", "#{session_name}"], ctx.socket);
         if (listResult.ok && listResult.lines.length <= 1) {
           throw new CliError(
             `Refusing to kill the last session "${target}". Use --force to override.`,
@@ -166,7 +166,7 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
         }
       }
 
-      tmuxOrThrow(runTmux(`kill-session -t '${target}'`, ctx.socket));
+      tmuxOrThrow(runTmuxDirect(["kill-session", "-t", target], ctx.socket));
       return { killed: target };
     }
 
@@ -179,7 +179,7 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       }
       const target = flags.target;
       const newName = sanitizeTmuxSessionName(flags.name);
-      tmuxOrThrow(runTmux(`rename-session -t '${target}' '${newName}'`, ctx.socket));
+      tmuxOrThrow(runTmuxDirect(["rename-session", "-t", target, newName], ctx.socket));
       return { renamed: newName, from: target };
     }
 
@@ -190,10 +190,10 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       const target = flags.target;
 
       if (flags.clear) {
-        tmuxOrThrow(runTmux(`set-option -t '${target}' -u @jmux-attention`, ctx.socket));
+        tmuxOrThrow(runTmuxDirect(["set-option", "-t", target, "-u", "@jmux-attention"], ctx.socket));
         return { target, attention: false };
       } else {
-        tmuxOrThrow(runTmux(`set-option -t '${target}' @jmux-attention 1`, ctx.socket));
+        tmuxOrThrow(runTmuxDirect(["set-option", "-t", target, "@jmux-attention", "1"], ctx.socket));
         return { target, attention: true };
       }
     }

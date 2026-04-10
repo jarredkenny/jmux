@@ -1,4 +1,4 @@
-import { parseTmuxSocket, runTmux } from "./tmux";
+import { parseTmuxSocket, runTmuxDirect } from "./tmux";
 
 export interface CliFlags {
   socket?: string;
@@ -42,8 +42,8 @@ export function resolveCurrentSession(ctx: CliContext): string | null {
   if (ctx.sessionOverride) return ctx.sessionOverride;
   if (!ctx.paneId) return null;
 
-  const result = runTmux(
-    `display-message -t ${ctx.paneId} -p '#{session_name}'`,
+  const result = runTmuxDirect(
+    ["display-message", "-t", ctx.paneId, "-p", "#{session_name}"],
     ctx.socket,
   );
 
