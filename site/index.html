@@ -290,6 +290,12 @@
             <td class="py-3 px-4 text-center text-accent">&#10003;</td>
           </tr>
           <tr class="border-b border-border/50">
+            <td class="py-3 pr-4 text-[#a1a1aa]">Programmatic agent control</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">Extension</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
+          </tr>
+          <tr class="border-b border-border/50">
             <td class="py-3 pr-4 text-[#a1a1aa]">Sessions outlive the orchestrator</td>
             <td class="py-3 px-4 text-center text-accent">&#10003;</td>
             <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
@@ -399,6 +405,56 @@
     </div>
   </section>
 
+  <!-- Agent Control CLI -->
+  <section class="border-t border-border">
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex flex-col md:flex-row gap-8 md:gap-12 items-center">
+        <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
+          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">New in 0.12</p>
+          <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Agent Control CLI</h2>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
+            <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">jmux ctl</span> gives agents and scripts a structured CLI to control the workspace. Dispatch Claude Code instances, monitor attention flags, capture pane output, send follow-ups.
+          </p>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
+            Ships with an agent skill document — Claude Code agents running inside jmux automatically discover the control interface and can orchestrate sibling agents across sessions.
+          </p>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed">
+            All output is structured JSON. Context resolution is automatic — agents inherit <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">$TMUX</span> and <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">$TMUX_PANE</span> from their environment.
+          </p>
+        </div>
+        <div class="md:w-3/5 animate-in">
+          <div class="bg-[#0d1017] border border-border rounded-xl overflow-hidden shadow-2xl shadow-black/50">
+            <div class="flex items-center gap-1.5 px-4 py-2.5 border-b border-border/50">
+              <div class="w-2.5 h-2.5 rounded-full bg-[#ff5f56]"></div>
+              <div class="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></div>
+              <div class="w-2.5 h-2.5 rounded-full bg-[#27c93f]"></div>
+              <span class="text-[10px] text-[#52525b] font-mono ml-2">agent-orchestrator</span>
+            </div>
+            <div class="px-4 py-4 font-mono text-xs leading-relaxed overflow-x-auto">
+              <div class="text-[#71717a] mb-3"># Dispatch two agents in parallel</div>
+              <div><span class="text-accent">$</span> <span class="text-white">jmux ctl run-claude \</span></div>
+              <div class="pl-4 text-white">--name fix-auth --dir /repo \</div>
+              <div class="pl-4 text-white mb-1">--message "Fix the auth middleware bug"</div>
+              <div class="text-[#a1a1aa] mb-3">{"session":"fix-auth","pane":"%12","command_dispatched":true}</div>
+              <div><span class="text-accent">$</span> <span class="text-white">jmux ctl run-claude \</span></div>
+              <div class="pl-4 text-white">--name add-tests --dir /repo \</div>
+              <div class="pl-4 text-white mb-1">--message "Add tests for src/utils.ts"</div>
+              <div class="text-[#a1a1aa] mb-3">{"session":"add-tests","pane":"%14","command_dispatched":true}</div>
+              <div class="text-[#71717a] mb-3"># Check which agents need review</div>
+              <div><span class="text-accent">$</span> <span class="text-white">jmux ctl session info --target fix-auth</span></div>
+              <div class="text-[#a1a1aa] mb-3">{"name":"fix-auth","attention":<span class="text-amber-400">true</span>,"windows":1,...}</div>
+              <div class="text-[#71717a] mb-3"># Read what the agent produced</div>
+              <div><span class="text-accent">$</span> <span class="text-white">jmux ctl pane capture --target %12 --lines 50</span></div>
+              <div class="text-[#a1a1aa]">{"target":"%12","content":"I've fixed the auth middleware..."}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </section>
+
   <!-- Cache Timers -->
   <section>
     <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
@@ -447,7 +503,7 @@
       <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover animate-in">
         <div class="font-mono text-lg font-bold mb-1">Claude Code</div>
         <p class="text-xs text-[#71717a] mb-2">The leading AI coding agent</p>
-        <p class="text-xs text-[#a1a1aa] leading-relaxed">jmux reads its telemetry for cache timers and attention flags. Know the moment Claude finishes without watching every pane.</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">Ships with a <span class="font-mono text-[#71717a]">jmux-control</span> agent skill so Claude discovers the control CLI automatically. Telemetry integration for cache timers and attention flags.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover animate-in">
