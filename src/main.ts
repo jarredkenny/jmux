@@ -15,11 +15,13 @@ import {
   type NewSessionResult,
   type NewSessionProviders,
 } from "./new-session-modal";
-import type { CellAttrs } from "./cell-grid";
+import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { Modal } from "./modal";
 import { MODAL_BG } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
+import { ToolPanel } from "./tool-panel";
+import { ColorMode } from "./types";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { loadUserConfig } from "./config";
@@ -319,6 +321,7 @@ sidebar.cacheTimersEnabled = cacheTimersEnabled;
 sidebar.setPinnedSessions(pinnedSessions);
 const control = new TmuxControl();
 const diffPanel = new DiffPanel();
+const toolPanel = new ToolPanel();
 let diffBridge: ScreenBridge | null = null;
 let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
@@ -664,6 +667,39 @@ function renderFrame(): void {
       diffPanelArg = { grid: diffBridge.getGrid(), mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
     }
   }
+
+  // When agent tab is active, show placeholder instead of diff content
+  if (diffPanel.isActive() && toolPanel.activeTab === "agent") {
+    const dpCols = getDiffPanelCols();
+    const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+    const placeholderGrid = createGrid(dpCols, dpRows);
+    const centerRow = Math.floor(dpRows / 2);
+    const hint = "Agent tab — coming soon";
+    const col = Math.max(0, Math.floor((dpCols - hint.length) / 2));
+    writeString(placeholderGrid, centerRow, col, hint, { fg: 8, fgMode: ColorMode.Palette, dim: true });
+    diffPanelArg = { grid: placeholderGrid, mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
+  }
+
+  // Composite tab bar above the panel content
+  if (diffPanelArg) {
+    const tabBarGrid = toolPanel.renderTabBar(diffPanelArg.grid.cols);
+    const panelRows = diffPanelArg.grid.rows;
+    const withTabBar = createGrid(diffPanelArg.grid.cols, panelRows);
+    // Row 0: tab bar
+    for (let x = 0; x < tabBarGrid.cols; x++) {
+      withTabBar.cells[0][x] = { ...tabBarGrid.cells[0][x] };
+    }
+    // Rows 1+: panel content (shifted down, we lose the last row)
+    for (let y = 1; y < panelRows; y++) {
+      for (let x = 0; x < diffPanelArg.grid.cols; x++) {
+        if (diffPanelArg.grid.cells[y - 1]?.[x]) {
+          withTabBar.cells[y][x] = { ...diffPanelArg.grid.cells[y - 1][x] };
+        }
+      }
+    }
+    diffPanelArg = { ...diffPanelArg, grid: withTabBar };
+  }
+
   renderer.render(
     grid, cursor,
     sidebarShown ? sidebar.getGrid() : null,
@@ -845,6 +881,17 @@ const inputRouter = new InputRouter(
     onDiffPanelFocusToggle: () => {
       if (!diffPanel.isActive() || diffPanel.state === "full") return;
       setDiffFocus(!diffPanelFocused);
+    },
+    onAgentToggle: () => {
+      if (!diffPanel.isActive()) {
+        toggleDiffPanel();
+      }
+      toolPanel.switchTab("agent");
+      scheduleRender();
+    },
+    onPanelTabSwitch: () => {
+      toolPanel.nextTab();
+      scheduleRender();
     },
   },
   sidebarShown,
