@@ -224,20 +224,69 @@ export class AgentTab {
 // --- Context and Prompt Assembly ---
 
 export interface AgentContext {
-  taskRegistryPath?: string;
-  projectDirs?: string[];
-  sessionListJson?: string;
+  metaAgentSkill: string;
+  workflowConfigs: { project: string; path: string; content: string }[];
+  tasksSnapshot: string; // JSON string of active tasks
+  sessionState: string;  // JSON string of jmux ctl session list output
 }
 
-/**
- * Assembles the full prompt for the meta agent subprocess.
- * Stub — real implementation in Task 8.
- */
-export async function assemblePrompt(
-  _ctx: AgentContext,
-  _scrollback: ScrollbackBuffer,
+export function assemblePrompt(
+  ctx: AgentContext,
+  scrollback: ScrollbackBuffer,
   userMessage: string,
-  _maxContextTokensEstimate: number,
-): Promise<string> {
-  return userMessage;
+  maxContextTokensEstimate = 8000,
+): string {
+  const parts: string[] = [];
+
+  // 1. Meta agent skill (always included)
+  if (ctx.metaAgentSkill) {
+    parts.push(ctx.metaAgentSkill);
+  }
+
+  // 2. Workflow configs (only for active projects)
+  if (ctx.workflowConfigs.length > 0) {
+    parts.push("\n## Workflow Configs\n");
+    for (const wf of ctx.workflowConfigs) {
+      parts.push(`### ${wf.project} (${wf.path})\n\`\`\`yaml\n${wf.content}\n\`\`\`\n`);
+    }
+  }
+
+  // 3. Task snapshot
+  if (ctx.tasksSnapshot !== "{}") {
+    parts.push(`\n## Active Tasks\n\`\`\`json\n${ctx.tasksSnapshot}\n\`\`\`\n`);
+  }
+
+  // 4. Session state
+  parts.push(`\n## Current Sessions\n\`\`\`json\n${ctx.sessionState}\n\`\`\`\n`);
+
+  // 5. Scrollback — truncate from oldest if over budget
+  // Rough estimate: 4 chars per token
+  const baseSize = parts.join("").length;
+  const budgetChars = maxContextTokensEstimate * 4;
+  const remainingChars = Math.max(0, budgetChars - baseSize - userMessage.length);
+
+  const exchanges = scrollback.getContextSummary(10); // up to 10 exchanges
+  if (exchanges.length > 0) {
+    const msgs = [...exchanges];
+    let scrollbackText = "";
+    // Try to fit as many exchanges as possible, dropping oldest first
+    while (msgs.length > 0) {
+      const candidate = msgs.map(m =>
+        `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`
+      ).join("\n\n");
+      if (candidate.length <= remainingChars) {
+        scrollbackText = candidate;
+        break;
+      }
+      msgs.shift(); // drop oldest
+    }
+    if (scrollbackText) {
+      parts.push(`\n## Conversation History\n${scrollbackText}\n`);
+    }
+  }
+
+  // 6. User message
+  parts.push(`\n## Current Request\n${userMessage}`);
+
+  return parts.join("\n");
 }

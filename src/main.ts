@@ -21,15 +21,16 @@ import { MODAL_BG } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
 import { ToolPanel } from "./tool-panel";
-import { AgentTab } from "./agent-tab";
+import { AgentTab, assemblePrompt, type AgentContext } from "./agent-tab";
 import { ColorMode } from "./types";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { loadUserConfig } from "./config";
+import { listTasks, DEFAULT_REGISTRY_PATH } from "./task-registry";
 import { OtelReceiver } from "./otel-receiver";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
@@ -464,15 +465,126 @@ function resizeDiffPanel(): void {
 
 async function spawnAgentMessage(userMessage: string): Promise<void> {
   agentTab.state = "streaming";
+  agentTab.scrollToBottom();
   scheduleRender();
 
-  // TODO: Task 8 will implement the actual Claude Code subprocess spawning
-  // For now, simulate a response after a short delay
-  setTimeout(() => {
-    agentTab.scrollback.addAssistantMessage("Agent not yet connected. The meta agent will be wired up in the next task.");
-    agentTab.state = "idle";
+  // Animate spinner while waiting
+  const spinnerInterval = setInterval(() => {
+    agentTab.advanceSpinner();
     scheduleRender();
-  }, 500);
+  }, 80);
+
+  try {
+    const config = loadUserConfig();
+    const claudeCmd = config.claudeCommand ?? "claude";
+
+    // Load meta agent skill
+    let metaAgentSkill = "";
+    const skillPath = resolve(import.meta.dir, "../skills/jmux-meta-agent.md");
+    try { metaAgentSkill = readFileSync(skillPath, "utf-8"); } catch { /* skill not yet present */ }
+
+    // Load workflow configs from project dirs
+    const workflowConfigs: { project: string; path: string; content: string }[] = [];
+    for (const dir of cachedProjectDirs) {
+      const wfPath = resolve(dir, ".jmux", "workflow.yml");
+      try {
+        if (existsSync(wfPath)) {
+          const content = readFileSync(wfPath, "utf-8");
+          const project = dir.split("/").pop() ?? dir;
+          workflowConfigs.push({ project, path: wfPath, content });
+        }
+      } catch { /* skip unreadable configs */ }
+    }
+
+    // Load active tasks (pickup, in_progress, review only)
+    const allTasks = listTasks(DEFAULT_REGISTRY_PATH);
+    const activeTasks: Record<string, unknown> = {};
+    for (const [id, task] of Object.entries(allTasks)) {
+      if (task.status === "in_progress" || task.status === "review" || task.status === "pickup") {
+        activeTasks[id] = task;
+      }
+    }
+
+    // Get session state via ctl
+    let sessionState = "[]";
+    try {
+      const result = Bun.spawnSync(
+        [process.argv[0], process.argv[1], "ctl", "session", "list"],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+      if (result.exitCode === 0) {
+        sessionState = result.stdout.toString().trim();
+      }
+    } catch { /* session list failed */ }
+
+    const prompt = assemblePrompt(
+      {
+        metaAgentSkill,
+        workflowConfigs,
+        tasksSnapshot: JSON.stringify(activeTasks, null, 2),
+        sessionState,
+      },
+      agentTab.scrollback,
+      userMessage,
+    );
+
+    // Spawn Claude Code subprocess
+    const proc = Bun.spawn(
+      [claudeCmd, "--output-format", "stream-json", "-p", prompt],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env },
+      },
+    );
+
+    // Start a fresh assistant message in scrollback
+    agentTab.scrollback.addAssistantMessage("");
+    const reader = proc.stdout.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+
+      for (const line of chunk.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line) as Record<string, unknown>;
+          // Stream-json delta events
+          if (
+            event.type === "content_block_delta" &&
+            event.delta !== null &&
+            typeof event.delta === "object" &&
+            (event.delta as Record<string, unknown>).type === "text_delta"
+          ) {
+            const text = (event.delta as Record<string, unknown>).text;
+            if (typeof text === "string" && text) {
+              agentTab.scrollback.appendToLast(text);
+              scheduleRender();
+            }
+          }
+          // Tool use display
+          else if (event.type === "tool_use" && typeof event.name === "string") {
+            const inputStr = event.input ? ` ${JSON.stringify(event.input).slice(0, 80)}` : "";
+            agentTab.scrollback.addToolUse(event.name + inputStr);
+            scheduleRender();
+          }
+        } catch { /* non-JSON line */ }
+      }
+    }
+
+  } catch (err) {
+    agentTab.scrollback.addAssistantMessage(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    agentTab.state = "error";
+  } finally {
+    clearInterval(spinnerInterval);
+    if (agentTab.state !== "error") {
+      agentTab.state = "idle";
+    }
+    scheduleRender();
+  }
 }
 
 async function toggleDiffPanel(): Promise<void> {
