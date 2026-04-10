@@ -1038,7 +1038,18 @@ const inputRouter = new InputRouter(
     },
     onAgentToggle: () => {
       if (!diffPanel.isActive()) {
-        toggleDiffPanel();
+        // Open panel without spawning hunk — agent tab doesn't need it
+        diffPanel.toggle();
+        const totalCols = process.stdout.columns || 80;
+        const sidebarCols = sidebarShown ? sidebarTotal() : 0;
+        const available = totalCols - sidebarCols;
+        const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+        const panelCols = diffPanel.calcPanelCols(available, diffPanelSplitRatio);
+        mainCols = available - panelCols - 1;
+        pty.resize(mainCols, ptyRowsNow);
+        bridge.resize(mainCols, ptyRowsNow);
+        setDiffFocus(true);
+        inputRouter.setMainCols(mainCols);
       }
       toolPanel.switchTab("agent");
       scheduleRender();
