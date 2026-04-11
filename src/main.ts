@@ -533,10 +533,13 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
       userMessage,
     );
 
-    // Spawn Claude Code subprocess
+    // Spawn Claude Code subprocess — pipe prompt via stdin to avoid
+    // the assembled prompt (which starts with "---" frontmatter) being
+    // parsed as a CLI flag
     const proc = Bun.spawn(
-      [...claudeParts, "--output-format", "stream-json", "--verbose", "--include-partial-messages", "-p", prompt],
+      [...claudeParts, "--output-format", "stream-json", "--verbose", "--include-partial-messages", "-p"],
       {
+        stdin: new Response(prompt),
         stdout: "pipe",
         stderr: "pipe",
         env: { ...process.env },
