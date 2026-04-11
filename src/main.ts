@@ -508,6 +508,14 @@ async function launchMetaAgent(): Promise<void> {
     `new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${META_AGENT_SESSION}`)} -s ${tq(META_AGENT_SESSION)} -c ${tq(META_AGENT_DIR)} ${tq(claudeCmd)}`,
   );
   await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(META_AGENT_SESSION)}`);
+
+  // Send kickoff prompt after claude has time to initialize
+  setTimeout(async () => {
+    try {
+      await control.sendCommand(`send-keys -t ${tq(META_AGENT_SESSION)} -l ${tq("What should I work on?")}`);
+      await control.sendCommand(`send-keys -t ${tq(META_AGENT_SESSION)} Enter`);
+    } catch { /* session may have been killed before timer fired */ }
+  }, 2000);
 }
 
 async function toggleDiffPanel(): Promise<void> {
