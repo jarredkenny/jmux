@@ -17,8 +17,6 @@ export interface ToolbarConfig {
   hoveredButton?: string | null;
   tabs?: WindowTab[];
   hoveredTabId?: string | null;
-  panelTabs?: { label: string; active: boolean }[];
-  hoveredPanelTab?: string | null;
 }
 
 export function sgrForCell(cell: Cell): string {
@@ -110,27 +108,6 @@ export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string;
     if (col + width > maxCol) break; // no room
     ranges.push({ id: tab.windowId, startCol: col, endCol: col + width - 1, tab });
     col += width + sepWidth;
-  }
-  return ranges;
-}
-
-// Returns the column ranges for panel tabs (relative to content area start, same as toolbar clicks)
-export function getPanelTabRanges(toolbar: ToolbarConfig): Array<{ label: string; startCol: number; endCol: number }> {
-  const panelTabs = toolbar.panelTabs;
-  if (!panelTabs?.length) return [];
-
-  const ranges: Array<{ label: string; startCol: number; endCol: number }> = [];
-  // Panel tabs start after: mainCols (main area) + 1 (divider) + 1 (padding)
-  let col = toolbar.mainCols + 2;
-
-  for (let i = 0; i < panelTabs.length; i++) {
-    const pt = panelTabs[i];
-    const width = stringDisplayWidth(pt.label) + 2; // " label "
-    ranges.push({ label: pt.label, startCol: col, endCol: col + width - 1 });
-    col += width;
-    if (i < panelTabs.length - 1) {
-      col += 3; // " │ "
-    }
   }
   return ranges;
 }
@@ -280,58 +257,6 @@ export function compositeGrids(
         }
       }
 
-      // Render panel tabs in the diff panel column area of the toolbar row
-      if (diffPanel && diffPanel.mode === "split" && toolbar.panelTabs?.length) {
-        const dividerCol = borderCol + 1 + mainCols;
-        const panelStart = dividerCol + 1;
-        let col = 1; // 1-col left padding
-        for (let ti = 0; ti < toolbar.panelTabs.length; ti++) {
-          const pt = toolbar.panelTabs[ti];
-          const isHovered = !pt.active && toolbar.hoveredPanelTab === pt.label;
-          const hasBg = pt.active || isHovered;
-          const bg = pt.active ? activeBg : hoverBg;
-          const label = ` ${pt.label} `;
-          let charCol = 0;
-          for (const ch of label) {
-            const c = panelStart + col + charCol;
-            const w = charDisplayWidth(ch);
-            if (c < totalCols) {
-              grid.cells[0][c] = {
-                ...DEFAULT_CELL,
-                char: ch,
-                width: w,
-                fg: pt.active ? peachFg : 8,
-                fgMode: pt.active ? ColorMode.RGB : ColorMode.Palette,
-                bold: pt.active,
-                bg: hasBg ? bg : 0,
-                bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
-              };
-              if (w === 2 && c + 1 < totalCols) {
-                grid.cells[0][c + 1] = {
-                  ...DEFAULT_CELL, char: "", width: 0,
-                  bg: hasBg ? bg : 0,
-                  bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
-                };
-              }
-            }
-            charCol += w;
-          }
-          col += charCol;
-          if (ti < toolbar.panelTabs.length - 1) {
-            const sepCol = panelStart + col + 1;
-            if (sepCol < totalCols) {
-              grid.cells[0][sepCol] = {
-                ...DEFAULT_CELL,
-                char: "\u2502",
-                fg: 8,
-                fgMode: ColorMode.Palette,
-                dim: true,
-              };
-            }
-            col += 3; // " │ "
-          }
-        }
-      }
     } else {
       // Main content — offset by toolbar row
       const mainY = toolbar ? y - 1 : y;

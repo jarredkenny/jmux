@@ -1,7 +1,7 @@
 import { $ } from "bun";
 import { TmuxPty } from "./tmux-pty";
 import { ScreenBridge } from "./screen-bridge";
-import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getPanelTabRanges, getModalPosition, type ToolbarConfig } from "./renderer";
+import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { CommandPalette } from "./command-palette";
@@ -20,8 +20,6 @@ import type { Modal } from "./modal";
 import { MODAL_BG } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
-import { ToolPanel } from "./tool-panel";
-import { AgentTab, assemblePrompt, type AgentContext } from "./agent-tab";
 import { ColorMode } from "./types";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
@@ -284,7 +282,6 @@ const ptyRows = toolbarEnabled ? rows - 1 : rows;
 let hoveredToolbarButton: string | null = null;
 let currentWindows: WindowTab[] = [];
 let hoveredTabId: string | null = null;
-let hoveredPanelTab: string | null = null;
 let startupComplete = false;
 
 function makeToolbar(): ToolbarConfig {
@@ -301,11 +298,6 @@ function makeToolbar(): ToolbarConfig {
     hoveredButton: hoveredToolbarButton,
     tabs: currentWindows,
     hoveredTabId,
-    panelTabs: diffPanel.isActive() ? [
-      { label: "Diff", active: toolPanel.activeTab === "diff" },
-      { label: "Agent", active: toolPanel.activeTab === "agent" },
-    ] : undefined,
-    hoveredPanelTab,
   };
 }
 
@@ -330,9 +322,6 @@ sidebar.cacheTimersEnabled = cacheTimersEnabled;
 sidebar.setPinnedSessions(pinnedSessions);
 const control = new TmuxControl();
 const diffPanel = new DiffPanel();
-const toolPanel = new ToolPanel();
-const agentTab = new AgentTab();
-let activeAgentProc: ReturnType<typeof Bun.spawn> | null = null;
 let diffBridge: ScreenBridge | null = null;
 let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
@@ -471,156 +460,6 @@ function resizeDiffPanel(): void {
   diffBridge.resize(cols, rows);
 }
 
-async function spawnAgentMessage(userMessage: string): Promise<void> {
-  agentTab.state = "streaming";
-  agentTab.scrollToBottom();
-  scheduleRender();
-
-  // Animate spinner while waiting
-  const spinnerInterval = setInterval(() => {
-    agentTab.advanceSpinner();
-    scheduleRender();
-  }, 80);
-
-  try {
-    const config = loadUserConfig();
-    const claudeParts = ((config.claudeCommand as string) ?? "claude").split(/\s+/);
-
-    // Load meta agent skill
-    let metaAgentSkill = "";
-    const skillPath = resolve(import.meta.dir, "../skills/jmux-meta-agent.md");
-    try { metaAgentSkill = readFileSync(skillPath, "utf-8"); } catch { /* skill not yet present */ }
-
-    // Load workflow configs from project dirs
-    const discovered = discoverWorkflowConfigs(cachedProjectDirs);
-    const workflowConfigs = discovered.map(d => ({
-      project: d.config.project,
-      path: resolve(d.dir, ".jmux", "workflow.yml"),
-      content: d.raw,
-    }));
-
-    // Load active tasks (pickup, in_progress, review only)
-    const allTasks = listTasks(DEFAULT_REGISTRY_PATH);
-    const activeTasks: Record<string, unknown> = {};
-    for (const [id, task] of Object.entries(allTasks)) {
-      if (task.status === "in_progress" || task.status === "review" || task.status === "pickup") {
-        activeTasks[id] = task;
-      }
-    }
-
-    // Get session state via ctl
-    let sessionState = "[]";
-    try {
-      const sessionProc = Bun.spawn(
-        [process.argv[0], process.argv[1], "ctl", "session", "list"],
-        { stdout: "pipe", stderr: "pipe" },
-      );
-      const exitCode = await sessionProc.exited;
-      if (exitCode === 0) {
-        sessionState = await new Response(sessionProc.stdout).text();
-        sessionState = sessionState.trim();
-      }
-    } catch { /* session list failed */ }
-
-    const prompt = assemblePrompt(
-      {
-        metaAgentSkill,
-        workflowConfigs,
-        tasksSnapshot: JSON.stringify(activeTasks, null, 2),
-        sessionState,
-      },
-      agentTab.scrollback,
-      userMessage,
-    );
-
-    // Spawn Claude Code subprocess — pipe prompt via stdin to avoid
-    // the assembled prompt (which starts with "---" frontmatter) being
-    // parsed as a CLI flag
-    const proc = Bun.spawn(
-      [...claudeParts, "--output-format", "stream-json", "--verbose", "--include-partial-messages", "-p"],
-      {
-        stdin: new Response(prompt),
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...process.env },
-      },
-    );
-    activeAgentProc = proc;
-
-    // Start a fresh assistant message in scrollback
-    agentTab.scrollback.addAssistantMessage("");
-    const reader = proc.stdout.getReader();
-    const decoder = new TextDecoder();
-
-    let lastTextLength = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-
-      for (const line of chunk.split("\n")) {
-        if (!line.trim()) continue;
-        try {
-          const event = JSON.parse(line) as Record<string, unknown>;
-          if (event.type === "assistant") {
-            const msg = event.message as Record<string, unknown> | undefined;
-            const content = Array.isArray(msg?.content) ? msg.content as unknown[] : [];
-
-            // Check if this is a new assistant turn (text block reset)
-            const firstText = content.find(b => (b as Record<string, unknown>).type === "text") as Record<string, unknown> | undefined;
-            if (firstText && typeof firstText.text === "string") {
-              if (firstText.text.length < lastTextLength) {
-                // New turn — text reset
-                agentTab.scrollback.addAssistantMessage("");
-                lastTextLength = 0;
-              }
-            }
-
-            for (const block of content) {
-              const b = block as Record<string, unknown>;
-              if (b.type === "text" && typeof b.text === "string") {
-                const newText = b.text.slice(lastTextLength);
-                if (newText) {
-                  agentTab.scrollback.appendToLast(newText);
-                  lastTextLength = b.text.length;
-                  scheduleRender();
-                }
-              } else if (b.type === "tool_use" && typeof b.name === "string") {
-                const inputStr = b.input ? ` ${JSON.stringify(b.input).slice(0, 80)}` : "";
-                agentTab.scrollback.addToolUse(b.name + inputStr);
-                // After tool_use, next assistant event will start a new text block
-                lastTextLength = 0;
-                scheduleRender();
-              }
-            }
-          }
-        } catch { /* non-JSON line */ }
-      }
-    }
-
-    // Check exit code and stderr if no response was rendered
-    const exitCode = await proc.exited;
-    if (lastTextLength === 0) {
-      let stderrText = "";
-      try { stderrText = await new Response(proc.stderr).text(); } catch {}
-      const errMsg = stderrText.trim() || `Process exited with code ${exitCode} (no output)`;
-      agentTab.scrollback.appendToLast(errMsg);
-      scheduleRender();
-    }
-
-  } catch (err) {
-    agentTab.scrollback.addAssistantMessage(`Error: ${err instanceof Error ? err.message : String(err)}`);
-    agentTab.state = "error";
-  } finally {
-    clearInterval(spinnerInterval);
-    activeAgentProc = null;
-    if (agentTab.state !== "error") {
-      agentTab.state = "idle";
-    }
-    scheduleRender();
-  }
-}
-
 async function toggleDiffPanel(): Promise<void> {
   const wasActive = diffPanel.isActive();
   diffPanel.toggle();
@@ -649,7 +488,6 @@ async function toggleDiffPanel(): Promise<void> {
     inputRouter.setMainCols(available);
     pty.resize(available, ptyRowsNow);
     bridge.resize(available, ptyRowsNow);
-    toolPanel.switchTab("diff");
   }
 
   scheduleRender();
@@ -845,14 +683,6 @@ function renderFrame(): void {
     }
   }
 
-  // When agent tab is active, render it instead of diff content
-  if (diffPanel.isActive() && toolPanel.activeTab === "agent") {
-    const dpCols = getDiffPanelCols();
-    const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-    const agentGrid = agentTab.render(dpCols, dpRows);
-    diffPanelArg = { grid: agentGrid, mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
-  }
-
   renderer.render(
     grid, cursor,
     sidebarShown ? sidebar.getGrid() : null,
@@ -937,15 +767,6 @@ const inputRouter = new InputRouter(
           return;
         }
       }
-      // Then panel tabs (diff panel area)
-      const panelRanges = getPanelTabRanges(tb);
-      for (const { label, startCol, endCol } of panelRanges) {
-        if (col >= startCol && col <= endCol) {
-          toolPanel.switchTab(label === "Diff" ? "diff" : "agent");
-          scheduleRender();
-          return;
-        }
-      }
     },
     onHover: (target) => {
       let changed = false;
@@ -977,19 +798,6 @@ const inputRouter = new InputRouter(
           hoveredToolbarButton = found;
           changed = true;
         }
-        // Check panel tab hover
-        const panelRanges = getPanelTabRanges(tb);
-        let foundPanel: string | null = null;
-        for (const { label, startCol, endCol } of panelRanges) {
-          if (target.col >= startCol && target.col <= endCol) {
-            foundPanel = label;
-            break;
-          }
-        }
-        if (foundPanel !== hoveredPanelTab) {
-          hoveredPanelTab = foundPanel;
-          changed = true;
-        }
         if (sidebar.getHoveredRow() !== null) {
           sidebar.setHoveredRow(null);
           changed = true;
@@ -997,7 +805,6 @@ const inputRouter = new InputRouter(
       } else if (target?.area === "sidebar") {
         if (hoveredToolbarButton !== null) { hoveredToolbarButton = null; changed = true; }
         if (hoveredTabId !== null) { hoveredTabId = null; changed = true; }
-        if (hoveredPanelTab !== null) { hoveredPanelTab = null; changed = true; }
         const prev = sidebar.getHoveredRow();
         if (prev !== target.row) {
           sidebar.setHoveredRow(target.row);
@@ -1006,7 +813,6 @@ const inputRouter = new InputRouter(
       } else {
         if (hoveredToolbarButton !== null) { hoveredToolbarButton = null; changed = true; }
         if (hoveredTabId !== null) { hoveredTabId = null; changed = true; }
-        if (hoveredPanelTab !== null) { hoveredPanelTab = null; changed = true; }
         if (sidebar.getHoveredRow() !== null) { sidebar.setHoveredRow(null); changed = true; }
       }
       if (changed) scheduleRender();
@@ -1058,75 +864,6 @@ const inputRouter = new InputRouter(
     onDiffPanelFocusToggle: () => {
       if (!diffPanel.isActive() || diffPanel.state === "full") return;
       setDiffFocus(!diffPanelFocused);
-    },
-    onAgentToggle: () => {
-      if (!diffPanel.isActive()) {
-        // Open panel without spawning hunk — agent tab doesn't need it
-        diffPanel.toggle();
-        const totalCols = process.stdout.columns || 80;
-        const sidebarCols = sidebarShown ? sidebarTotal() : 0;
-        const available = totalCols - sidebarCols;
-        const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-        const panelCols = diffPanel.calcPanelCols(available, diffPanelSplitRatio);
-        mainCols = available - panelCols - 1;
-        pty.resize(mainCols, ptyRowsNow);
-        bridge.resize(mainCols, ptyRowsNow);
-        setDiffFocus(true);
-        inputRouter.setMainCols(mainCols);
-      }
-      toolPanel.switchTab("agent");
-      scheduleRender();
-    },
-    onPanelTabSwitch: () => {
-      toolPanel.nextTab();
-      scheduleRender();
-    },
-    isAgentTabActive: () => toolPanel.activeTab === "agent",
-    onAgentTabData: (data: string) => {
-      if (agentTab.state === "streaming") return; // reject input while streaming
-
-      // Enter — submit message
-      if (data === "\r" || data === "\n") {
-        const text = agentTab.input.submit();
-        if (text.trim().length > 0) {
-          agentTab.scrollback.addUserMessage(text);
-          agentTab.scrollToBottom();
-          spawnAgentMessage(text);
-        }
-        scheduleRender();
-        return;
-      }
-
-      // Backspace
-      if (data === "\x7f" || data === "\b") {
-        agentTab.input.backspace();
-        scheduleRender();
-        return;
-      }
-
-      // Delete
-      if (data === "\x1b[3~") {
-        agentTab.input.del();
-        scheduleRender();
-        return;
-      }
-
-      // Arrow keys
-      if (data === "\x1b[D") { agentTab.input.left(); scheduleRender(); return; }
-      if (data === "\x1b[C") { agentTab.input.right(); scheduleRender(); return; }
-      if (data === "\x1b[H" || data === "\x1b[1~") { agentTab.input.home(); scheduleRender(); return; }
-      if (data === "\x1b[F" || data === "\x1b[4~") { agentTab.input.end(); scheduleRender(); return; }
-
-      // Shift+Up/Down for scrollback
-      if (data === "\x1b[1;2A") { agentTab.scrollUp(3); scheduleRender(); return; }
-      if (data === "\x1b[1;2B") { agentTab.scrollDown(3); scheduleRender(); return; }
-
-      // Printable characters
-      if (data.length > 0 && data.charCodeAt(0) >= 32) {
-        agentTab.input.insert(data);
-        scheduleRender();
-        return;
-      }
     },
   },
   sidebarShown,
@@ -2245,7 +1982,6 @@ async function start(): Promise<void> {
 // --- Cleanup ---
 
 function cleanup(): void {
-  try { activeAgentProc?.kill(); } catch {}
   killDiffProcess();
   otelReceiver.stop();
   stopCacheTimerTick();
