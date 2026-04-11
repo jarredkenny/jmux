@@ -135,3 +135,15 @@ jmux shows two types of indicators:
 Activity dots appear automatically when any session produces output while you're in a different session. They clear when you switch to that session.
 
 Attention flags only appear when something sets `@jmux-attention`. They take visual priority over activity dots — if both are set, you see the `!`.
+
+## Meta Agent
+
+jmux includes a built-in workflow copilot that runs Claude Code (or any AI tool) in a dedicated session with `jmux ctl` context pre-loaded. Press `Ctrl-a m` to launch it.
+
+The meta agent can:
+- Pick up Linear tickets and create worktree sessions automatically
+- Dispatch Claude Code in child sessions with ticket-derived prompts
+- Track work items through `jmux ctl task` (pickup → in_progress → review → merged)
+- Read `.jmux/workflow.yml` configs to follow per-project conventions
+
+See [docs/configuration.md](configuration.md#meta-agent-configuration) for setup, or [docs/meta-agent.md](meta-agent.md) for the full guide.

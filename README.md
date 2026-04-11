@@ -146,7 +146,7 @@ jmux ctl pane capture --target %12
 jmux ctl pane send-keys --target %12 "Now add tests for that fix"
 ```
 
-Subcommands: `session` (list/create/kill/rename/switch/info/set-attention), `window` (list/create/select/kill), `pane` (list/split/send-keys/capture/kill), `run-claude` (dispatch Claude Code in a new session).
+Subcommands: `session` (list/create/kill/rename/switch/info/set-attention), `window` (list/create/select/kill), `pane` (list/split/send-keys/capture/kill), `run-claude` (dispatch Claude Code in a new session), `task` (create/list/get/update/remove work items).
 
 All output is JSON. Context (socket, session) is auto-detected from `$TMUX` when running inside jmux.
 
@@ -161,6 +161,39 @@ jmux ships a [Claude Code skill](skills/jmux-control.md) that agents auto-discov
 
 When `$JMUX=1` is set (automatic inside jmux), Claude Code can use the skill to dispatch parallel agents, poll for completion via attention flags, capture pane output, and chain tasks together — no human prompting required.
 
+### Meta Agent
+
+Press `Ctrl-a m` to open the workflow copilot — a dedicated session running your preferred AI coding tool with jmux-specific context pre-loaded. The agent knows how to use `jmux ctl` to manage sessions, worktrees, tasks, and dispatch other agents.
+
+The agent appears at the top of the sidebar as `◈ Agent` and immediately asks what you'd like to work on. Tell it to pick up a Linear ticket and it will create a worktree, spin up a session, and dispatch Claude Code with the ticket description — all through `jmux ctl`.
+
+Works with any AI coding tool:
+
+```json
+// ~/.config/jmux/config.json
+{
+  "agent": {
+    "command": "claude",       // or "codex", "opencode", etc.
+    "configFile": "CLAUDE.md", // or "AGENTS.md" for Codex
+    "kickoffPrompt": "What should I work on?"
+  }
+}
+```
+
+See [docs/meta-agent.md](docs/meta-agent.md) for full configuration and workflow patterns.
+
+### Task Registry
+
+`jmux ctl task` tracks work items across sessions. The meta agent uses this automatically, but you can also use it directly:
+
+```bash
+jmux ctl task create --ticket MYAPP-123 --source linear --title "Fix auth"
+jmux ctl task list
+jmux ctl task update --ticket MYAPP-123 --status review --mr https://...
+```
+
+Sessions linked to tasks show the ticket ID in blue on their sidebar detail line. Status flows: `pickup` → `in_progress` → `review` → `merged` → `closed`.
+
 ---
 
 ## Keybindings
@@ -172,7 +205,7 @@ When `$JMUX=1` is set (automatic inside jmux), Claude Code can use the skill to 
 | `Ctrl-Shift-Up/Down` | Switch to prev/next session |
 | `Ctrl-a n` | New session |
 | `Ctrl-a r` | Rename session |
-| `Ctrl-a m` | Move window to another session |
+| `Ctrl-a m` | Open meta agent (workflow copilot) |
 | Click sidebar | Switch to session |
 | Scroll wheel (sidebar) | Scroll session list |
 
@@ -205,6 +238,12 @@ When `$JMUX=1` is set (automatic inside jmux), Claude Code can use the skill to 
 | `Ctrl-a Tab` | Switch focus between tmux and diff panel |
 | `Shift-Right` | Focus diff panel from rightmost pane |
 | `Shift-Left` | Return focus to tmux from diff panel |
+
+### Meta Agent
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-a m` | Open meta agent (creates session on first use, switches thereafter) |
 
 ### Utilities
 
@@ -247,8 +286,10 @@ Terminal (Ghostty, iTerm, etc.)
        |         +-- Control client - tmux -C for real-time metadata
        +-- Diff Panel (optional, split/full)
        |    +-- hunk PTY ----------- @xterm/headless for VT emulation
+       +-- Meta Agent (◈ Agent session, runs your AI tool with jmux context)
+       +-- Task Registry (~/.config/jmux/tasks.json)
        +-- jmux ctl (JSON API, used by agents inside sessions)
-            +-- session / window / pane / run-claude
+            +-- session / window / pane / run-claude / task
 ```
 
 ~6600 lines of TypeScript. No opinions about what you run inside tmux.
