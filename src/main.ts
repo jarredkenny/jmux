@@ -474,7 +474,14 @@ async function launchMetaAgent(): Promise<void> {
     return;
   }
 
-  // Bootstrap the agent directory with CLAUDE.md
+  // Read agent config with fallbacks
+  const config = loadUserConfig();
+  const agentCfg = config.agent ?? {};
+  const agentCommand = agentCfg.command ?? config.claudeCommand ?? claudeCommand;
+  const configFile = agentCfg.configFile ?? "CLAUDE.md";
+  const kickoffPrompt = agentCfg.kickoffPrompt !== undefined ? agentCfg.kickoffPrompt : "What should I work on?";
+
+  // Bootstrap the agent directory with instruction file
   mkdirSync(META_AGENT_DIR, { recursive: true });
   const skillPath = resolve(import.meta.dir, "../skills/jmux-meta-agent.md");
   let skillContent = "";
@@ -502,28 +509,28 @@ async function launchMetaAgent(): Promise<void> {
 
   const jmuxNote = `\n## Important: jmux Command\n\nUse this exact command for all \`ctl\` operations:\n\`\`\`\n${jmuxBin} ctl\n\`\`\`\nDo NOT use bare \`jmux ctl\` — it may resolve to a different installed version.\n`;
 
-  const greeting = `\n## On Startup\n\nWhen starting a new conversation, briefly greet the user and ask what they'd like to work on. Suggest running \`${jmuxBin} ctl task list\` to check existing work, or offer to pick up a new ticket.\n`;
+  const greeting = kickoffPrompt
+    ? `\n## On Startup\n\nWhen starting a new conversation, briefly greet the user and ask what they'd like to work on. Suggest running \`${jmuxBin} ctl task list\` to check existing work, or offer to pick up a new ticket.\n`
+    : "";
 
-  const claudeMd = `# CLAUDE.md — jmux Meta Agent\n\n${skillContent}${jmuxNote}${workflowSection}${greeting}`;
-  writeFileSync(resolve(META_AGENT_DIR, "CLAUDE.md"), claudeMd);
+  const instructionContent = `# ${configFile} — jmux Meta Agent\n\n${skillContent}${jmuxNote}${workflowSection}${greeting}`;
+  writeFileSync(resolve(META_AGENT_DIR, configFile), instructionContent);
 
-  // Create the session and launch claude
-  const claudeCmd = claudeCommand.includes(" ")
-    ? `${claudeCommand}` // already has flags like --dangerously-skip-permissions
-    : claudeCommand;
-
+  // Create the session and launch the agent
   await control.sendCommand(
-    `new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${META_AGENT_SESSION}`)} -s ${tq(META_AGENT_SESSION)} -c ${tq(META_AGENT_DIR)} ${tq(claudeCmd)}`,
+    `new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${META_AGENT_SESSION}`)} -s ${tq(META_AGENT_SESSION)} -c ${tq(META_AGENT_DIR)} ${tq(agentCommand)}`,
   );
   await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(META_AGENT_SESSION)}`);
 
-  // Send kickoff prompt after claude has time to initialize
-  setTimeout(async () => {
-    try {
-      await control.sendCommand(`send-keys -t ${tq(META_AGENT_SESSION)} -l ${tq("What should I work on?")}`);
-      await control.sendCommand(`send-keys -t ${tq(META_AGENT_SESSION)} Enter`);
-    } catch { /* session may have been killed before timer fired */ }
-  }, 2000);
+  // Send kickoff prompt after the agent has time to initialize
+  if (kickoffPrompt) {
+    setTimeout(async () => {
+      try {
+        await control.sendCommand(`send-keys -t ${tq(META_AGENT_SESSION)} -l ${tq(kickoffPrompt)}`);
+        await control.sendCommand(`send-keys -t ${tq(META_AGENT_SESSION)} Enter`);
+      } catch { /* session may have been killed before timer fired */ }
+    }, 2000);
+  }
 }
 
 async function toggleDiffPanel(): Promise<void> {

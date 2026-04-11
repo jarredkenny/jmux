@@ -2,6 +2,12 @@ import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import { homedir } from "os";
 
+export interface AgentConfig {
+  command?: string;       // e.g. "claude", "codex", "opencode" — defaults to claudeCommand then "claude"
+  configFile?: string;    // e.g. "CLAUDE.md", "AGENTS.md" — defaults to "CLAUDE.md"
+  kickoffPrompt?: string | false; // initial message sent on first launch — false to disable
+}
+
 export interface JmuxConfig {
   sidebarWidth?: number;
   claudeCommand?: string;
@@ -11,6 +17,7 @@ export interface JmuxConfig {
     splitRatio?: number;
     hunkCommand?: string;
   };
+  agent?: AgentConfig;
 }
 
 /**
