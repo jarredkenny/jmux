@@ -99,64 +99,6 @@ These are intercepted by jmux's input router before reaching tmux. They cannot b
 
 Everything else passes through to tmux normally.
 
-## Meta Agent Configuration
-
-The meta agent (`Ctrl-a m`) is configured in `~/.config/jmux/config.json` under the `agent` key:
-
-```json
-{
-  "agent": {
-    "command": "claude --dangerously-skip-permissions",
-    "configFile": "CLAUDE.md",
-    "kickoffPrompt": "What should I work on?"
-  }
-}
-```
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `command` | `claudeCommand` config, then `"claude"` | The AI coding tool to launch |
-| `configFile` | `"CLAUDE.md"` | Instruction filename written to the agent directory |
-| `kickoffPrompt` | `"What should I work on?"` | Initial message sent on first launch. Set to `false` to disable |
-
-The agent session directory is `~/.config/jmux/agent/`. The instruction file is regenerated each time the session is created, so it always reflects the latest workflow configs and jmux path.
-
-### Tool-Specific Examples
-
-**Claude Code:**
-```json
-{ "agent": { "command": "claude --dangerously-skip-permissions" } }
-```
-
-**Codex:**
-```json
-{ "agent": { "command": "codex", "configFile": "AGENTS.md" } }
-```
-
-**OpenCode:**
-```json
-{ "agent": { "command": "opencode", "configFile": "AGENTS.md" } }
-```
-
-### Workflow Configs
-
-Projects can include a `.jmux/workflow.yml` file that tells the meta agent how to handle tickets:
-
-```yaml
-project: myapp
-tickets:
-  linear:
-    projects: ["MYAPP"]
-setup:
-  worktree: true
-  base_branch: origin/main
-agent:
-  context: "This project uses Rails + React."
-  instructions: "Create an MR when done."
-```
-
-The meta agent discovers these configs from your `projectDirs` and uses them to match tickets to repos, create worktrees with the right base branch, and assemble prompts with project-specific context.
-
 ## Editing jmux Defaults
 
 If you want to change jmux's default keybindings (not just override them), edit `config/defaults.conf` in the jmux installation directory:

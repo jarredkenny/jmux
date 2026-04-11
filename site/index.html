@@ -87,7 +87,7 @@
       filter: blur(80px);
       pointer-events: none;
       z-index: 0;
-      transition: top 0.3s ease-out, left 0.3s ease-out;
+      transition: top 3s cubic-bezier(0.4, 0, 0.2, 1), left 3s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .hero-glow > * {
       position: relative;
@@ -606,17 +606,14 @@
 <script>
   (function() {
     var hero = document.querySelector('.hero-glow');
-    hero.addEventListener('mousemove', function(e) {
-      var rect = hero.getBoundingClientRect();
-      var x = ((e.clientX - rect.left) / rect.width) * 100;
-      var y = ((e.clientY - rect.top) / rect.height) * 100;
+    function moveSpotlight() {
+      var x = 15 + Math.random() * 70;
+      var y = 15 + Math.random() * 70;
       hero.style.setProperty('--glow-x', x + '%');
       hero.style.setProperty('--glow-y', y + '%');
-    });
-    hero.addEventListener('mouseleave', function() {
-      hero.style.setProperty('--glow-x', '50%');
-      hero.style.setProperty('--glow-y', '50%');
-    });
+    }
+    moveSpotlight();
+    setInterval(moveSpotlight, 5000);
   })();
 
   (function() {

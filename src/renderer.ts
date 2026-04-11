@@ -256,7 +256,6 @@ export function compositeGrids(
           col += w;
         }
       }
-
     } else {
       // Main content — offset by toolbar row
       const mainY = toolbar ? y - 1 : y;

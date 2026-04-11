@@ -30,7 +30,7 @@ The sidebar shows all sessions with:
 | `Ctrl-Shift-Down` | Switch to next session |
 | `Ctrl-a n` | New session / new worktree (auto-detects wtm projects) |
 | `Ctrl-a r` | Rename current session |
-| `Ctrl-a m` | Open meta agent (workflow copilot) |
+| `Ctrl-a m` | Move current window to another session |
 
 ---
 
@@ -96,30 +96,6 @@ The diff panel is powered by [hunk](https://github.com/modem-dev/hunk) — a rev
 In split mode, the diff panel docks to the right (~40% width). In full mode, it replaces the main area. Switching sessions reloads the diff automatically.
 
 Also available via the command palette: "Toggle diff panel", "Zoom diff panel".
-
----
-
-## Meta Agent
-
-| Key | Action |
-|-----|--------|
-| `Ctrl-a m` | Open/switch to meta agent session |
-
-The meta agent is a dedicated AI coding tool session (Claude Code, Codex, etc.) that acts as your workflow copilot. It sits at the top of the sidebar as `◈ Agent` with "command & control" subtitle.
-
-On first launch, jmux creates `~/.config/jmux/agent/` with an instruction file teaching the agent how to use `jmux ctl task`, manage sessions/worktrees, and follow your workflow configs.
-
-Configure in `~/.config/jmux/config.json`:
-
-```json
-{
-  "agent": {
-    "command": "claude",
-    "configFile": "CLAUDE.md",
-    "kickoffPrompt": "What should I work on?"
-  }
-}
-```
 
 ---
 

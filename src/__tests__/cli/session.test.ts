@@ -45,28 +45,3 @@ describe("validateSessionCreate", () => {
     expect(result.command).toBe("vim");
   });
 });
-
-describe("validateSessionCreate with worktree", () => {
-  test("worktree requires --base-branch", () => {
-    expect(() =>
-      validateSessionCreate({ name: "foo", dir: "/tmp/repo", worktree: true })
-    ).toThrow("--base-branch");
-  });
-
-  test("worktree returns baseBranch", () => {
-    const result = validateSessionCreate({
-      name: "foo",
-      dir: "/tmp/repo",
-      worktree: true,
-      "base-branch": "origin/main",
-    });
-    expect(result.worktree).toBe(true);
-    expect(result.baseBranch).toBe("origin/main");
-  });
-
-  test("non-worktree does not require base-branch", () => {
-    const result = validateSessionCreate({ name: "foo", dir: "/tmp" });
-    expect(result.worktree).toBeUndefined();
-    expect(result.baseBranch).toBeUndefined();
-  });
-});

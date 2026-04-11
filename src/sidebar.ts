@@ -132,20 +132,6 @@ type RenderItem =
   | { type: "spacer" };
 
 const PINNED_GROUP_LABEL = "Pinned";
-const META_AGENT_SESSION = "jmux-agent";
-
-// Meta agent styling — peach/gold to match toolbar active tabs
-const META_AGENT_ICON = "◈";
-const META_AGENT_NAME_ATTRS: CellAttrs = {
-  fg: (0xfb << 16) | (0xd4 << 8) | 0xb8, // peach #fbd4b8
-  fgMode: ColorMode.RGB,
-  bold: true,
-};
-const META_AGENT_DETAIL_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  dim: true,
-};
 
 function buildRenderPlan(
   sessions: SessionInfo[],
@@ -155,16 +141,11 @@ function buildRenderPlan(
   items: RenderItem[];
   displayOrder: number[];
 } {
-  let metaAgentIndex: number | null = null;
   const pinnedIndices: number[] = [];
   const groupMap = new Map<string, number[]>();
   const ungrouped: number[] = [];
 
   for (let i = 0; i < sessions.length; i++) {
-    if (sessions[i].name === META_AGENT_SESSION) {
-      metaAgentIndex = i;
-      continue;
-    }
     if (pinnedNames.has(sessions[i].name)) {
       pinnedIndices.push(i);
       continue;
@@ -201,13 +182,6 @@ function buildRenderPlan(
 
   const items: RenderItem[] = [];
   const displayOrder: number[] = [];
-
-  // Meta agent always first
-  if (metaAgentIndex !== null) {
-    items.push({ type: "session", sessionIndex: metaAgentIndex, grouped: false });
-    displayOrder.push(metaAgentIndex);
-    items.push({ type: "spacer" });
-  }
 
   // Pinned group first
   if (pinnedIndices.length > 0) {
@@ -583,24 +557,6 @@ export class Sidebar {
       writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
     }
 
-    // Meta agent gets distinctive rendering
-    if (session.name === META_AGENT_SESSION) {
-      const iconAttrs: CellAttrs = isActive
-        ? { ...META_AGENT_NAME_ATTRS, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
-        : isHovered
-          ? { ...META_AGENT_NAME_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
-          : META_AGENT_NAME_ATTRS;
-      const detailAttrs: CellAttrs = isActive
-        ? { ...META_AGENT_DETAIL_ATTRS, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
-        : isHovered
-          ? { ...META_AGENT_DETAIL_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
-          : META_AGENT_DETAIL_ATTRS;
-      writeString(grid, nameRow, 1, META_AGENT_ICON, iconAttrs);
-      writeString(grid, nameRow, 3, "Agent", iconAttrs);
-      writeString(grid, detailRow, 3, "command & control", detailAttrs);
-      return;
-    }
-
     // Name row: name + window count
     const windowCountStr = `${session.windowCount}w`;
     const windowCountCol = this.width - windowCountStr.length - 1;
@@ -648,31 +604,12 @@ export class Sidebar {
 
     const detailStart = 3;
 
-    // When ticket is linked, show ticket ID on detail line instead of branch/directory
-    const showTicketId = !!session.ticketId;
-    if (showTicketId) {
-      const ticketAttrs: CellAttrs = isActive
-        ? { fg: (0x58 << 16) | (0xa6 << 8) | 0xff, fgMode: ColorMode.RGB, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
-        : isHovered
-          ? { fg: (0x58 << 16) | (0xa6 << 8) | 0xff, fgMode: ColorMode.RGB, bg: HOVER_BG, bgMode: ColorMode.RGB }
-          : { fg: (0x58 << 16) | (0xa6 << 8) | 0xff, fgMode: ColorMode.RGB };
-      let ticketDisplay = session.ticketId!;
-      const maxTicketLen = this.width - detailStart - 1;
-      if (ticketDisplay.length > maxTicketLen) {
-        ticketDisplay = ticketDisplay.slice(0, maxTicketLen - 1) + "\u2026";
-      }
-      if (maxTicketLen > 0) {
-        writeString(grid, detailRow, detailStart, ticketDisplay, ticketAttrs);
-      }
-      // DO NOT return — cache timer rendering continues below
-    }
-
     if (item.grouped && item.groupLabel !== PINNED_GROUP_LABEL) {
       if (timerText !== null) {
         const timerAttrs = cacheTimerAttrs(timerRemaining, isActive, isHovered);
         const timerCol = this.width - timerText.length - 1;
         writeString(grid, detailRow, timerCol, timerText, timerAttrs);
-        if (!showTicketId && session.gitBranch) {
+        if (session.gitBranch) {
           const maxLen = timerCol - detailStart - 1;
           let branch = session.gitBranch;
           if (branch.length > maxLen) {
@@ -682,7 +619,7 @@ export class Sidebar {
             writeString(grid, detailRow, detailStart, branch, detailAttrs);
           }
         }
-      } else if (!showTicketId && session.gitBranch) {
+      } else if (session.gitBranch) {
         const maxLen = this.width - detailStart - 1;
         let branch = session.gitBranch;
         if (branch.length > maxLen) {
@@ -696,7 +633,7 @@ export class Sidebar {
         const timerCol = this.width - timerText.length - 1;
         writeString(grid, detailRow, timerCol, timerText, timerAttrs);
         // Drop branch when timer is present; show only directory
-        if (!showTicketId && session.directory !== undefined) {
+        if (session.directory !== undefined) {
           const dirMaxLen = timerCol - detailStart - 1;
           let displayDir = session.directory;
           if (displayDir.length > dirMaxLen) {
@@ -706,7 +643,7 @@ export class Sidebar {
             writeString(grid, detailRow, detailStart, displayDir, detailAttrs);
           }
         }
-      } else if (!showTicketId) {
+      } else {
         let branchCols = 0;
         if (session.gitBranch) {
           const branchCol = this.width - session.gitBranch.length - 1;

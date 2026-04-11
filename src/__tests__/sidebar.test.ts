@@ -1,7 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { Sidebar } from "../sidebar";
 import type { SessionInfo } from "../types";
-import { ColorMode } from "../types";
 
 const SIDEBAR_WIDTH = 24;
 
@@ -732,28 +731,6 @@ describe("Sidebar", () => {
       ).join("");
     }
     expect(allText).not.toContain("Pinned");
-  });
-
-  test("shows ticket ID on detail row when ticketId is set", () => {
-    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
-    const sessions = makeSessions([{ name: "my-task", directory: "~/mydir", gitBranch: "feat/x" }]);
-    sessions[0].ticketId = "MYAPP-123";
-    sidebar.updateSessions(sessions);
-    const grid = sidebar.getGrid();
-    // Row 2: session name, Row 3: detail
-    const detailRow = Array.from(
-      { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[3][i].char,
-    ).join("");
-    expect(detailRow).toContain("MYAPP-123");
-    // branch and directory should NOT appear when ticketId takes over
-    expect(detailRow).not.toContain("feat/x");
-    expect(detailRow).not.toContain("~/mydir");
-    // Verify ticket ID is rendered in the expected blue color
-    // 'M' is the first char of "MYAPP-123", starts at detailStart col 3
-    const mCell = grid.cells[3][3];
-    expect(mCell.fg).toBe((0x58 << 16) | (0xa6 << 8) | 0xff);
-    expect(mCell.fgMode).toBe(ColorMode.RGB);
   });
 
   test("cacheTimersEnabled false suppresses timer rendering", () => {
