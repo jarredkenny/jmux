@@ -50,8 +50,11 @@
     }
   </script>
   <style>
-    body {
+    html {
       background-color: #171b26;
+    }
+    body {
+      background: transparent;
       color: #ffffff;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
@@ -71,27 +74,42 @@
       transform: translateY(-3px);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     }
-    .hero-glow {
-      position: relative;
-    }
-    .hero-glow::before {
-      content: '';
-      position: absolute;
-      top: var(--glow-y, 50%);
-      left: var(--glow-x, 50%);
-      transform: translate(-50%, -50%);
-      width: 600px;
-      height: 300px;
+    .spotlight {
+      position: fixed;
+      top: 0;
+      left: 0;
       border-radius: 50%;
-      background: rgba(74, 222, 128, 0.15);
-      filter: blur(80px);
       pointer-events: none;
-      z-index: 0;
-      transition: top 3s cubic-bezier(0.4, 0, 0.2, 1), left 3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .hero-glow > * {
-      position: relative;
       z-index: 1;
+      will-change: transform;
+    }
+    body > nav,
+    body > section,
+    body > footer {
+      position: relative;
+      z-index: 2;
+    }
+    .spotlight-1 {
+      width: 700px;
+      height: 700px;
+      background: radial-gradient(
+        circle at center,
+        rgba(74, 222, 128, 0.18) 0%,
+        rgba(74, 222, 128, 0.07) 40%,
+        transparent 70%
+      );
+      filter: blur(40px);
+    }
+    .spotlight-2 {
+      width: 550px;
+      height: 550px;
+      background: radial-gradient(
+        circle at center,
+        rgba(74, 222, 128, 0.14) 0%,
+        rgba(74, 222, 128, 0.05) 40%,
+        transparent 70%
+      );
+      filter: blur(50px);
     }
     .icon-container {
       width: 40px;
@@ -179,7 +197,7 @@
   </nav>
 
   <!-- Hero -->
-  <section class="hero-glow">
+  <section>
     <div class="max-w-6xl mx-auto text-center px-6 md:px-12 pt-20 md:pt-28 pb-10">
     <p class="font-mono text-xs md:text-sm text-accent tracking-[0.2em] uppercase mb-4">Parallel Development Environment</p>
     <h1 class="text-3xl md:text-5xl font-extrabold leading-tight max-w-2xl mx-auto mb-6 tracking-tight">
@@ -605,15 +623,76 @@
 
 <script>
   (function() {
-    var hero = document.querySelector('.hero-glow');
-    function moveSpotlight() {
-      var x = 15 + Math.random() * 70;
-      var y = 15 + Math.random() * 70;
-      hero.style.setProperty('--glow-x', x + '%');
-      hero.style.setProperty('--glow-y', y + '%');
+    var pad = 0.1;
+
+    function createSpotlight(className) {
+      var el = document.createElement('div');
+      el.className = 'spotlight ' + className;
+      document.body.prepend(el);
+      return el;
     }
-    moveSpotlight();
-    setInterval(moveSpotlight, 5000);
+
+    function randomTarget() {
+      return {
+        x: (pad + Math.random() * (1 - 2 * pad)) * window.innerWidth,
+        y: (pad + Math.random() * (1 - 2 * pad)) * window.innerHeight
+      };
+    }
+
+    function makeSpotlight(className, speed) {
+      var el = createSpotlight(className);
+      var size = el.offsetWidth;
+      var pos = randomTarget();
+      var target = randomTarget();
+
+      return { el: el, pos: pos, target: target, speed: speed, size: size };
+    }
+
+    var s1 = makeSpotlight('spotlight-1', 0.8);
+    var s2 = makeSpotlight('spotlight-2', 0.6);
+    var spots = [s1, s2];
+    var lastTime = 0;
+    var scrollTimer = null;
+    var scrolling = false;
+
+    window.addEventListener('scroll', function() {
+      scrolling = true;
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(function() {
+        scrolling = false;
+        for (var i = 0; i < spots.length; i++) {
+          spots[i].target = randomTarget();
+        }
+      }, 150);
+    });
+
+    function tick(now) {
+      var dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+
+      for (var i = 0; i < spots.length; i++) {
+        var s = spots[i];
+        var dx = s.target.x - s.pos.x;
+        var dy = s.target.y - s.pos.y;
+
+        if (!scrolling) {
+          var factor = 1 - Math.pow(1 - s.speed, dt);
+          s.pos.x += dx * factor;
+          s.pos.y += dy * factor;
+
+          if (Math.abs(dx) < 50 && Math.abs(dy) < 50) {
+            s.target = randomTarget();
+          }
+        }
+
+        var tx = s.pos.x - s.size / 2;
+        var ty = s.pos.y - s.size / 2;
+        s.el.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0)';
+      }
+      requestAnimationFrame(tick);
+    }
+
+    requestAnimationFrame(function(now) { lastTime = now; tick(now); });
   })();
 
   (function() {
