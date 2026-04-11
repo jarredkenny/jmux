@@ -484,7 +484,7 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
 
   try {
     const config = loadUserConfig();
-    const claudeCmd = config.claudeCommand ?? "claude";
+    const claudeParts = ((config.claudeCommand as string) ?? "claude").split(/\s+/);
 
     // Load meta agent skill
     let metaAgentSkill = "";
@@ -535,7 +535,7 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
 
     // Spawn Claude Code subprocess
     const proc = Bun.spawn(
-      [claudeCmd, "--output-format", "stream-json", "--verbose", "--include-partial-messages", "-p", prompt],
+      [...claudeParts, "--output-format", "stream-json", "--verbose", "--include-partial-messages", "-p", prompt],
       {
         stdout: "pipe",
         stderr: "pipe",
