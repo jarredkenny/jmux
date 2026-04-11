@@ -137,6 +137,24 @@
     .copy-btn:hover {
       color: #a1a1aa;
     }
+    @keyframes testimonial-in {
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .testimonial-card {
+      opacity: 0;
+      animation: testimonial-in 0.6s ease-out 0.5s forwards;
+    }
+    @keyframes testimonial-cycle {
+      0%, 90% { opacity: 1; }
+      95%, 100% { opacity: 0; }
+    }
   </style>
 </head>
 <body>
@@ -185,15 +203,28 @@
     </div>
 
     </div>
-  </section>
-
-  <!-- Hero Screenshot -->
-  <section class="relative z-10">
+    <!-- Hero screenshot + floating testimonials -->
     <div class="max-w-6xl mx-auto px-6 md:px-12 pb-16 md:pb-24">
-    <div class="max-w-4xl mx-auto">
-      <img src="assets/hero.png" alt="jmux sidebar with grouped sessions alongside vim and Claude Code" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50">
+      <div class="relative max-w-4xl mx-auto">
+        <img src="assets/hero.png" alt="jmux sidebar with grouped sessions alongside vim and Claude Code" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50">
+        <div id="testimonials" class="absolute -bottom-6 -right-4 md:-right-8 lg:-right-16 w-72 md:w-80">
+          <a href="https://x.com/ravinwashere" target="_blank" rel="noopener" class="testimonial-card bg-[#111520]/90 backdrop-blur-md border border-border rounded-xl px-5 py-4 block hover:border-[#3b4252] transition-colors shadow-2xl shadow-black/60" data-testimonial>
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <img src="assets/testimonial-ravinwashere.jpg" alt="@ravinwashere" class="w-9 h-9 rounded-full">
+                <div>
+                  <p class="text-sm font-semibold text-white leading-tight">Ravin</p>
+                  <p class="text-xs text-[#71717a]">@ravinwashere</p>
+                </div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#71717a"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            </div>
+            <p class="text-xs md:text-sm text-[#c4c9d4] leading-relaxed">"The attention flags, clean sidebar, and quick session switching have genuinely made my workflow much smoother and less chaotic. Really solid and lightweight tool."</p>
+          </a>
+        </div>
+      </div>
     </div>
-    </div>
+
   </section>
 
   <!-- Why -->
@@ -586,6 +617,31 @@
       hero.style.setProperty('--glow-x', '50%');
       hero.style.setProperty('--glow-y', '50%');
     });
+  })();
+
+  (function() {
+    var cards = document.querySelectorAll('[data-testimonial]');
+    if (cards.length > 1) {
+      var current = 0;
+      cards.forEach(function(c, i) { if (i > 0) c.style.display = 'none'; });
+      setInterval(function() {
+        var prev = cards[current];
+        current = (current + 1) % cards.length;
+        var next = cards[current];
+        prev.style.animation = 'none';
+        prev.style.opacity = '1';
+        prev.style.transition = 'opacity 0.4s ease';
+        prev.style.opacity = '0';
+        setTimeout(function() {
+          prev.style.display = 'none';
+          next.style.display = 'block';
+          next.style.opacity = '0';
+          next.style.animation = 'none';
+          next.style.transition = 'opacity 0.4s ease';
+          requestAnimationFrame(function() { next.style.opacity = '1'; });
+        }, 400);
+      }, 6000);
+    }
   })();
 
   (function() {
