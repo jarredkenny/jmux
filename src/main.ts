@@ -595,6 +595,16 @@ async function spawnAgentMessage(userMessage: string): Promise<void> {
       }
     }
 
+    // Check exit code and stderr if no response was rendered
+    const exitCode = await proc.exited;
+    if (lastTextLength === 0) {
+      let stderrText = "";
+      try { stderrText = await new Response(proc.stderr).text(); } catch {}
+      const errMsg = stderrText.trim() || `Process exited with code ${exitCode} (no output)`;
+      agentTab.scrollback.appendToLast(errMsg);
+      scheduleRender();
+    }
+
   } catch (err) {
     agentTab.scrollback.addAssistantMessage(`Error: ${err instanceof Error ? err.message : String(err)}`);
     agentTab.state = "error";
