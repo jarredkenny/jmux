@@ -484,6 +484,12 @@ async function launchMetaAgent(): Promise<void> {
     skillContent = raw.replace(/^---[\s\S]*?---\n*/, "");
   } catch { /* skill file not found */ }
 
+  // Resolve the actual jmux command path so the agent uses this version, not a stale global install
+  const jmuxBin = process.argv[1] ? `${process.argv[0]} ${process.argv[1]}` : "jmux";
+
+  // Replace all `jmux ctl` references with the actual binary path
+  skillContent = skillContent.replaceAll("jmux ctl", `${jmuxBin} ctl`);
+
   // Discover workflow configs to include as context
   const discovered = discoverWorkflowConfigs(cachedProjectDirs);
   let workflowSection = "";
@@ -494,9 +500,11 @@ async function launchMetaAgent(): Promise<void> {
     }
   }
 
-  const greeting = `\n## On Startup\n\nWhen starting a new conversation, briefly greet the user and ask what they'd like to work on. Suggest running \`jmux ctl task list\` to check existing work, or offer to pick up a new ticket.\n`;
+  const jmuxNote = `\n## Important: jmux Command\n\nUse this exact command for all \`ctl\` operations:\n\`\`\`\n${jmuxBin} ctl\n\`\`\`\nDo NOT use bare \`jmux ctl\` — it may resolve to a different installed version.\n`;
 
-  const claudeMd = `# CLAUDE.md — jmux Meta Agent\n\n${skillContent}${workflowSection}${greeting}`;
+  const greeting = `\n## On Startup\n\nWhen starting a new conversation, briefly greet the user and ask what they'd like to work on. Suggest running \`${jmuxBin} ctl task list\` to check existing work, or offer to pick up a new ticket.\n`;
+
+  const claudeMd = `# CLAUDE.md — jmux Meta Agent\n\n${skillContent}${jmuxNote}${workflowSection}${greeting}`;
   writeFileSync(resolve(META_AGENT_DIR, "CLAUDE.md"), claudeMd);
 
   // Create the session and launch claude
