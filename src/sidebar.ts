@@ -132,6 +132,20 @@ type RenderItem =
   | { type: "spacer" };
 
 const PINNED_GROUP_LABEL = "Pinned";
+const META_AGENT_SESSION = "jmux-agent";
+
+// Meta agent styling — peach/gold to match toolbar active tabs
+const META_AGENT_ICON = "◈";
+const META_AGENT_NAME_ATTRS: CellAttrs = {
+  fg: (0xfb << 16) | (0xd4 << 8) | 0xb8, // peach #fbd4b8
+  fgMode: ColorMode.RGB,
+  bold: true,
+};
+const META_AGENT_DETAIL_ATTRS: CellAttrs = {
+  fg: 8,
+  fgMode: ColorMode.Palette,
+  dim: true,
+};
 
 function buildRenderPlan(
   sessions: SessionInfo[],
@@ -141,11 +155,16 @@ function buildRenderPlan(
   items: RenderItem[];
   displayOrder: number[];
 } {
+  let metaAgentIndex: number | null = null;
   const pinnedIndices: number[] = [];
   const groupMap = new Map<string, number[]>();
   const ungrouped: number[] = [];
 
   for (let i = 0; i < sessions.length; i++) {
+    if (sessions[i].name === META_AGENT_SESSION) {
+      metaAgentIndex = i;
+      continue;
+    }
     if (pinnedNames.has(sessions[i].name)) {
       pinnedIndices.push(i);
       continue;
@@ -182,6 +201,13 @@ function buildRenderPlan(
 
   const items: RenderItem[] = [];
   const displayOrder: number[] = [];
+
+  // Meta agent always first
+  if (metaAgentIndex !== null) {
+    items.push({ type: "session", sessionIndex: metaAgentIndex, grouped: false });
+    displayOrder.push(metaAgentIndex);
+    items.push({ type: "spacer" });
+  }
 
   // Pinned group first
   if (pinnedIndices.length > 0) {
@@ -555,6 +581,24 @@ export class Sidebar {
       writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
     } else if (hasActivity) {
       writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
+    }
+
+    // Meta agent gets distinctive rendering
+    if (session.name === META_AGENT_SESSION) {
+      const iconAttrs: CellAttrs = isActive
+        ? { ...META_AGENT_NAME_ATTRS, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
+        : isHovered
+          ? { ...META_AGENT_NAME_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
+          : META_AGENT_NAME_ATTRS;
+      const detailAttrs: CellAttrs = isActive
+        ? { ...META_AGENT_DETAIL_ATTRS, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
+        : isHovered
+          ? { ...META_AGENT_DETAIL_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
+          : META_AGENT_DETAIL_ATTRS;
+      writeString(grid, nameRow, 1, META_AGENT_ICON, iconAttrs);
+      writeString(grid, nameRow, 3, "Agent", iconAttrs);
+      writeString(grid, detailRow, 3, "command & control", detailAttrs);
+      return;
     }
 
     // Name row: name + window count

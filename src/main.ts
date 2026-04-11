@@ -494,7 +494,9 @@ async function launchMetaAgent(): Promise<void> {
     }
   }
 
-  const claudeMd = `# CLAUDE.md — jmux Meta Agent\n\n${skillContent}${workflowSection}`;
+  const greeting = `\n## On Startup\n\nWhen starting a new conversation, briefly greet the user and ask what they'd like to work on. Suggest running \`jmux ctl task list\` to check existing work, or offer to pick up a new ticket.\n`;
+
+  const claudeMd = `# CLAUDE.md — jmux Meta Agent\n\n${skillContent}${workflowSection}${greeting}`;
   writeFileSync(resolve(META_AGENT_DIR, "CLAUDE.md"), claudeMd);
 
   // Create the session and launch claude
