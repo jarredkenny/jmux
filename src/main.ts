@@ -1,7 +1,7 @@
 import { $ } from "bun";
 import { TmuxPty } from "./tmux-pty";
 import { ScreenBridge } from "./screen-bridge";
-import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition, type ToolbarConfig } from "./renderer";
+import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getPanelTabRanges, getModalPosition, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
 import { Sidebar } from "./sidebar";
 import { CommandPalette } from "./command-palette";
@@ -284,6 +284,7 @@ const ptyRows = toolbarEnabled ? rows - 1 : rows;
 let hoveredToolbarButton: string | null = null;
 let currentWindows: WindowTab[] = [];
 let hoveredTabId: string | null = null;
+let hoveredPanelTab: string | null = null;
 let startupComplete = false;
 
 function makeToolbar(): ToolbarConfig {
@@ -304,6 +305,7 @@ function makeToolbar(): ToolbarConfig {
       { label: "Diff", active: toolPanel.activeTab === "diff" },
       { label: "Agent", active: toolPanel.activeTab === "agent" },
     ] : undefined,
+    hoveredPanelTab,
   };
 }
 
@@ -922,6 +924,15 @@ const inputRouter = new InputRouter(
           return;
         }
       }
+      // Then panel tabs (diff panel area)
+      const panelRanges = getPanelTabRanges(tb);
+      for (const { label, startCol, endCol } of panelRanges) {
+        if (col >= startCol && col <= endCol) {
+          toolPanel.switchTab(label === "Diff" ? "diff" : "agent");
+          scheduleRender();
+          return;
+        }
+      }
     },
     onHover: (target) => {
       let changed = false;
@@ -953,6 +964,19 @@ const inputRouter = new InputRouter(
           hoveredToolbarButton = found;
           changed = true;
         }
+        // Check panel tab hover
+        const panelRanges = getPanelTabRanges(tb);
+        let foundPanel: string | null = null;
+        for (const { label, startCol, endCol } of panelRanges) {
+          if (target.col >= startCol && target.col <= endCol) {
+            foundPanel = label;
+            break;
+          }
+        }
+        if (foundPanel !== hoveredPanelTab) {
+          hoveredPanelTab = foundPanel;
+          changed = true;
+        }
         if (sidebar.getHoveredRow() !== null) {
           sidebar.setHoveredRow(null);
           changed = true;
@@ -960,6 +984,7 @@ const inputRouter = new InputRouter(
       } else if (target?.area === "sidebar") {
         if (hoveredToolbarButton !== null) { hoveredToolbarButton = null; changed = true; }
         if (hoveredTabId !== null) { hoveredTabId = null; changed = true; }
+        if (hoveredPanelTab !== null) { hoveredPanelTab = null; changed = true; }
         const prev = sidebar.getHoveredRow();
         if (prev !== target.row) {
           sidebar.setHoveredRow(target.row);
@@ -968,6 +993,7 @@ const inputRouter = new InputRouter(
       } else {
         if (hoveredToolbarButton !== null) { hoveredToolbarButton = null; changed = true; }
         if (hoveredTabId !== null) { hoveredTabId = null; changed = true; }
+        if (hoveredPanelTab !== null) { hoveredPanelTab = null; changed = true; }
         if (sidebar.getHoveredRow() !== null) { sidebar.setHoveredRow(null); changed = true; }
       }
       if (changed) scheduleRender();

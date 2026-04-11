@@ -18,6 +18,7 @@ export interface ToolbarConfig {
   tabs?: WindowTab[];
   hoveredTabId?: string | null;
   panelTabs?: { label: string; active: boolean }[];
+  hoveredPanelTab?: string | null;
 }
 
 export function sgrForCell(cell: Cell): string {
@@ -109,6 +110,27 @@ export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string;
     if (col + width > maxCol) break; // no room
     ranges.push({ id: tab.windowId, startCol: col, endCol: col + width - 1, tab });
     col += width + sepWidth;
+  }
+  return ranges;
+}
+
+// Returns the column ranges for panel tabs (relative to content area start, same as toolbar clicks)
+export function getPanelTabRanges(toolbar: ToolbarConfig): Array<{ label: string; startCol: number; endCol: number }> {
+  const panelTabs = toolbar.panelTabs;
+  if (!panelTabs?.length) return [];
+
+  const ranges: Array<{ label: string; startCol: number; endCol: number }> = [];
+  // Panel tabs start after: mainCols (main area) + 1 (divider) + 1 (padding)
+  let col = toolbar.mainCols + 2;
+
+  for (let i = 0; i < panelTabs.length; i++) {
+    const pt = panelTabs[i];
+    const width = stringDisplayWidth(pt.label) + 2; // " label "
+    ranges.push({ label: pt.label, startCol: col, endCol: col + width - 1 });
+    col += width;
+    if (i < panelTabs.length - 1) {
+      col += 3; // " │ "
+    }
   }
   return ranges;
 }
@@ -265,6 +287,9 @@ export function compositeGrids(
         let col = 1; // 1-col left padding
         for (let ti = 0; ti < toolbar.panelTabs.length; ti++) {
           const pt = toolbar.panelTabs[ti];
+          const isHovered = !pt.active && toolbar.hoveredPanelTab === pt.label;
+          const hasBg = pt.active || isHovered;
+          const bg = pt.active ? activeBg : hoverBg;
           const label = ` ${pt.label} `;
           let charCol = 0;
           for (const ch of label) {
@@ -278,14 +303,14 @@ export function compositeGrids(
                 fg: pt.active ? peachFg : 8,
                 fgMode: pt.active ? ColorMode.RGB : ColorMode.Palette,
                 bold: pt.active,
-                bg: pt.active ? activeBg : 0,
-                bgMode: pt.active ? ColorMode.RGB : ColorMode.Default,
+                bg: hasBg ? bg : 0,
+                bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
               };
               if (w === 2 && c + 1 < totalCols) {
                 grid.cells[0][c + 1] = {
                   ...DEFAULT_CELL, char: "", width: 0,
-                  bg: pt.active ? activeBg : 0,
-                  bgMode: pt.active ? ColorMode.RGB : ColorMode.Default,
+                  bg: hasBg ? bg : 0,
+                  bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
                 };
               }
             }
