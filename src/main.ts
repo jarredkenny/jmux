@@ -460,6 +460,54 @@ function resizeDiffPanel(): void {
   diffBridge.resize(cols, rows);
 }
 
+const META_AGENT_SESSION = "jmux-agent";
+const META_AGENT_DIR = resolve(homedir(), ".config", "jmux", "agent");
+
+async function launchMetaAgent(): Promise<void> {
+  if (!ptyClientName) await resolveClientName();
+  if (!ptyClientName) return;
+
+  // If the agent session already exists, just switch to it
+  const existing = currentSessions.find(s => s.name === META_AGENT_SESSION);
+  if (existing) {
+    await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(META_AGENT_SESSION)}`);
+    return;
+  }
+
+  // Bootstrap the agent directory with CLAUDE.md
+  mkdirSync(META_AGENT_DIR, { recursive: true });
+  const skillPath = resolve(import.meta.dir, "../skills/jmux-meta-agent.md");
+  let skillContent = "";
+  try {
+    const raw = readFileSync(skillPath, "utf-8");
+    // Strip YAML frontmatter
+    skillContent = raw.replace(/^---[\s\S]*?---\n*/, "");
+  } catch { /* skill file not found */ }
+
+  // Discover workflow configs to include as context
+  const discovered = discoverWorkflowConfigs(cachedProjectDirs);
+  let workflowSection = "";
+  if (discovered.length > 0) {
+    workflowSection = "\n## Discovered Workflow Configs\n\n";
+    for (const d of discovered) {
+      workflowSection += `### ${d.config.project} (${d.dir})\n\`\`\`yaml\n${d.raw}\`\`\`\n\n`;
+    }
+  }
+
+  const claudeMd = `# CLAUDE.md — jmux Meta Agent\n\n${skillContent}${workflowSection}`;
+  writeFileSync(resolve(META_AGENT_DIR, "CLAUDE.md"), claudeMd);
+
+  // Create the session and launch claude
+  const claudeCmd = claudeCommand.includes(" ")
+    ? `${claudeCommand}` // already has flags like --dangerously-skip-permissions
+    : claudeCommand;
+
+  await control.sendCommand(
+    `new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${META_AGENT_SESSION}`)} -s ${tq(META_AGENT_SESSION)} -c ${tq(META_AGENT_DIR)} ${tq(claudeCmd)}`,
+  );
+  await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(META_AGENT_SESSION)}`);
+}
+
 async function toggleDiffPanel(): Promise<void> {
   const wasActive = diffPanel.isActive();
   diffPanel.toggle();
@@ -865,6 +913,7 @@ const inputRouter = new InputRouter(
       if (!diffPanel.isActive() || diffPanel.state === "full") return;
       setDiffFocus(!diffPanelFocused);
     },
+    onMetaAgent: () => launchMetaAgent(),
   },
   sidebarShown,
 );
