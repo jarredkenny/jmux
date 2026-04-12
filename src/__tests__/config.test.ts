@@ -44,3 +44,30 @@ describe("loadUserConfig", () => {
     expect(loadUserConfig("/tmp/__jmux_does_not_exist__/config.json")).toEqual({});
   });
 });
+
+describe("loadUserConfig adapter config", () => {
+  test("parses adapter config from valid JSON", () => {
+    const tmpPath = `/tmp/jmux-test-config-${Date.now()}.json`;
+    const config = {
+      sidebarWidth: 30,
+      adapters: {
+        codeHost: { type: "gitlab" },
+        issueTracker: { type: "linear" },
+      },
+    };
+    require("fs").writeFileSync(tmpPath, JSON.stringify(config));
+    const result = loadUserConfig(tmpPath);
+    expect(result.adapters).toBeDefined();
+    expect(result.adapters!.codeHost!.type).toBe("gitlab");
+    expect(result.adapters!.issueTracker!.type).toBe("linear");
+    require("fs").unlinkSync(tmpPath);
+  });
+
+  test("returns undefined adapters when not configured", () => {
+    const tmpPath = `/tmp/jmux-test-config-${Date.now()}.json`;
+    require("fs").writeFileSync(tmpPath, JSON.stringify({ sidebarWidth: 26 }));
+    const result = loadUserConfig(tmpPath);
+    expect(result.adapters).toBeUndefined();
+    require("fs").unlinkSync(tmpPath);
+  });
+});

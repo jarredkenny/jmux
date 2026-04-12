@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import { homedir } from "os";
+import type { AdapterConfig } from "./adapters/types";
 
 export interface JmuxConfig {
   sidebarWidth?: number;
@@ -11,6 +12,7 @@ export interface JmuxConfig {
     splitRatio?: number;
     hunkCommand?: string;
   };
+  adapters?: AdapterConfig;
 }
 
 /**
