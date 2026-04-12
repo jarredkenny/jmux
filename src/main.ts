@@ -20,6 +20,12 @@ import type { Modal } from "./modal";
 import { MODAL_BG } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
+import { InfoPanel } from "./info-panel";
+import { renderMrTab } from "./info-panel-mr";
+import { renderIssuesTab } from "./info-panel-issues";
+import { createAdapters } from "./adapters/registry";
+import { PollCoordinator } from "./adapters/poll-coordinator";
+import type { SessionContext } from "./adapters/types";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { loadUserConfig } from "./config";
@@ -323,6 +329,39 @@ let diffBridge: ScreenBridge | null = null;
 let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
 
+const adapters = createAdapters(userConfig.adapters);
+const infoPanel = new InfoPanel({
+  hasCodeHost: false,
+  hasIssueTracker: false,
+});
+
+async function initAdapters(): Promise<void> {
+  if (adapters.codeHost) await adapters.codeHost.authenticate();
+  if (adapters.issueTracker) await adapters.issueTracker.authenticate();
+  infoPanel.updateConfig({
+    hasCodeHost: adapters.codeHost?.authState === "ok",
+    hasIssueTracker: adapters.issueTracker?.authState === "ok",
+  });
+}
+
+const pollCoordinator = new PollCoordinator({
+  codeHost: adapters.codeHost,
+  issueTracker: adapters.issueTracker,
+  onUpdate: (_sessionName) => {
+    sidebar.setSessionContexts(pollCoordinator.getAllContexts());
+    scheduleRender();
+  },
+  getSessionDir: (name) => {
+    const session = currentSessions.find((s) => s.name === name);
+    return session ? (sessionDetailsCache.get(session.id)?.directory ?? null) : null;
+  },
+});
+
+initAdapters().then(() => {
+  pollCoordinator.start();
+  scheduleRender();
+});
+
 function setDiffFocus(focused: boolean): void {
   diffPanelFocused = focused;
   inputRouter.setDiffPanel(getDiffPanelCols(), focused);
@@ -430,19 +469,22 @@ async function spawnHunk(cols: number, rows: number): Promise<void> {
 
   const { Terminal } = await import("bun-pty");
   diffBridge = new ScreenBridge(cols, rows);
-  diffPty = new Terminal(hunkPath, ["diff"], {
+  const pty_ = new Terminal(hunkPath, ["diff"], {
     name: "xterm-256color",
     cols,
     rows,
     env: { ...process.env, TERM: "xterm-256color" },
     cwd,
   });
+  diffPty = pty_;
 
-  diffPty.onData((data: string) => {
+  pty_.onData((data: string) => {
     diffBridge!.write(data).then(() => scheduleRender());
   });
 
-  diffPty.onExit(() => {
+  pty_.onExit(() => {
+    // Guard: if a newer hunk process replaced us, don't clobber its state
+    if (diffPty !== pty_) return;
     diffPanel.setHunkExited(true);
     diffPty = null;
     scheduleRender();
@@ -563,6 +605,18 @@ async function fetchSessions(): Promise<void> {
 
     sidebar.updateSessions(sessions);
 
+    // Update poll coordinator session list
+    const knownSessions = new Set<string>();
+    for (const session of sessions) {
+      knownSessions.add(session.name);
+      const dir = sessionDetailsCache.get(session.id)?.directory;
+      if (dir) pollCoordinator.addSession(session.name, dir);
+    }
+    for (const [name] of pollCoordinator.getAllContexts()) {
+      if (!knownSessions.has(name)) pollCoordinator.removeSession(name);
+    }
+    sidebar.setSessionContexts(pollCoordinator.getAllContexts());
+
     // Prune cache timer state for dead sessions (keyed by name)
     const liveNames = sessions.map((s) => s.name);
     otelReceiver.pruneExcept(liveNames);
@@ -622,6 +676,8 @@ async function switchSession(sessionId: string): Promise<void> {
     currentSessionId = sessionId;
     sidebar.setActiveSession(sessionId);
     sidebar.scrollToActive();
+    const sessionName = currentSessions.find((s) => s.id === sessionId)?.name;
+    if (sessionName) pollCoordinator.setActiveSession(sessionName);
     fetchWindows();
     renderFrame();
   } catch {
@@ -651,18 +707,43 @@ function renderFrame(): void {
       modalCursorPos = { row: pos.startRow + cursorPos.row, col: pos.startCol + cursorPos.col };
     }
   }
-  let diffPanelArg: { grid: import("./types").CellGrid; mode: "split" | "full"; focused: boolean } | undefined;
+  let diffPanelArg: { grid: import("./types").CellGrid; mode: "split" | "full"; focused: boolean; tabBar?: import("./types").CellGrid } | undefined;
   if (diffPanel.isActive()) {
     const dpCols = getDiffPanelCols();
     const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-    if (diffPanel.hunkExited || !diffBridge) {
-      const emptyGrid = !Bun.which(hunkCommand)
-        ? diffPanel.getNotFoundGrid(dpCols, dpRows)
-        : diffPanel.getEmptyGrid(dpCols, dpRows);
-      diffPanelArg = { grid: emptyGrid, mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
+
+    let contentGrid: import("./types").CellGrid;
+    if (infoPanel.activeTab === "diff") {
+      if (diffPanel.hunkExited || !diffBridge) {
+        contentGrid = !Bun.which(hunkCommand)
+          ? diffPanel.getNotFoundGrid(dpCols, dpRows)
+          : diffPanel.getEmptyGrid(dpCols, dpRows);
+      } else {
+        contentGrid = diffBridge.getGrid();
+      }
+    } else if (infoPanel.activeTab === "mr") {
+      const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+      const ctx = pollCoordinator.getContext(sessionName);
+      const errorMsg = adapters.codeHost?.authState === "failed"
+        ? `Authentication expired — check ${adapters.codeHost.authHint}`
+        : undefined;
+      contentGrid = renderMrTab(ctx?.mr ?? null, dpCols, dpRows, errorMsg);
     } else {
-      diffPanelArg = { grid: diffBridge.getGrid(), mode: diffPanel.state as "split" | "full", focused: diffPanelFocused };
+      const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+      const ctx = pollCoordinator.getContext(sessionName);
+      const errorMsg = adapters.issueTracker?.authState === "failed"
+        ? `Authentication expired — check ${adapters.issueTracker.authHint}`
+        : undefined;
+      contentGrid = renderIssuesTab(ctx?.issue ?? null, dpCols, dpRows, errorMsg);
     }
+
+    const tabBar = infoPanel.hasMultipleTabs ? infoPanel.getTabBarGrid(dpCols) : undefined;
+    diffPanelArg = {
+      grid: contentGrid,
+      mode: diffPanel.state as "split" | "full",
+      focused: diffPanelFocused,
+      tabBar,
+    };
   }
   renderer.render(
     grid, cursor,
@@ -845,6 +926,41 @@ const inputRouter = new InputRouter(
     onDiffPanelFocusToggle: () => {
       if (!diffPanel.isActive() || diffPanel.state === "full") return;
       setDiffFocus(!diffPanelFocused);
+    },
+    onPanelPrevTab: () => {
+      infoPanel.prevTab();
+      scheduleRender();
+    },
+    onPanelNextTab: () => {
+      infoPanel.nextTab();
+      scheduleRender();
+    },
+    onPanelAction: (key) => {
+      const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+      const ctx = pollCoordinator.getContext(sessionName);
+
+      if (infoPanel.activeTab === "mr" && ctx?.mr && adapters.codeHost) {
+        if (key === "o") adapters.codeHost.openInBrowser(ctx.mr.id);
+        if (key === "r") adapters.codeHost.markReady(ctx.mr.id).then(() => scheduleRender());
+        if (key === "a") adapters.codeHost.approve(ctx.mr.id).then(() => scheduleRender());
+      }
+      if (infoPanel.activeTab === "issues" && ctx?.issue && adapters.issueTracker) {
+        if (key === "o") adapters.issueTracker.openInBrowser(ctx.issue.id);
+        if (key === "s") {
+          adapters.issueTracker.getAvailableStatuses(ctx.issue.id).then((statuses) => {
+            if (statuses.length === 0) return;
+            const items = statuses.map((s) => ({ id: s, label: s }));
+            const listModal = new ListModal({ items, header: "Update Status" });
+            listModal.open();
+            openModal(listModal, (selected: unknown) => {
+              const sel = selected as { id: string };
+              if (sel?.id && ctx.issue) {
+                adapters.issueTracker!.updateStatus(ctx.issue.id, sel.id).then(() => scheduleRender());
+              }
+            });
+          });
+        }
+      }
     },
   },
   sidebarShown,
@@ -1236,7 +1352,6 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
               await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(result.dir)} ${tq(cmd)}`);
               const waitCmd = `while [ ! -d ${tq(wtPath)} ]; do sleep 0.2; done; cd ${tq(wtPath)} && exec $SHELL`;
               await control.sendCommand(`split-window -h -d -t ${tq(session)} -c ${tq(result.dir)} ${tq(waitCmd)}`);
-              await control.sendCommand(`select-pane -t ${tq(session + ".0")}`);
               await control.sendCommand(`switch-client -c ${parentClient} -t ${tq(session)}`);
               break;
             }
@@ -1964,6 +2079,7 @@ async function start(): Promise<void> {
 
 function cleanup(): void {
   killDiffProcess();
+  pollCoordinator.stop();
   otelReceiver.stop();
   stopCacheTimerTick();
   control.close().catch(() => {});
