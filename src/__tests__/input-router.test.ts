@@ -513,4 +513,56 @@ describe("InfoPanel tab switching", () => {
     router.handleInput("o");
     expect(diffData).toBe("o");
   });
+
+  test("up arrow triggers onPanelSelectPrev when panel tabs active", () => {
+    let called = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onPanelSelectPrev: () => { called = true; },
+      },
+      true,
+    );
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    router.handleInput("\x1b[A");
+    expect(called).toBe(true);
+  });
+
+  test("down arrow triggers onPanelSelectNext when panel tabs active", () => {
+    let called = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onPanelSelectNext: () => { called = true; },
+      },
+      true,
+    );
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    router.handleInput("\x1b[B");
+    expect(called).toBe(true);
+  });
+
+  test("arrows pass through to diff panel when tabs not active", () => {
+    let diffData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onDiffPanelData: (d) => { diffData = d; },
+        onPanelSelectPrev: () => {},
+      },
+      true,
+    );
+    router.setDiffPanel(40, true);
+    // panelTabsActive defaults to false
+    router.handleInput("\x1b[A");
+    expect(diffData).toBe("\x1b[A");
+  });
 });

@@ -53,6 +53,8 @@ export interface InputRouterOptions {
   onPanelNextTab?: () => void;
   onPanelAction?: (key: string) => void;
   onPanelTabClick?: (col: number) => void; // col relative to panel start
+  onPanelSelectPrev?: () => void;
+  onPanelSelectNext?: () => void;
 }
 
 export class InputRouter {
@@ -285,6 +287,17 @@ export class InputRouter {
       if (data === "]" && this.opts.onPanelNextTab) {
         this.opts.onPanelNextTab();
         return;
+      }
+      // Up/Down arrow for item selection within a tab (only on MR/Issues tabs)
+      if (this.panelTabsActive) {
+        if (data === "\x1b[A" && this.opts.onPanelSelectPrev) {
+          this.opts.onPanelSelectPrev();
+          return;
+        }
+        if (data === "\x1b[B" && this.opts.onPanelSelectNext) {
+          this.opts.onPanelSelectNext();
+          return;
+        }
       }
       if (this.panelTabsActive && this.opts.onPanelAction && (data === "o" || data === "r" || data === "a" || data === "s")) {
         this.opts.onPanelAction(data);
