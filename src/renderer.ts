@@ -136,6 +136,7 @@ export function compositeGrids(
     grid: CellGrid;
     mode: "split" | "full";
     focused: boolean;
+    tabBar?: CellGrid;
   },
 ): CellGrid {
   if (!sidebar) return main;
@@ -295,6 +296,21 @@ export function compositeGrids(
     }
   }
 
+  // Tab bar rendering — writes into the toolbar row of the panel area
+  if (diffPanel?.tabBar && toolbarRows > 0) {
+    const tabBarRow = 0; // toolbar is always row 0
+    const sidebarOffset = sidebar.cols + 1;
+    let panelStartCol: number;
+    if (diffPanel.mode === "split") {
+      panelStartCol = sidebarOffset + mainCols + 1; // after divider
+    } else {
+      panelStartCol = sidebarOffset; // full mode replaces main
+    }
+    for (let c = 0; c < diffPanel.tabBar.cols && panelStartCol + c < totalCols; c++) {
+      grid.cells[tabBarRow][panelStartCol + c] = { ...diffPanel.tabBar.cells[0][c] };
+    }
+  }
+
   // Overlay modal centered over entire terminal with border, shadow, and dimmed background
   if (modalOverlay) {
     const pos = getModalPosition(totalCols, totalRows, modalOverlay.cols, modalOverlay.rows);
@@ -402,6 +418,7 @@ export class Renderer {
       grid: CellGrid;
       mode: "split" | "full";
       focused: boolean;
+      tabBar?: CellGrid;
     },
   ): void {
     const grid = compositeGrids(main, sidebar, toolbar, modalOverlay, diffPanel);

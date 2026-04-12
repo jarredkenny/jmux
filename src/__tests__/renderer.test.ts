@@ -409,3 +409,39 @@ describe("compositeGrids with diff panel", () => {
     expect(result.cols).toBe(36);
   });
 });
+
+describe("compositeGrids with panel tab bar", () => {
+  test("composites tab bar into toolbar row of panel area in split mode", () => {
+    const main = createGrid(40, 10);
+    const sidebar = createGrid(24, 11);
+    const diffGrid = createGrid(20, 10);
+    const tabBar = createGrid(20, 1);
+    // Write "Diff" into the tab bar
+    const text = "Diff";
+    for (let i = 0; i < text.length; i++) {
+      tabBar.cells[0][i + 1].char = text[i];
+    }
+
+    const result = compositeGrids(
+      main,
+      sidebar,
+      { buttons: [], mainCols: 40 }, // toolbar config
+      null, // no modal
+      {
+        grid: diffGrid,
+        mode: "split",
+        focused: false,
+        tabBar,
+      },
+    );
+
+    // Tab bar should be in toolbar row (row 0), starting at panel columns
+    // Panel starts at: sidebar(24) + border(1) + main(40) + divider(1) = 66
+    const panelStart = 24 + 1 + 40 + 1;
+    const tabBarText = Array.from(
+      { length: 4 },
+      (_, i) => result.cells[0][panelStart + 1 + i].char,
+    ).join("");
+    expect(tabBarText).toBe("Diff");
+  });
+});
