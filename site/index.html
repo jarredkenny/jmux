@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>jmux — The terminal workspace for agentic development</title>
-  <meta name="description" content="Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are working, which finished, and which need your review. Bring your own editor, your own Git workflow, any agent.">
+  <title>jmux — The agent orchestrator that doesn't replace your tools</title>
+  <meta name="description" content="Orchestrate Claude Code, Codex, aider, or any terminal agent — with your diff viewer, your worktree manager, your terminal. No bundled IDE. No lock-in.">
   <link rel="canonical" href="https://jmux.dev">
   <!-- Open Graph -->
-  <meta property="og:title" content="jmux — The terminal workspace for agentic development">
-  <meta property="og:description" content="Run AI coding agents in parallel. See which are working, which finished, which need review — all from your terminal.">
+  <meta property="og:title" content="jmux — The agent orchestrator that doesn't replace your tools">
+  <meta property="og:description" content="Orchestrate Claude Code, Codex, aider, or any terminal agent — with your diff viewer, your worktree manager, your terminal. No bundled IDE. No lock-in.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://jmux.dev">
   <meta property="og:site_name" content="jmux">
@@ -17,8 +17,8 @@
   <meta property="og:image:height" content="630">
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="jmux — The terminal workspace for agentic development">
-  <meta name="twitter:description" content="Run AI coding agents in parallel. See which are working, which finished, which need review — all from your terminal.">
+  <meta name="twitter:title" content="jmux — The agent orchestrator that doesn't replace your tools">
+  <meta name="twitter:description" content="Orchestrate Claude Code, Codex, aider, or any terminal agent — with your diff viewer, your worktree manager, your terminal. No bundled IDE. No lock-in.">
   <meta name="twitter:image" content="https://jmux.dev/assets/og-image.png">
   <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -199,14 +199,14 @@
   <!-- Hero -->
   <section>
     <div class="max-w-6xl mx-auto text-center px-6 md:px-12 pt-20 md:pt-28 pb-10">
-    <p class="font-mono text-xs md:text-sm text-accent tracking-[0.2em] uppercase mb-4">Parallel Development Environment</p>
+    <p class="font-mono text-xs md:text-sm text-accent tracking-[0.2em] uppercase mb-4">Terminal Agent Orchestrator</p>
     <h1 class="text-3xl md:text-5xl font-extrabold leading-tight max-w-2xl mx-auto mb-6 tracking-tight">
-      Run 10 agents in parallel.<br>
-      <span class="text-[#94a3b8]">Know exactly what each one is doing.</span>
+      Other tools replace your workflow.<br>
+      <span class="text-[#94a3b8]">jmux orchestrates it.</span>
     </h1>
     <p class="text-base md:text-lg text-[#c4c9d4] max-w-xl mx-auto mb-9 leading-relaxed">
-      Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are working,
-      which finished, and which need your review. Bring your own editor, your own Git workflow, any agent.
+      Agent IDEs ship their own terminal, diff viewer, and worktree manager — then lock you in.
+      jmux orchestrates tmux, hunk, wtm, and whatever else you already use. Your tools stay your tools.
     </p>
 
     <!-- Install command -->
@@ -259,18 +259,18 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-3xl mx-auto">
 
       <div class="bg-surface border border-border rounded-xl p-6 card-hover animate-in">
-        <h3 class="text-base font-semibold mb-2 text-white">Integrate the best, bundle nothing</h3>
-        <p class="text-sm text-[#a1a1aa] leading-relaxed">jmux doesn't build a diff viewer — it integrates <a href="https://github.com/modem-dev/hunk" class="text-accent hover:underline">hunk</a>. It doesn't build a worktree manager — it integrates <a href="https://github.com/jarredkenny/worktree-manager" class="text-accent hover:underline">wtm</a>. When a capability matters, jmux goes deep with the best tool for the job.</p>
+        <h3 class="text-base font-semibold mb-2 text-white">Your diff viewer is better than theirs</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">Agent IDEs bundle their own diff panel. jmux integrates <a href="https://github.com/modem-dev/hunk" class="text-accent hover:underline">hunk</a> — syntax-highlighted, word-level, split and full-screen views. Built by people who only build diff viewers.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-6 card-hover animate-in">
-        <h3 class="text-base font-semibold mb-2 text-white">Work anywhere</h3>
-        <p class="text-sm text-[#a1a1aa] leading-relaxed">jmux runs in any terminal — local, SSH, containers, devboxes. Your workspace follows you because it's terminal-native, not because it syncs to a cloud.</p>
+        <h3 class="text-base font-semibold mb-2 text-white">Your worktrees are real worktrees</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">jmux doesn't invent its own branching model. It uses <a href="https://github.com/jarredkenny/worktree-manager" class="text-accent hover:underline">wtm</a> and git worktrees — one branch per agent, one session per branch. If you stop using jmux, the branches are still there.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-6 card-hover animate-in">
-        <h3 class="text-base font-semibold mb-2 text-white">No lock-in</h3>
-        <p class="text-sm text-[#a1a1aa] leading-relaxed">Under the hood, jmux orchestrates tmux sessions. If you stop using jmux, your sessions are still there. Your tools are still your tools. Nothing is proprietary.</p>
+        <h3 class="text-base font-semibold mb-2 text-white">Your terminal is your terminal</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">Your theme, your keybinds, your plugins, your ~/.tmux.conf. jmux runs in any terminal you already have — local, SSH, containers, devboxes. No Electron shell. No proprietary runtime. If it runs tmux, it runs jmux.</p>
       </div>
 
     </div>
@@ -282,7 +282,7 @@
     <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
     <div class="text-center mb-10 animate-in fade-up">
       <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">How it Compares</p>
-      <h2 class="text-2xl md:text-3xl font-bold tracking-tight">The orchestration without the trade-offs.</h2>
+      <h2 class="text-2xl md:text-3xl font-bold tracking-tight">What you give up with a bundled agent IDE.</h2>
     </div>
 
     <div class="max-w-3xl mx-auto overflow-x-auto animate-in">
@@ -291,7 +291,7 @@
           <tr class="border-b border-border">
             <th class="py-3 pr-4 text-left text-[#71717a] font-normal w-2/5"></th>
             <th class="py-3 px-4 text-center font-semibold text-accent">jmux</th>
-            <th class="py-3 px-4 text-center font-normal text-[#71717a]">GUI Agent IDEs</th>
+            <th class="py-3 px-4 text-center font-normal text-[#71717a]">Bundled Agent IDEs</th>
             <th class="py-3 px-4 text-center font-normal text-[#71717a]">Raw tmux</th>
           </tr>
         </thead>
@@ -360,7 +360,7 @@
       </table>
     </div>
 
-    <p class="text-center text-xs text-[#52525b] mt-6 max-w-3xl mx-auto">GUI Agent IDEs include tools like Orca, Cursor, and Windsurf that bundle their own terminal, editor, and agent runtime into a desktop app.</p>
+    <p class="text-center text-xs text-[#52525b] mt-6 max-w-3xl mx-auto">Bundled agent IDEs — Orca, Cursor, Windsurf, Conductor — ship their own terminal, editor, and runtime in a desktop app.</p>
     </div>
   </section>
 
@@ -408,7 +408,7 @@
     <div class="max-w-3xl mx-auto">
       <div class="flex flex-col md:flex-row gap-8 md:gap-12 items-center">
         <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
-          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">New in 0.9</p>
+          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">Keyboard-First</p>
           <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Command Palette</h2>
           <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
             <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">Ctrl-a p</span> to open.
@@ -432,7 +432,7 @@
     <div class="max-w-5xl mx-auto">
       <div class="flex flex-col md:flex-row-reverse gap-8 md:gap-12 items-center">
         <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
-          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">New in 0.11</p>
+          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">Code Review</p>
           <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Integrated Diff Panel</h2>
           <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
             <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">Ctrl-a g</span> to toggle.
@@ -460,7 +460,7 @@
     <div class="max-w-5xl mx-auto">
       <div class="flex flex-col md:flex-row gap-8 md:gap-12 items-center">
         <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
-          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">New in 0.12</p>
+          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">Agent Automation</p>
           <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Agent Control CLI</h2>
           <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
             <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">jmux ctl</span> gives agents and scripts a structured CLI to control the workspace. Dispatch Claude Code instances, monitor attention flags, capture pane output, send follow-ups.
@@ -510,7 +510,7 @@
     <div class="max-w-3xl mx-auto">
       <div class="flex flex-col md:flex-row-reverse gap-8 md:gap-12 items-center">
         <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
-          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">New in 0.10</p>
+          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">Cost Visibility</p>
           <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Cache Timers</h2>
           <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
             Each session shows a live countdown to Claude's prompt cache expiry. Green above 3 minutes, yellow under 3, red under 30 seconds, dim at <span class="font-mono text-white text-xs">0:00</span>.
