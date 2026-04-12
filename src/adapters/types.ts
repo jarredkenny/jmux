@@ -35,12 +35,14 @@ export interface SessionContext {
   dir: string;
   branch: string | null;
   remote: string | null;
-  mr: MergeRequest | null;
-  issue: Issue | null;
+  mrs: Array<MergeRequest & { source: LinkSource }>;
+  issues: Array<Issue & { source: LinkSource }>;
   resolvedAt: number;
 }
 
 export type AdapterAuthState = "ok" | "failed" | "unauthenticated";
+
+export type LinkSource = "manual" | "branch" | "mr-link" | "transitive";
 
 export interface CodeHostAdapter {
   type: string;
@@ -54,6 +56,9 @@ export interface CodeHostAdapter {
   openInBrowser(mrId: string): void;
   markReady(mrId: string): Promise<void>;
   approve(mrId: string): Promise<void>;
+  searchMergeRequests(query: string): Promise<MergeRequest[]>;
+  parseMrUrl(url: string): string | null;
+  pollMergeRequestsByIds(ids: string[]): Promise<Map<string, MergeRequest>>;
 }
 
 export interface IssueTrackerAdapter {
@@ -69,6 +74,7 @@ export interface IssueTrackerAdapter {
   getAvailableStatuses(issueId: string): Promise<string[]>;
   openInBrowser(issueId: string): void;
   updateStatus(issueId: string, status: string): Promise<void>;
+  searchIssues(query: string): Promise<Issue[]>;
 }
 
 export interface AdapterConfig {

@@ -9,6 +9,7 @@ import type {
   IssueTrackerAdapter,
   AdapterConfig,
   AdapterAuthState,
+  LinkSource,
 } from "../../adapters/types";
 
 describe("adapter types", () => {
@@ -55,18 +56,49 @@ describe("adapter types", () => {
     expect(issue.linkedMrUrls).toHaveLength(1);
   });
 
-  test("SessionContext with no MR or issue", () => {
+  test("SessionContext with multiple MRs and issues", () => {
+    const ctx: SessionContext = {
+      sessionName: "api",
+      dir: "/tmp",
+      branch: "main",
+      remote: "https://gitlab.com/org/repo.git",
+      mrs: [
+        {
+          id: "1", title: "Fix", status: "open", sourceBranch: "fix", targetBranch: "main",
+          pipeline: null, approvals: { required: 0, current: 0 }, webUrl: "", source: "branch",
+        },
+      ],
+      issues: [
+        {
+          id: "i1", identifier: "ENG-1", title: "Task", status: "In Progress",
+          assignee: null, linkedMrUrls: [], webUrl: "", source: "manual",
+        },
+      ],
+      resolvedAt: Date.now(),
+    };
+    expect(ctx.mrs).toHaveLength(1);
+    expect(ctx.issues).toHaveLength(1);
+    expect(ctx.mrs[0].source).toBe("branch");
+    expect(ctx.issues[0].source).toBe("manual");
+  });
+
+  test("SessionContext with empty arrays", () => {
     const ctx: SessionContext = {
       sessionName: "scratch",
       dir: "/tmp",
       branch: null,
       remote: null,
-      mr: null,
-      issue: null,
+      mrs: [],
+      issues: [],
       resolvedAt: Date.now(),
     };
-    expect(ctx.mr).toBeNull();
-    expect(ctx.issue).toBeNull();
+    expect(ctx.mrs).toHaveLength(0);
+    expect(ctx.issues).toHaveLength(0);
+  });
+
+  test("LinkSource values", () => {
+    const sources: import("../../adapters/types").LinkSource[] = ["manual", "branch", "mr-link", "transitive"];
+    expect(sources).toHaveLength(4);
   });
 
   test("BranchContext shape", () => {
