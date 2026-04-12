@@ -1,6 +1,7 @@
 import type { CacheTimerState, CellGrid, SessionInfo } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
+import type { SessionContext } from "./adapters/types";
 
 const HEADER_ROWS = 2; // "jmux" header + separator
 
@@ -258,6 +259,7 @@ export class Sidebar {
   private latestVersion: string | null = null;
   private cacheTimers = new Map<string, CacheTimerState>();
   cacheTimersEnabled: boolean = true;
+  private sessionContexts = new Map<string, SessionContext>();
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -314,6 +316,10 @@ export class Sidebar {
     } else {
       this.cacheTimers.set(sessionId, state);
     }
+  }
+
+  setSessionContexts(contexts: Map<string, SessionContext>): void {
+    this.sessionContexts = contexts;
   }
 
   hasActivity(sessionId: string): boolean {
@@ -561,7 +567,8 @@ export class Sidebar {
     const windowCountStr = `${session.windowCount}w`;
     const windowCountCol = this.width - windowCountStr.length - 1;
     const nameStart = 3;
-    const nameMaxLen = windowCountCol - 1 - nameStart;
+    const hasPipelineGlyph = this.sessionContexts.size > 0;
+    const nameMaxLen = windowCountCol - 1 - nameStart - (hasPipelineGlyph ? 2 : 0);
     let displayName = session.name;
     if (displayName.length > nameMaxLen) {
       displayName = displayName.slice(0, nameMaxLen - 1) + "\u2026";
@@ -573,6 +580,36 @@ export class Sidebar {
         ? { ...HOVER_NAME_ATTRS }
         : { ...INACTIVE_NAME_ATTRS };
     writeString(grid, nameRow, nameStart, displayName, nameAttrs);
+
+    const bgAttrs: CellAttrs = isActive
+      ? { bg: ACTIVE_BG, bgMode: ColorMode.RGB }
+      : isHovered
+        ? { bg: HOVER_BG, bgMode: ColorMode.RGB }
+        : {};
+
+    // Pipeline glyph (between name and window count)
+    const ctx = this.sessionContexts.get(session.name);
+    const pipelineState = ctx?.mr?.pipeline?.state;
+    if (pipelineState) {
+      const GLYPH_MAP: Record<string, string> = {
+        passed: "✓", running: "⟳", failed: "✗", pending: "○", canceled: "—",
+      };
+      const GLYPH_COLORS: Record<string, CellAttrs> = {
+        passed: { fg: 2, fgMode: ColorMode.Palette },
+        running: { fg: 3, fgMode: ColorMode.Palette },
+        failed: { fg: 1, fgMode: ColorMode.Palette },
+        pending: { fg: 3, fgMode: ColorMode.Palette },
+        canceled: { fg: 8, fgMode: ColorMode.Palette, dim: true },
+      };
+      const glyph = GLYPH_MAP[pipelineState];
+      const glyphAttrs = GLYPH_COLORS[pipelineState];
+      if (glyph && glyphAttrs) {
+        const glyphCol = windowCountCol - 2;
+        if (glyphCol > nameStart) {
+          writeString(grid, nameRow, glyphCol, glyph, { ...glyphAttrs, ...bgAttrs });
+        }
+      }
+    }
 
     const wcAttrs: CellAttrs = isActive
       ? { ...DIM_ATTRS, bg: ACTIVE_BG, bgMode: ColorMode.RGB }

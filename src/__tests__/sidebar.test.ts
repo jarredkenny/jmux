@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { Sidebar } from "../sidebar";
 import type { SessionInfo } from "../types";
+import type { SessionContext, PipelineStatus } from "../adapters/types";
 
 const SIDEBAR_WIDTH = 24;
 
@@ -747,5 +748,80 @@ describe("Sidebar", () => {
       (_, i) => grid.cells[3][i].char,
     ).join("");
     expect(detailText).not.toMatch(/\d:\d\d/);
+  });
+});
+
+function makeContexts(
+  entries: Array<{ name: string; pipelineState?: PipelineStatus["state"] }>,
+): Map<string, SessionContext> {
+  const map = new Map<string, SessionContext>();
+  for (const e of entries) {
+    map.set(e.name, {
+      sessionName: e.name,
+      dir: "/tmp",
+      branch: "main",
+      remote: null,
+      mr: e.pipelineState
+        ? {
+            id: "1", title: "Test", status: "open",
+            sourceBranch: "main", targetBranch: "main",
+            pipeline: { state: e.pipelineState, webUrl: "" },
+            approvals: { required: 0, current: 0 },
+            webUrl: "",
+          }
+        : null,
+      issue: null,
+      resolvedAt: Date.now(),
+    });
+  }
+  return map;
+}
+
+describe("Sidebar pipeline glyphs", () => {
+  test("renders pipeline passed glyph", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    sidebar.setSessionContexts(makeContexts([{ name: "api", pipelineState: "passed" }]));
+    const grid = sidebar.getGrid();
+    const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
+    expect(allChars).toContain("✓");
+  });
+
+  test("renders pipeline failed glyph", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    sidebar.setSessionContexts(makeContexts([{ name: "api", pipelineState: "failed" }]));
+    const grid = sidebar.getGrid();
+    const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
+    expect(allChars).toContain("✗");
+  });
+
+  test("renders pipeline running glyph", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    sidebar.setSessionContexts(makeContexts([{ name: "api", pipelineState: "running" }]));
+    const grid = sidebar.getGrid();
+    const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
+    expect(allChars).toContain("⟳");
+  });
+
+  test("no glyph when no session context", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    const grid = sidebar.getGrid();
+    const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
+    expect(allChars).not.toContain("✓");
+    expect(allChars).not.toContain("✗");
+    expect(allChars).not.toContain("⟳");
+  });
+
+  test("no glyph when session has no MR", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    sidebar.setSessionContexts(makeContexts([{ name: "api" }]));
+    const grid = sidebar.getGrid();
+    const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
+    expect(allChars).not.toContain("✓");
+    expect(allChars).not.toContain("✗");
   });
 });
