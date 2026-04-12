@@ -18,47 +18,58 @@ const ISSUE: Issue = {
 
 describe("renderIssuesTab", () => {
   test("renders issue identifier and title", () => {
-    const grid = renderIssuesTab(ISSUE, 40, 20);
+    const grid = renderIssuesTab([{ ...ISSUE, source: "manual" as const }], 40, 20, 0);
     const text = extractText(grid);
     expect(text).toContain("ENG-1234");
     expect(text).toContain("Fix auth token refresh");
   });
 
   test("renders status", () => {
-    const grid = renderIssuesTab(ISSUE, 40, 20);
+    const grid = renderIssuesTab([{ ...ISSUE, source: "manual" as const }], 40, 20, 0);
     const text = extractText(grid);
     expect(text).toContain("In Progress");
   });
 
   test("renders assignee", () => {
-    const grid = renderIssuesTab(ISSUE, 40, 20);
+    const grid = renderIssuesTab([{ ...ISSUE, source: "manual" as const }], 40, 20, 0);
     const text = extractText(grid);
     expect(text).toContain("Jarred");
   });
 
   test("renders action hints", () => {
-    const grid = renderIssuesTab(ISSUE, 40, 20);
+    const grid = renderIssuesTab([{ ...ISSUE, source: "manual" as const }], 40, 20, 0);
     const text = extractText(grid);
     expect(text).toContain("[o]");
     expect(text).toContain("[s]");
   });
 
   test("renders null state", () => {
-    const grid = renderIssuesTab(null, 40, 20);
+    const grid = renderIssuesTab([], 40, 20, 0);
     const text = extractText(grid);
     expect(text).toContain("No linked issue");
   });
 
   test("renders error state", () => {
-    const grid = renderIssuesTab(null, 40, 20, "Authentication expired — check $LINEAR_API_KEY");
+    const grid = renderIssuesTab([], 40, 20, 0, "Authentication expired — check $LINEAR_API_KEY");
     const text = extractText(grid);
     expect(text).toContain("Authentication expired");
   });
 
   test("renders with null assignee", () => {
     const unassigned: Issue = { ...ISSUE, assignee: null };
-    const grid = renderIssuesTab(unassigned, 40, 20);
+    const grid = renderIssuesTab([{ ...unassigned, source: "manual" as const }], 40, 20, 0);
     const text = extractText(grid);
     expect(text).toContain("Unassigned");
+  });
+
+  test("renders multiple issues", () => {
+    const issue2 = { ...ISSUE, id: "i2", identifier: "ENG-1235", title: "Second issue" };
+    const grid = renderIssuesTab(
+      [{ ...ISSUE, source: "manual" as const }, { ...issue2, source: "branch" as const }],
+      40, 30, 0,
+    );
+    const text = extractText(grid);
+    expect(text).toContain("ENG-1234");
+    expect(text).toContain("ENG-1235");
   });
 });
