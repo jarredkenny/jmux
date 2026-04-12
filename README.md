@@ -4,9 +4,9 @@
 
 # jmux
 
-**The terminal workspace for agentic development.**
+**The agent orchestrator that doesn't replace your tools.**
 
-Run Claude Code, Codex, or aider in parallel — jmux shows you which agents are working, which finished, and which need your review. Bring your own editor, your own Git workflow, any agent. Everything stays in your terminal.
+Agent IDEs ship their own terminal, diff viewer, and worktree manager — then lock you in. jmux orchestrates tmux, hunk, wtm, and whatever else you already use. Your tools stay your tools.
 
 [![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
 [![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)
@@ -30,15 +30,13 @@ New to tmux? See the **[Getting Started guide](docs/getting-started.md)** — no
 
 ## Why
 
-AI coding agents work best when you can run many of them at once — different features on different branches, all in parallel. But switching between 10 terminal tabs to figure out which agent finished, which is stuck, and which needs your input is a workflow problem that most tools ignore.
+Your workflow shouldn't change because you added an orchestrator.
 
-jmux solves this. A persistent sidebar shows every session at a glance with real-time status indicators. An orange `!` appears when an agent finishes and needs review. Click to switch. Review the work. Move on.
+**Your diff viewer is better than theirs.** Agent IDEs bundle their own diff panel. jmux integrates [hunk](https://github.com/modem-dev/hunk) — syntax-highlighted, word-level, split and full-screen views. Built by people who only build diff viewers.
 
-**Integrate the best, bundle nothing.** jmux doesn't build a diff viewer — it integrates [hunk](https://github.com/modem-dev/hunk). It doesn't build a worktree manager — it integrates [wtm](https://github.com/jarredkenny/worktree-manager). When a capability matters, jmux goes deep with the best tool for the job. Everything else, you bring yourself.
+**Your worktrees are real worktrees.** jmux doesn't invent its own branching model. It uses [wtm](https://github.com/jarredkenny/worktree-manager) and git worktrees — one branch per agent, one session per branch. If you stop using jmux, the branches are still there.
 
-**Work anywhere.** jmux runs in any terminal — local, SSH, containers, devboxes. Your workspace follows you because it's terminal-native, not because it syncs to a cloud.
-
-**No lock-in.** Under the hood, jmux orchestrates tmux sessions. If you stop using jmux, your sessions are still there. Your tools are still your tools. Nothing is proprietary.
+**Your terminal is your terminal.** Your theme, your keybinds, your plugins, your `~/.tmux.conf`. jmux runs in any terminal you already have — local, SSH, containers, devboxes. No Electron shell. No proprietary runtime. If it runs tmux, it runs jmux.
 
 ## Features
 

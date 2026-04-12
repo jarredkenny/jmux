@@ -1,6 +1,6 @@
 # Getting Started with jmux
 
-A step-by-step guide for developers who haven't used tmux before. jmux handles the complexity of tmux for you — you don't need to learn tmux to use jmux.
+jmux orchestrates your terminal tools — tmux for sessions, hunk for diffs, wtm for worktrees — without replacing any of them. This guide walks you through the basics. No prior tmux knowledge needed.
 
 ---
 
