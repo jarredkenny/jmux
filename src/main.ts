@@ -365,6 +365,7 @@ const pollCoordinator = new PollCoordinator({
     const session = currentSessions.find((s) => s.name === name);
     return session ? (sessionDetailsCache.get(session.id)?.directory ?? null) : null;
   },
+  sessionState: null,
 });
 
 initAdapters().then(() => {
@@ -739,14 +740,14 @@ function renderFrame(): void {
       const errorMsg = adapters.codeHost?.authState === "failed"
         ? `Authentication expired — check ${adapters.codeHost.authHint}`
         : undefined;
-      contentGrid = renderMrTab(ctx?.mr ?? null, dpCols, dpRows, errorMsg);
+      contentGrid = renderMrTab(ctx?.mrs ?? [], dpCols, dpRows, 0, errorMsg);
     } else {
       const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
       const ctx = pollCoordinator.getContext(sessionName);
       const errorMsg = adapters.issueTracker?.authState === "failed"
         ? `Authentication expired — check ${adapters.issueTracker.authHint}`
         : undefined;
-      contentGrid = renderIssuesTab(ctx?.issue ?? null, dpCols, dpRows, errorMsg);
+      contentGrid = renderIssuesTab(ctx?.issues ?? [], dpCols, dpRows, 0, errorMsg);
     }
 
     const tabBar = infoPanel.hasMultipleTabs ? infoPanel.getTabBarGrid(dpCols) : undefined;
@@ -964,23 +965,25 @@ const inputRouter = new InputRouter(
       const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
       const ctx = pollCoordinator.getContext(sessionName);
 
-      if (infoPanel.activeTab === "mr" && ctx?.mr && adapters.codeHost) {
-        if (key === "o") adapters.codeHost.openInBrowser(ctx.mr.id);
-        if (key === "r") adapters.codeHost.markReady(ctx.mr.id).then(() => scheduleRender());
-        if (key === "a") adapters.codeHost.approve(ctx.mr.id).then(() => scheduleRender());
+      const primaryMr = ctx?.mrs[0];
+      const primaryIssue = ctx?.issues[0];
+      if (infoPanel.activeTab === "mr" && primaryMr && adapters.codeHost) {
+        if (key === "o") adapters.codeHost.openInBrowser(primaryMr.id);
+        if (key === "r") adapters.codeHost.markReady(primaryMr.id).then(() => scheduleRender());
+        if (key === "a") adapters.codeHost.approve(primaryMr.id).then(() => scheduleRender());
       }
-      if (infoPanel.activeTab === "issues" && ctx?.issue && adapters.issueTracker) {
-        if (key === "o") adapters.issueTracker.openInBrowser(ctx.issue.id);
+      if (infoPanel.activeTab === "issues" && primaryIssue && adapters.issueTracker) {
+        if (key === "o") adapters.issueTracker.openInBrowser(primaryIssue.id);
         if (key === "s") {
-          adapters.issueTracker.getAvailableStatuses(ctx.issue.id).then((statuses) => {
+          adapters.issueTracker.getAvailableStatuses(primaryIssue.id).then((statuses) => {
             if (statuses.length === 0) return;
             const items = statuses.map((s) => ({ id: s, label: s }));
             const listModal = new ListModal({ items, header: "Update Status" });
             listModal.open();
             openModal(listModal, (selected: unknown) => {
               const sel = selected as { id: string };
-              if (sel?.id && ctx.issue) {
-                adapters.issueTracker!.updateStatus(ctx.issue.id, sel.id).then(() => scheduleRender());
+              if (sel?.id) {
+                adapters.issueTracker!.updateStatus(primaryIssue.id, sel.id).then(() => scheduleRender());
               }
             });
           });

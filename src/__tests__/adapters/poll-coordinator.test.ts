@@ -23,6 +23,9 @@ function makeMockCodeHost(overrides: Partial<CodeHostAdapter> = {}): CodeHostAda
       webUrl: "https://example.com/mr/1",
     })),
     pollAllMergeRequests: mock(() => Promise.resolve(new Map())),
+    pollMergeRequestsByIds: mock(() => Promise.resolve(new Map())),
+    searchMergeRequests: mock(() => Promise.resolve([])),
+    parseMrUrl: mock(() => null),
     openInBrowser: mock(() => {}),
     markReady: mock(() => Promise.resolve()),
     approve: mock(() => Promise.resolve()),
@@ -37,6 +40,7 @@ describe("PollCoordinator", () => {
       issueTracker: null,
       onUpdate: () => {},
       getSessionDir: () => "/tmp",
+      sessionState: null,
     });
     coordinator.start();
     coordinator.stop();
@@ -48,6 +52,7 @@ describe("PollCoordinator", () => {
       issueTracker: null,
       onUpdate: () => {},
       getSessionDir: () => "/tmp",
+      sessionState: null,
     });
     coordinator.addSession("test", "/tmp/test");
     expect(coordinator.getContext("test")).toBeNull();
@@ -60,6 +65,7 @@ describe("PollCoordinator", () => {
       issueTracker: null,
       onUpdate: () => {},
       getSessionDir: () => "/tmp",
+      sessionState: null,
     });
     coordinator.addSession("test", "/tmp/test");
     coordinator.setActiveSession("test");
@@ -72,6 +78,7 @@ describe("PollCoordinator", () => {
       issueTracker: null,
       onUpdate: () => {},
       getSessionDir: () => "/tmp",
+      sessionState: null,
     });
     const contexts = coordinator.getAllContexts();
     expect(contexts.size).toBe(0);
@@ -84,6 +91,7 @@ describe("PollCoordinator", () => {
       issueTracker: null,
       onUpdate: () => {},
       getSessionDir: () => "/tmp",
+      sessionState: null,
     });
     expect(coordinator.rateLimitState).toBe("normal");
     coordinator.reportRateLimit("rate_limited");
@@ -102,6 +110,7 @@ describe("PollCoordinator", () => {
       issueTracker: null,
       onUpdate: () => {},
       getSessionDir: () => "/tmp",
+      sessionState: null,
     });
     coordinator.reportAuthFailure("codeHost");
     expect(codeHost.authState).toBe("failed");
