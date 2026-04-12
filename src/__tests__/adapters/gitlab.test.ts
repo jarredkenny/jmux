@@ -23,6 +23,25 @@ describe("extractProjectPath", () => {
   });
 });
 
+describe("parseMrUrl", () => {
+  test("parses GitLab MR URL", () => {
+    const adapter = new GitLabAdapter({ type: "gitlab" });
+    const result = adapter.parseMrUrl("https://gitlab.com/org/repo/-/merge_requests/42");
+    expect(result).toBe("org%2Frepo:42");
+  });
+
+  test("returns null for non-MR URL", () => {
+    const adapter = new GitLabAdapter({ type: "gitlab" });
+    expect(adapter.parseMrUrl("https://example.com")).toBeNull();
+  });
+
+  test("handles nested group paths", () => {
+    const adapter = new GitLabAdapter({ type: "gitlab" });
+    const result = adapter.parseMrUrl("https://gitlab.com/org/sub/repo/-/merge_requests/7");
+    expect(result).toBe("org%2Fsub%2Frepo:7");
+  });
+});
+
 describe("GitLabAdapter", () => {
   test("starts in unauthenticated state", () => {
     const adapter = new GitLabAdapter({ type: "gitlab" });

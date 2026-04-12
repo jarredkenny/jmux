@@ -116,6 +116,44 @@ export class GitLabAdapter implements CodeHostAdapter {
     await this.fetch(`${this.baseUrl}/projects/${project}/merge_requests/${iid}/approve`, { method: "POST" });
   }
 
+  async searchMergeRequests(query: string): Promise<MergeRequest[]> {
+    const params = new URLSearchParams({
+      search: query,
+      state: "opened",
+      scope: "all",
+      per_page: "20",
+    });
+    const resp = await this.fetch(`${this.baseUrl}/merge_requests?${params}`);
+    if (!resp.ok) return [];
+    const mrs = await resp.json();
+    if (!Array.isArray(mrs)) return [];
+    return mrs.map((mr: any) => this.mapMergeRequest(mr));
+  }
+
+  parseMrUrl(url: string): string | null {
+    // Match path after the hostname: /org/repo/-/merge_requests/42
+    const match = url.match(/\/\/[^/]+\/(.+?)\/-\/merge_requests\/(\d+)/);
+    if (!match) return null;
+    return `${encodeURIComponent(match[1])}:${match[2]}`;
+  }
+
+  async pollMergeRequestsByIds(ids: string[]): Promise<Map<string, MergeRequest>> {
+    const result = new Map<string, MergeRequest>();
+    for (const id of ids) {
+      const [project, iid] = id.split(":");
+      try {
+        const resp = await this.fetch(
+          `${this.baseUrl}/projects/${project}/merge_requests/${iid}`,
+        );
+        if (resp.ok) {
+          const mr = this.mapMergeRequest(await resp.json());
+          result.set(id, mr);
+        }
+      } catch {}
+    }
+    return result;
+  }
+
   private mapMergeRequest(raw: any): MergeRequest {
     let pipeline: PipelineStatus | null = null;
     if (raw.head_pipeline) {

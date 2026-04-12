@@ -25,6 +25,14 @@ describe("extractIssueIdFromBranch", () => {
   });
 });
 
+describe("searchIssues", () => {
+  test("returns empty array when not authenticated", async () => {
+    const adapter = new LinearAdapter({ type: "linear" });
+    const results = await adapter.searchIssues("test");
+    expect(results).toEqual([]);
+  });
+});
+
 describe("LinearAdapter", () => {
   test("starts in unauthenticated state", () => {
     const adapter = new LinearAdapter({ type: "linear" });
