@@ -63,6 +63,7 @@ export class InputRouter {
   private diffPanelCols = 0;
   private diffPanelFocused = false;
   private mainCols = 0;
+  private panelTabsActive = false;
   constructor(opts: InputRouterOptions, sidebarVisible: boolean) {
     this.opts = opts;
     this.sidebarVisible = sidebarVisible;
@@ -79,6 +80,10 @@ export class InputRouter {
   setDiffPanel(cols: number, focused: boolean): void {
     this.diffPanelCols = cols;
     this.diffPanelFocused = focused;
+  }
+
+  setPanelTabsActive(active: boolean): void {
+    this.panelTabsActive = active;
   }
 
   setMainCols(cols: number): void {
@@ -273,7 +278,7 @@ export class InputRouter {
         this.opts.onPanelNextTab();
         return;
       }
-      if (this.opts.onPanelAction && (data === "o" || data === "r" || data === "a" || data === "s")) {
+      if (this.panelTabsActive && this.opts.onPanelAction && (data === "o" || data === "r" || data === "a" || data === "s")) {
         this.opts.onPanelAction(data);
         return;
       }

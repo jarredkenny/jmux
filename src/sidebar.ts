@@ -63,6 +63,18 @@ const GROUP_HEADER_ATTRS: CellAttrs = {
   bold: true,
 };
 
+// --- Pipeline glyph constants ---
+const PIPELINE_GLYPH_MAP: Record<string, string> = {
+  passed: "✓", running: "⟳", failed: "✗", pending: "○", canceled: "—",
+};
+const PIPELINE_GLYPH_COLORS: Record<string, CellAttrs> = {
+  passed: { fg: 2, fgMode: ColorMode.Palette },
+  running: { fg: 3, fgMode: ColorMode.Palette },
+  failed: { fg: 1, fgMode: ColorMode.Palette },
+  pending: { fg: 3, fgMode: ColorMode.Palette },
+  canceled: { fg: 8, fgMode: ColorMode.Palette, dim: true },
+};
+
 // --- Cache timer helpers ---
 
 const CACHE_TIMER_TTL = 300; // seconds
@@ -591,18 +603,8 @@ export class Sidebar {
     const ctx = this.sessionContexts.get(session.name);
     const pipelineState = ctx?.mr?.pipeline?.state;
     if (pipelineState) {
-      const GLYPH_MAP: Record<string, string> = {
-        passed: "✓", running: "⟳", failed: "✗", pending: "○", canceled: "—",
-      };
-      const GLYPH_COLORS: Record<string, CellAttrs> = {
-        passed: { fg: 2, fgMode: ColorMode.Palette },
-        running: { fg: 3, fgMode: ColorMode.Palette },
-        failed: { fg: 1, fgMode: ColorMode.Palette },
-        pending: { fg: 3, fgMode: ColorMode.Palette },
-        canceled: { fg: 8, fgMode: ColorMode.Palette, dim: true },
-      };
-      const glyph = GLYPH_MAP[pipelineState];
-      const glyphAttrs = GLYPH_COLORS[pipelineState];
+      const glyph = PIPELINE_GLYPH_MAP[pipelineState];
+      const glyphAttrs = PIPELINE_GLYPH_COLORS[pipelineState];
       if (glyph && glyphAttrs) {
         const glyphCol = windowCountCol - 2;
         if (glyphCol > nameStart) {

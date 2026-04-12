@@ -60,12 +60,15 @@ export class LinearAdapter implements IssueTrackerAdapter {
   async pollAllIssues(issueIds: string[]): Promise<Map<string, Issue>> {
     const result = new Map<string, Issue>();
     if (issueIds.length === 0) return result;
+    const varDefs = issueIds.map((_, i) => `$id${i}: String!`).join(", ");
     const fragments = issueIds.map(
-      (id, i) =>
-        `issue${i}: issue(id: "${id}") { id identifier title state { name } assignee { name } attachments { nodes { url } } url }`
+      (_, i) =>
+        `issue${i}: issue(id: $id${i}) { id identifier title state { name } assignee { name } attachments { nodes { url } } url }`
     );
-    const query = `query { ${fragments.join("\n")} }`;
-    const resp = await this.graphql(query, {});
+    const variables: Record<string, unknown> = {};
+    issueIds.forEach((id, i) => { variables[`id${i}`] = id; });
+    const query = `query(${varDefs}) { ${fragments.join("\n")} }`;
+    const resp = await this.graphql(query, variables);
     if (!resp?.data) return result;
     for (let i = 0; i < issueIds.length; i++) {
       const raw = resp.data[`issue${i}`];

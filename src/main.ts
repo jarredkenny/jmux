@@ -929,10 +929,12 @@ const inputRouter = new InputRouter(
     },
     onPanelPrevTab: () => {
       infoPanel.prevTab();
+      inputRouter.setPanelTabsActive(infoPanel.activeTab !== "diff");
       scheduleRender();
     },
     onPanelNextTab: () => {
       infoPanel.nextTab();
+      inputRouter.setPanelTabsActive(infoPanel.activeTab !== "diff");
       scheduleRender();
     },
     onPanelAction: (key) => {

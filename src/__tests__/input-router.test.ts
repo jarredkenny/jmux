@@ -462,7 +462,7 @@ describe("InfoPanel tab switching", () => {
     expect(ptyData).toBe("[");
   });
 
-  test("action key 'o' triggers onPanelAction when panel focused", () => {
+  test("action key 'o' triggers onPanelAction when panel focused and tabs active", () => {
     let actionKey = "";
     const router = new InputRouter(
       {
@@ -474,11 +474,12 @@ describe("InfoPanel tab switching", () => {
       true,
     );
     router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
     router.handleInput("o");
     expect(actionKey).toBe("o");
   });
 
-  test("action key 's' triggers onPanelAction when panel focused", () => {
+  test("action key 's' triggers onPanelAction when panel focused and tabs active", () => {
     let actionKey = "";
     const router = new InputRouter(
       {
@@ -490,7 +491,26 @@ describe("InfoPanel tab switching", () => {
       true,
     );
     router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
     router.handleInput("s");
     expect(actionKey).toBe("s");
+  });
+
+  test("action keys pass through to diff panel when tabs not active", () => {
+    let diffData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onDiffPanelData: (d) => { diffData = d; },
+        onPanelAction: () => {},
+      },
+      true,
+    );
+    router.setDiffPanel(40, true);
+    // panelTabsActive defaults to false — diff tab is active
+    router.handleInput("o");
+    expect(diffData).toBe("o");
   });
 });
