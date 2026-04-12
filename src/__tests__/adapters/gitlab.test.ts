@@ -47,14 +47,17 @@ describe("GitLabAdapter", () => {
   test("authenticate fails without env var", async () => {
     const origToken = process.env.GITLAB_TOKEN;
     const origPrivate = process.env.GITLAB_PRIVATE_TOKEN;
+    const origPersonal = process.env.GITLAB_PERSONAL_ACCESS_TOKEN;
     delete process.env.GITLAB_TOKEN;
     delete process.env.GITLAB_PRIVATE_TOKEN;
+    delete process.env.GITLAB_PERSONAL_ACCESS_TOKEN;
     try {
       const adapter = new GitLabAdapter({ type: "gitlab" });
       await adapter.authenticate();
       expect(adapter.authState).toBe("failed");
     } finally {
       if (origToken !== undefined) process.env.GITLAB_TOKEN = origToken;
+      if (origPersonal !== undefined) process.env.GITLAB_PERSONAL_ACCESS_TOKEN = origPersonal;
       if (origPrivate !== undefined) process.env.GITLAB_PRIVATE_TOKEN = origPrivate;
     }
   });

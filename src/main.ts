@@ -1159,6 +1159,21 @@ function buildPaletteCommands(): PaletteCommand[] {
     category: "setting",
   });
 
+  // Adapter settings
+  const adapterCfg = settings.adapters ?? {};
+  const codeHostType = adapterCfg.codeHost?.type ?? "none";
+  const issueTrackerType = adapterCfg.issueTracker?.type ?? "none";
+  commands.push({
+    id: "setting-code-host",
+    label: `Code host: ${codeHostType}`,
+    category: "setting",
+  });
+  commands.push({
+    id: "setting-issue-tracker",
+    label: `Issue tracker: ${issueTrackerType}`,
+    category: "setting",
+  });
+
   return commands;
 }
 
@@ -1177,6 +1192,31 @@ async function applySetting(key: string, value: string | number | boolean | stri
       config[key] = value;
     } else {
       config[key] = value;
+    }
+    const dir = dirname(cfgPath);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
+  } catch {
+    // Non-critical
+  }
+}
+
+async function applyAdapterSetting(key: "codeHost" | "issueTracker", value: { type: string } | null): Promise<void> {
+  const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+  try {
+    let config: Record<string, any> = {};
+    if (existsSync(cfgPath)) {
+      config = JSON.parse(readFileSync(cfgPath, "utf-8"));
+    }
+    if (!config.adapters) config.adapters = {};
+    if (value === null) {
+      delete config.adapters[key];
+    } else {
+      config.adapters[key] = value;
+    }
+    // Clean up empty adapters object
+    if (Object.keys(config.adapters).length === 0) {
+      delete config.adapters;
     }
     const dir = dirname(cfgPath);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -1534,6 +1574,44 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       } catch {}
       const current = ctSettings.cacheTimers !== false;
       await applySetting("cacheTimers", !current, "boolean");
+      return;
+    }
+    case "setting-code-host": {
+      const options = [
+        { id: "gitlab", label: "GitLab" },
+        { id: "github", label: "GitHub" },
+        { id: "none", label: "None (disable)" },
+      ];
+      const current = userConfig.adapters?.codeHost?.type ?? "none";
+      const modal = new ListModal({
+        header: "Code Host",
+        subheader: `Current: ${current}`,
+        items: options,
+      });
+      modal.open();
+      openModal(modal, async (value) => {
+        const selected = value as ListItem;
+        await applyAdapterSetting("codeHost", selected.id === "none" ? null : { type: selected.id });
+      });
+      return;
+    }
+    case "setting-issue-tracker": {
+      const options = [
+        { id: "linear", label: "Linear" },
+        { id: "github", label: "GitHub Issues" },
+        { id: "none", label: "None (disable)" },
+      ];
+      const current = userConfig.adapters?.issueTracker?.type ?? "none";
+      const modal = new ListModal({
+        header: "Issue Tracker",
+        subheader: `Current: ${current}`,
+        items: options,
+      });
+      modal.open();
+      openModal(modal, async (value) => {
+        const selected = value as ListItem;
+        await applyAdapterSetting("issueTracker", selected.id === "none" ? null : { type: selected.id });
+      });
       return;
     }
     case "diff-toggle":

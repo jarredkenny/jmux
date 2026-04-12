@@ -30,7 +30,7 @@ describe("LinearAdapter", () => {
     const adapter = new LinearAdapter({ type: "linear" });
     expect(adapter.type).toBe("linear");
     expect(adapter.authState).toBe("unauthenticated");
-    expect(adapter.authHint).toBe("$LINEAR_API_KEY");
+    expect(adapter.authHint).toBe("$LINEAR_API_KEY or $LINEAR_TOKEN");
   });
 
   test("authenticate succeeds with env var", async () => {
@@ -47,14 +47,17 @@ describe("LinearAdapter", () => {
   });
 
   test("authenticate fails without env var", async () => {
-    const orig = process.env.LINEAR_API_KEY;
+    const origKey = process.env.LINEAR_API_KEY;
+    const origToken = process.env.LINEAR_TOKEN;
     delete process.env.LINEAR_API_KEY;
+    delete process.env.LINEAR_TOKEN;
     try {
       const adapter = new LinearAdapter({ type: "linear" });
       await adapter.authenticate();
       expect(adapter.authState).toBe("failed");
     } finally {
-      if (orig !== undefined) process.env.LINEAR_API_KEY = orig;
+      if (origKey !== undefined) process.env.LINEAR_API_KEY = origKey;
+      if (origToken !== undefined) process.env.LINEAR_TOKEN = origToken;
     }
   });
 });
