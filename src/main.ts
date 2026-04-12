@@ -25,6 +25,7 @@ import { renderMrTab } from "./info-panel-mr";
 import { renderIssuesTab } from "./info-panel-issues";
 import { createAdapters } from "./adapters/registry";
 import { PollCoordinator } from "./adapters/poll-coordinator";
+import { SessionState } from "./session-state";
 import type { SessionContext } from "./adapters/types";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
@@ -328,6 +329,8 @@ const diffPanel = new DiffPanel();
 let diffBridge: ScreenBridge | null = null;
 let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
+let mrSelectedIndex = 0;
+let issueSelectedIndex = 0;
 
 const adapters = createAdapters(userConfig.adapters);
 const infoPanel = new InfoPanel({
@@ -354,6 +357,9 @@ async function initAdapters(): Promise<void> {
   });
 }
 
+const sessionStatePath = resolve(homedir(), ".config", "jmux", "state.json");
+const sessionState = new SessionState(sessionStatePath);
+
 const pollCoordinator = new PollCoordinator({
   codeHost: adapters.codeHost,
   issueTracker: adapters.issueTracker,
@@ -365,7 +371,7 @@ const pollCoordinator = new PollCoordinator({
     const session = currentSessions.find((s) => s.name === name);
     return session ? (sessionDetailsCache.get(session.id)?.directory ?? null) : null;
   },
-  sessionState: null,
+  sessionState,
 });
 
 initAdapters().then(() => {
@@ -630,8 +636,10 @@ async function fetchSessions(): Promise<void> {
     }
     sidebar.setSessionContexts(pollCoordinator.getAllContexts());
 
-    // Prune cache timer state for dead sessions (keyed by name)
+    // Prune state for dead sessions
     const liveNames = sessions.map((s) => s.name);
+    const liveSessionNames = new Set(liveNames);
+    sessionState.pruneSessions(liveSessionNames);
     otelReceiver.pruneExcept(liveNames);
     if (otelReceiver.getActiveSessionIds().length === 0) {
       stopCacheTimerTick();
@@ -691,6 +699,8 @@ async function switchSession(sessionId: string): Promise<void> {
     sidebar.scrollToActive();
     const sessionName = currentSessions.find((s) => s.id === sessionId)?.name;
     if (sessionName) pollCoordinator.setActiveSession(sessionName);
+    mrSelectedIndex = 0;
+    issueSelectedIndex = 0;
     fetchWindows();
     renderFrame();
   } catch {
@@ -740,14 +750,14 @@ function renderFrame(): void {
       const errorMsg = adapters.codeHost?.authState === "failed"
         ? `Authentication expired — check ${adapters.codeHost.authHint}`
         : undefined;
-      contentGrid = renderMrTab(ctx?.mrs ?? [], dpCols, dpRows, 0, errorMsg);
+      contentGrid = renderMrTab(ctx?.mrs ?? [], dpCols, dpRows, mrSelectedIndex, errorMsg);
     } else {
       const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
       const ctx = pollCoordinator.getContext(sessionName);
       const errorMsg = adapters.issueTracker?.authState === "failed"
         ? `Authentication expired — check ${adapters.issueTracker.authHint}`
         : undefined;
-      contentGrid = renderIssuesTab(ctx?.issues ?? [], dpCols, dpRows, 0, errorMsg);
+      contentGrid = renderIssuesTab(ctx?.issues ?? [], dpCols, dpRows, issueSelectedIndex, errorMsg);
     }
 
     const tabBar = infoPanel.hasMultipleTabs ? infoPanel.getTabBarGrid(dpCols) : undefined;
@@ -950,6 +960,24 @@ const inputRouter = new InputRouter(
       inputRouter.setPanelTabsActive(infoPanel.activeTab !== "diff");
       scheduleRender();
     },
+    onPanelSelectPrev: () => {
+      if (infoPanel.activeTab === "mr") {
+        mrSelectedIndex = Math.max(0, mrSelectedIndex - 1);
+      } else if (infoPanel.activeTab === "issues") {
+        issueSelectedIndex = Math.max(0, issueSelectedIndex - 1);
+      }
+      scheduleRender();
+    },
+    onPanelSelectNext: () => {
+      const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+      const ctx = pollCoordinator.getContext(sessionName);
+      if (infoPanel.activeTab === "mr" && ctx) {
+        mrSelectedIndex = Math.min(ctx.mrs.length - 1, mrSelectedIndex + 1);
+      } else if (infoPanel.activeTab === "issues" && ctx) {
+        issueSelectedIndex = Math.min(ctx.issues.length - 1, issueSelectedIndex + 1);
+      }
+      scheduleRender();
+    },
     onPanelTabClick: (col) => {
       const ranges = infoPanel.getTabRanges();
       for (const { tab, startCol, endCol } of ranges) {
@@ -964,18 +992,21 @@ const inputRouter = new InputRouter(
     onPanelAction: (key) => {
       const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
       const ctx = pollCoordinator.getContext(sessionName);
+      if (!ctx) return;
 
-      const primaryMr = ctx?.mrs[0];
-      const primaryIssue = ctx?.issues[0];
-      if (infoPanel.activeTab === "mr" && primaryMr && adapters.codeHost) {
-        if (key === "o") adapters.codeHost.openInBrowser(primaryMr.id);
-        if (key === "r") adapters.codeHost.markReady(primaryMr.id).then(() => scheduleRender());
-        if (key === "a") adapters.codeHost.approve(primaryMr.id).then(() => scheduleRender());
+      if (infoPanel.activeTab === "mr" && adapters.codeHost) {
+        const mr = ctx.mrs[mrSelectedIndex];
+        if (!mr) return;
+        if (key === "o") adapters.codeHost.openInBrowser(mr.id);
+        if (key === "r") adapters.codeHost.markReady(mr.id).then(() => scheduleRender());
+        if (key === "a") adapters.codeHost.approve(mr.id).then(() => scheduleRender());
       }
-      if (infoPanel.activeTab === "issues" && primaryIssue && adapters.issueTracker) {
-        if (key === "o") adapters.issueTracker.openInBrowser(primaryIssue.id);
+      if (infoPanel.activeTab === "issues" && adapters.issueTracker) {
+        const issue = ctx.issues[issueSelectedIndex];
+        if (!issue) return;
+        if (key === "o") adapters.issueTracker.openInBrowser(issue.id);
         if (key === "s") {
-          adapters.issueTracker.getAvailableStatuses(primaryIssue.id).then((statuses) => {
+          adapters.issueTracker.getAvailableStatuses(issue.id).then((statuses) => {
             if (statuses.length === 0) return;
             const items = statuses.map((s) => ({ id: s, label: s }));
             const listModal = new ListModal({ items, header: "Update Status" });
@@ -983,7 +1014,7 @@ const inputRouter = new InputRouter(
             openModal(listModal, (selected: unknown) => {
               const sel = selected as { id: string };
               if (sel?.id) {
-                adapters.issueTracker!.updateStatus(primaryIssue.id, sel.id).then(() => scheduleRender());
+                adapters.issueTracker!.updateStatus(issue.id, sel.id).then(() => scheduleRender());
               }
             });
           });
@@ -1176,6 +1207,20 @@ function buildPaletteCommands(): PaletteCommand[] {
     label: `Issue tracker: ${issueTrackerType}`,
     category: "setting",
   });
+
+  // Link commands
+  if (adapters.issueTracker?.authState === "ok") {
+    commands.push(
+      { id: "link-issue", label: "Link issue to session", category: "link" },
+      { id: "unlink-issue", label: "Unlink issue from session", category: "link" },
+    );
+  }
+  if (adapters.codeHost?.authState === "ok") {
+    commands.push(
+      { id: "link-mr", label: "Link MR to session", category: "link" },
+      { id: "unlink-mr", label: "Unlink MR from session", category: "link" },
+    );
+  }
 
   return commands;
 }
@@ -1617,6 +1662,95 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       });
       return;
     }
+    case "link-issue": {
+      if (!adapters.issueTracker) return;
+      const modal = new InputModal({
+        header: "Link Issue",
+        subheader: "Search by identifier or title",
+        value: "",
+      });
+      modal.open();
+      openModal(modal, async (query) => {
+        const results = await adapters.issueTracker!.searchIssues(query as string);
+        if (results.length === 0) return;
+        const items = results.map((i) => ({ id: i.id, label: `${i.identifier} ${i.title}` }));
+        const picker = new ListModal({ items, header: "Select Issue" });
+        picker.open();
+        openModal(picker, (selected) => {
+          const sel = selected as { id: string };
+          const issue = results.find((i) => i.id === sel.id);
+          if (issue) {
+            const sName = currentSessions.find((s) => s.id === currentSessionId)?.name;
+            if (sName) {
+              sessionState.addLink(sName, { type: "issue", id: issue.id });
+              pollCoordinator.setActiveSession(sName);
+            }
+          }
+        });
+      });
+      return;
+    }
+    case "unlink-issue": {
+      const sName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+      const manualIssues = sessionState.getLinks(sName).filter((l) => l.type === "issue");
+      if (manualIssues.length === 0) return;
+      const ctx = pollCoordinator.getContext(sName);
+      const items = manualIssues.map((l) => {
+        const issue = ctx?.issues.find((i) => i.id === l.id);
+        return { id: l.id, label: issue ? `${issue.identifier} ${issue.title}` : l.id };
+      });
+      const modal = new ListModal({ items, header: "Unlink Issue" });
+      modal.open();
+      openModal(modal, (selected) => {
+        const sel = selected as { id: string };
+        sessionState.removeLink(sName, { type: "issue", id: sel.id });
+        pollCoordinator.setActiveSession(sName);
+      });
+      return;
+    }
+    case "link-mr": {
+      if (!adapters.codeHost) return;
+      const modal = new InputModal({
+        header: "Link MR",
+        subheader: "Search by title",
+        value: "",
+      });
+      modal.open();
+      openModal(modal, async (query) => {
+        const results = await adapters.codeHost!.searchMergeRequests(query as string);
+        if (results.length === 0) return;
+        const items = results.map((mr) => ({ id: mr.id, label: `!${mr.id.split(":")[1]} ${mr.title}` }));
+        const picker = new ListModal({ items, header: "Select MR" });
+        picker.open();
+        openModal(picker, (selected) => {
+          const sel = selected as { id: string };
+          const sName = currentSessions.find((s) => s.id === currentSessionId)?.name;
+          if (sName) {
+            sessionState.addLink(sName, { type: "mr", id: sel.id });
+            pollCoordinator.setActiveSession(sName);
+          }
+        });
+      });
+      return;
+    }
+    case "unlink-mr": {
+      const sName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+      const manualMrs = sessionState.getLinks(sName).filter((l) => l.type === "mr");
+      if (manualMrs.length === 0) return;
+      const ctx = pollCoordinator.getContext(sName);
+      const items = manualMrs.map((l) => {
+        const mr = ctx?.mrs.find((m) => m.id === l.id);
+        return { id: l.id, label: mr ? `!${l.id.split(":")[1]} ${mr.title}` : l.id };
+      });
+      const modal = new ListModal({ items, header: "Unlink MR" });
+      modal.open();
+      openModal(modal, (selected) => {
+        const sel = selected as { id: string };
+        sessionState.removeLink(sName, { type: "mr", id: sel.id });
+        pollCoordinator.setActiveSession(sName);
+      });
+      return;
+    }
     case "diff-toggle":
       await toggleDiffPanel();
       return;
@@ -1924,11 +2058,22 @@ refreshProjectDirsInBackground();
 control.onEvent((event: ControlEvent) => {
   switch (event.type) {
     case "sessions-changed":
-    case "session-renamed":
       if (!startupComplete) return;
       fetchSessions();
       fetchWindows();
       break;
+    case "session-renamed": {
+      if (!startupComplete) return;
+      const parts = event.args.split(" ");
+      if (parts.length >= 2) {
+        const oldName = parts[0];
+        const newName = parts[1];
+        sessionState.renameSession(oldName, newName);
+      }
+      fetchSessions();
+      fetchWindows();
+      break;
+    }
     case "session-changed":
       // This fires for the CONTROL client — ignore during startup since
       // the control client may be on a different session than the PTY client
