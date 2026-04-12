@@ -52,6 +52,7 @@ export interface InputRouterOptions {
   onPanelPrevTab?: () => void;
   onPanelNextTab?: () => void;
   onPanelAction?: (key: string) => void;
+  onPanelTabClick?: (col: number) => void; // col relative to panel start
 }
 
 export class InputRouter {
@@ -217,6 +218,13 @@ export class InputRouter {
         // Divider click — toggle focus
         if (mouse.x === dividerX && !mouse.release && !isMotion && !isWheel) {
           this.opts.onDiffPanelFocusToggle?.();
+          return;
+        }
+
+        // Panel tab bar click — row 1 in the panel area (toolbar row)
+        if (mouse.y === 1 && mouse.x > dividerX && !mouse.release && !isMotion && !isWheel) {
+          const panelCol = mouse.x - dividerX - 1; // 0-indexed in panel
+          this.opts.onPanelTabClick?.(panelCol);
           return;
         }
 

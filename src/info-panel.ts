@@ -122,6 +122,20 @@ export class InfoPanel {
     return grid;
   }
 
+  getTabRanges(): Array<{ tab: InfoTab; startCol: number; endCol: number }> {
+    const ranges: Array<{ tab: InfoTab; startCol: number; endCol: number }> = [];
+    let col = 1; // 1 col padding
+    for (let i = 0; i < this._tabs.length; i++) {
+      const tab = this._tabs[i];
+      const label = ` ${TAB_LABELS[tab]} `;
+      const labelWidth = textCols(label);
+      ranges.push({ tab, startCol: col, endCol: col + labelWidth - 1 });
+      col += labelWidth;
+      if (i < this._tabs.length - 1) col += 1; // separator
+    }
+    return ranges;
+  }
+
   private rebuildTabs(config: InfoPanelConfig): void {
     this._tabs = ["diff"];
     if (config.hasCodeHost) this._tabs.push("mr");

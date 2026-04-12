@@ -336,8 +336,18 @@ const infoPanel = new InfoPanel({
 });
 
 async function initAdapters(): Promise<void> {
-  if (adapters.codeHost) await adapters.codeHost.authenticate();
-  if (adapters.issueTracker) await adapters.issueTracker.authenticate();
+  if (adapters.codeHost) {
+    await adapters.codeHost.authenticate();
+    if (adapters.codeHost.authState !== "ok") {
+      process.stderr.write(`jmux: ${adapters.codeHost.type} adapter auth failed — check ${adapters.codeHost.authHint}\n`);
+    }
+  }
+  if (adapters.issueTracker) {
+    await adapters.issueTracker.authenticate();
+    if (adapters.issueTracker.authState !== "ok") {
+      process.stderr.write(`jmux: ${adapters.issueTracker.type} adapter auth failed — check ${adapters.issueTracker.authHint}\n`);
+    }
+  }
   infoPanel.updateConfig({
     hasCodeHost: adapters.codeHost?.authState === "ok",
     hasIssueTracker: adapters.issueTracker?.authState === "ok",
@@ -360,6 +370,8 @@ const pollCoordinator = new PollCoordinator({
 initAdapters().then(() => {
   pollCoordinator.start();
   scheduleRender();
+}).catch(() => {
+  // Adapter init failed — panel runs without adapters, only Diff tab
 });
 
 function setDiffFocus(focused: boolean): void {
@@ -936,6 +948,17 @@ const inputRouter = new InputRouter(
       infoPanel.nextTab();
       inputRouter.setPanelTabsActive(infoPanel.activeTab !== "diff");
       scheduleRender();
+    },
+    onPanelTabClick: (col) => {
+      const ranges = infoPanel.getTabRanges();
+      for (const { tab, startCol, endCol } of ranges) {
+        if (col >= startCol && col <= endCol) {
+          infoPanel.setActiveTab(tab);
+          inputRouter.setPanelTabsActive(infoPanel.activeTab !== "diff");
+          scheduleRender();
+          return;
+        }
+      }
     },
     onPanelAction: (key) => {
       const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
