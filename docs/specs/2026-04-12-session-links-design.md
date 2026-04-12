@@ -30,7 +30,7 @@ Users need to explicitly link sessions to issues and MRs, and the system needs t
     "api-server": [
       { "type": "issue", "id": "ENG-1234" },
       { "type": "issue", "id": "ENG-1235" },
-      { "type": "mr", "id": "org%2Frepo:482" }
+      { "type": "mr", "id": "12345:482" }
     ],
     "auth-fix": [
       { "type": "issue", "id": "ENG-1300" }
@@ -42,8 +42,8 @@ Users need to explicitly link sessions to issues and MRs, and the system needs t
 - Only stores **manual** (user-created) links
 - Keyed by session name (stable across jmux restarts)
 - Pruned during `fetchSessions` — dead session names get removed
-- Loaded at startup, watched for changes (same pattern as config hot-reload)
-- MR ids use the existing `encodedProject:iid` format from the GitLab adapter
+- Loaded at startup into memory. No file watcher — only jmux writes this file, so in-memory state is authoritative. All mutations go through `SessionState` methods which write-through to disk.
+- MR ids use the numeric project ID format that `gitlab.ts` already produces: `${encodeURIComponent(projectId)}:${iid}` (e.g., `12345:482`). This matches the existing `mapMergeRequest` output at `gitlab.ts:124`.
 
 ### Data Model
 
@@ -110,6 +110,39 @@ Steps 5 and 6 expand the graph one level deep. No transitive-of-transitive — b
 
 **Expansion cap:** Max 10 issues and 10 MRs per session. Stop resolving transitive links once either limit is hit.
 
+### Polling Strategy for Multi-Item Sessions
+
+The existing `pollAllMergeRequests(remotes: BranchContext[])` is branch-oriented — it discovers MRs by source branch. Manual and transitive MRs aren't on any session's current branch, so they can't be polled through that method.
+
+**New adapter method:**
+
+```typescript
+// CodeHostAdapter
+pollMergeRequestsByIds(ids: string[]): Promise<Map<string, MergeRequest>>;
+```
+
+GitLab implementation: for each unique project in the id set, batch-fetch `/projects/{id}/merge_requests/{iid}`. Could also use `/merge_requests?iids[]=X&iids[]=Y` for same-project batching.
+
+**Active session polling (20s):** Polls all MRs and issues for the active session. Uses `pollMergeRequestsByIds` for the full MR list (not just the branch MR). Uses `pollAllIssues` (already takes IDs) for issues.
+
+**Background session polling (3min):** Two batch calls:
+1. `pollAllMergeRequests(branchContexts)` — for branch-discovered MRs (existing, unchanged)
+2. `pollMergeRequestsByIds(manualAndTransitiveIds)` — for non-branch MRs across all background sessions
+3. `pollAllIssues(allIssueIds)` — for all issues (existing, unchanged)
+
+This keeps the branch-oriented batch path for the common case and adds an ID-oriented path for manual/transitive MRs.
+
+### Session Renames
+
+When tmux emits `%session-renamed` on the control channel (old-name → new-name), `SessionState` migrates the links:
+
+1. Read links for old name
+2. Write links under new name
+3. Delete old name entry
+4. Write to disk
+
+This is wired in `main.ts` alongside the existing `%session-renamed` handler. The poll coordinator also updates its internal maps (session dirs, contexts) on rename.
+
 ### New Adapter Methods
 
 Two new methods on the adapter interfaces for fuzzy search:
@@ -120,22 +153,15 @@ searchIssues(query: string): Promise<Issue[]>;
 
 // CodeHostAdapter  
 searchMergeRequests(query: string): Promise<MergeRequest[]>;
-parseMrUrl(url: string): string | null;  // URL → "encodedProject:iid" or null
+parseMrUrl(url: string): string | null;  // URL → "projectId:iid" or null
+pollMergeRequestsByIds(ids: string[]): Promise<Map<string, MergeRequest>>;
 ```
 
 Used by the command palette and new-session modal for the link search UI. The Linear adapter uses `issueSearch`, the GitLab adapter uses `/merge_requests?search=`.
 
 ### Entry Points for Creating Links
 
-**1. New Session Modal — optional step after naming**
-
-When an issue tracker is configured, after the user enters a session name, an optional step: "Link issues?" with fuzzy search against the issue tracker. Multi-select. Skippable with Esc.
-
-When a code host is configured, a follow-up step: "Link MRs?" with fuzzy search against open MRs. Also skippable.
-
-Selected links write to `state.json` on session creation.
-
-**2. Command Palette — post-creation**
+**Command Palette — primary entry point**
 
 Four new commands:
 - **"Link issue"** — fuzzy search against issue tracker, adds to `state.json`
@@ -144,6 +170,10 @@ Four new commands:
 - **"Unlink MR"** — shows currently linked MRs (manual source only), pick one to remove
 
 Unlink only operates on `manual` source links. Auto-discovered and transitive links can't be unlinked — they disappear when the underlying condition changes (branch switches, MR merges, etc.).
+
+**New Session Modal — deferred to follow-up**
+
+Adding multi-select fuzzy search steps to the new-session modal requires a new modal capability (existing `ListModal` is single-select). This is self-contained enough to add later without rework. The command palette covers the use case for now — link issues/MRs immediately after creating a session.
 
 ### MR Tab Rendering
 
@@ -209,12 +239,11 @@ Priority order for worst-state selection:
 - `src/info-panel-issues.ts` — render list of issues with selection cursor and scrolling
 - `src/sidebar.ts` — three-line rows, issue IDs + MR count on line 3, worst-state glyph
 - `src/input-router.ts` — up/down arrow routing when panel focused for item selection
-- `src/main.ts` — initialize state file, wire link commands into palette, pass state to resolver, new-session modal link steps
-- `src/new-session-modal.ts` — optional issue/MR link steps after naming
+- `src/main.ts` — initialize state file, wire link commands into palette, pass state to resolver, migrate links on `%session-renamed`
 
 ### Unchanged
 
-`src/info-panel.ts` (tab container), `src/renderer.ts`, `src/config.ts`, `src/diff-panel.ts`, tmux communication layer, CLI.
+`src/info-panel.ts` (tab container), `src/renderer.ts`, `src/config.ts`, `src/diff-panel.ts`, `src/new-session-modal.ts` (modal link steps deferred), tmux communication layer, CLI.
 
 ## Testing Strategy
 
