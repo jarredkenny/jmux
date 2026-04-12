@@ -412,3 +412,85 @@ describe("diff panel routing", () => {
     expect(ptyData).toBe("\x1b[1;2C");
   });
 });
+
+describe("InfoPanel tab switching", () => {
+  test("[ key triggers onPanelPrevTab when panel focused", () => {
+    let prevTabCalled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onPanelPrevTab: () => { prevTabCalled = true; },
+        onPanelNextTab: () => {},
+      },
+      true,
+    );
+    router.setDiffPanel(40, true);
+    router.handleInput("[");
+    expect(prevTabCalled).toBe(true);
+  });
+
+  test("] key triggers onPanelNextTab when panel focused", () => {
+    let nextTabCalled = false;
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onPanelPrevTab: () => {},
+        onPanelNextTab: () => { nextTabCalled = true; },
+      },
+      true,
+    );
+    router.setDiffPanel(40, true);
+    router.handleInput("]");
+    expect(nextTabCalled).toBe(true);
+  });
+
+  test("[ key passes through when panel not focused", () => {
+    let ptyData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: (d) => { ptyData = d; },
+        onSidebarClick: () => {},
+      },
+      true,
+    );
+    router.handleInput("[");
+    expect(ptyData).toBe("[");
+  });
+
+  test("action key 'o' triggers onPanelAction when panel focused", () => {
+    let actionKey = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onPanelAction: (key) => { actionKey = key; },
+      },
+      true,
+    );
+    router.setDiffPanel(40, true);
+    router.handleInput("o");
+    expect(actionKey).toBe("o");
+  });
+
+  test("action key 's' triggers onPanelAction when panel focused", () => {
+    let actionKey = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onPanelAction: (key) => { actionKey = key; },
+      },
+      true,
+    );
+    router.setDiffPanel(40, true);
+    router.handleInput("s");
+    expect(actionKey).toBe("s");
+  });
+});

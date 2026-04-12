@@ -48,6 +48,10 @@ export interface InputRouterOptions {
   onDiffToggle?: () => void;
   onDiffZoom?: () => void;  // Ctrl-a z when diff panel is focused — toggles split/full
   onPaneNavRight?: () => void;  // Shift+Right when diff panel is open — main.ts queries pane_at_right
+  // Info panel tab / action callbacks
+  onPanelPrevTab?: () => void;
+  onPanelNextTab?: () => void;
+  onPanelAction?: (key: string) => void;
 }
 
 export class InputRouter {
@@ -258,8 +262,21 @@ export class InputRouter {
       return;
     }
 
-    // When diff panel is focused, route keyboard to diff panel
+    // When diff panel is focused, intercept tab-switching and action keys before
+    // forwarding to the diff panel's underlying process
     if (this.diffPanelFocused && this.diffPanelCols > 0) {
+      if (data === "[" && this.opts.onPanelPrevTab) {
+        this.opts.onPanelPrevTab();
+        return;
+      }
+      if (data === "]" && this.opts.onPanelNextTab) {
+        this.opts.onPanelNextTab();
+        return;
+      }
+      if (this.opts.onPanelAction && (data === "o" || data === "r" || data === "a" || data === "s")) {
+        this.opts.onPanelAction(data);
+        return;
+      }
       this.opts.onDiffPanelData?.(data);
       return;
     }
