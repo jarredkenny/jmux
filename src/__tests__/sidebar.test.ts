@@ -752,25 +752,38 @@ describe("Sidebar", () => {
 });
 
 function makeContexts(
-  entries: Array<{ name: string; pipelineState?: PipelineStatus["state"] }>,
+  entries: Array<{ name: string; pipelineState?: PipelineStatus["state"]; issueIds?: string[]; mrCount?: number }>,
 ): Map<string, SessionContext> {
   const map = new Map<string, SessionContext>();
   for (const e of entries) {
+    const mrs: Array<import("../adapters/types").MergeRequest & { source: import("../adapters/types").LinkSource }> = [];
+    if (e.pipelineState) {
+      mrs.push({
+        id: "1", title: "Test", status: "open",
+        sourceBranch: "main", targetBranch: "main",
+        pipeline: { state: e.pipelineState, webUrl: "" },
+        approvals: { required: 0, current: 0 },
+        webUrl: "", source: "branch",
+      });
+    }
+    for (let i = 0; i < (e.mrCount ?? 0); i++) {
+      mrs.push({
+        id: `mr-${i}`, title: `MR ${i}`, status: "open",
+        sourceBranch: "feat", targetBranch: "main",
+        pipeline: null, approvals: { required: 0, current: 0 },
+        webUrl: "", source: "manual",
+      });
+    }
     map.set(e.name, {
       sessionName: e.name,
       dir: "/tmp",
       branch: "main",
       remote: null,
-      mr: e.pipelineState
-        ? {
-            id: "1", title: "Test", status: "open",
-            sourceBranch: "main", targetBranch: "main",
-            pipeline: { state: e.pipelineState, webUrl: "" },
-            approvals: { required: 0, current: 0 },
-            webUrl: "",
-          }
-        : null,
-      issue: null,
+      mrs,
+      issues: (e.issueIds ?? []).map((id) => ({
+        id, identifier: id, title: "Test", status: "In Progress",
+        assignee: null, linkedMrUrls: [], webUrl: "", source: "manual" as import("../adapters/types").LinkSource,
+      })),
       resolvedAt: Date.now(),
     });
   }
@@ -823,5 +836,73 @@ describe("Sidebar pipeline glyphs", () => {
     const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
     expect(allChars).not.toContain("✓");
     expect(allChars).not.toContain("✗");
+  });
+
+  test("worst-state glyph is failed when mixed failed and running", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    // Manually build a context with two MRs: one running, one failed
+    const ctx = makeContexts([{ name: "api", pipelineState: "running" }]);
+    const existing = ctx.get("api")!;
+    existing.mrs.push({
+      id: "2", title: "Second", status: "open",
+      sourceBranch: "feat", targetBranch: "main",
+      pipeline: { state: "failed", webUrl: "" },
+      approvals: { required: 0, current: 0 },
+      webUrl: "", source: "manual",
+    });
+    sidebar.setSessionContexts(ctx);
+    const grid = sidebar.getGrid();
+    const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
+    expect(allChars).toContain("✗"); // failed takes priority over running
+    expect(allChars).not.toContain("⟳");
+  });
+});
+
+describe("Sidebar three-line rows", () => {
+  test("renders issue identifiers on third line", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    sidebar.setSessionContexts(makeContexts([{
+      name: "api", issueIds: ["ENG-1234", "ENG-1235"], mrCount: 2,
+    }]));
+    const grid = sidebar.getGrid();
+    const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
+    expect(allChars).toContain("ENG-1234");
+    expect(allChars).toContain("2M");
+  });
+
+  test("truncates issue identifiers with +N", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    sidebar.setSessionContexts(makeContexts([{
+      name: "api", issueIds: ["ENG-1234", "ENG-1235", "ENG-1236", "ENG-1237"],
+    }]));
+    const grid = sidebar.getGrid();
+    const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
+    expect(allChars).toContain("+");
+  });
+
+  test("no third line when no link data", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }, { name: "other" }]));
+    sidebar.setSessionContexts(makeContexts([]));
+    // With no contexts, sessions should be 2 lines. Verify by checking row count used.
+    const grid = sidebar.getGrid();
+    // Row 0-1: header, Row 2: session "api" name, Row 3: api detail, Row 4: spacer, Row 5: "other" name, Row 6: other detail
+    // If 3-line, "other" would start at row 6 instead of row 5
+    const row5text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[5][i].char).join("");
+    expect(row5text).toContain("other");
+  });
+
+  test("third line is not rendered when sessions have no link data but context map is non-empty", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }, { name: "other" }]));
+    // "api" has no issues or mrs, "other" has no context at all
+    sidebar.setSessionContexts(makeContexts([{ name: "api" }]));
+    const grid = sidebar.getGrid();
+    // "other" should still start at row 5 (no third line for either session)
+    const row5text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[5][i].char).join("");
+    expect(row5text).toContain("other");
   });
 });

@@ -141,7 +141,7 @@ function getSubdirectory(dir: string, groupLabel: string): string | null {
 
 type RenderItem =
   | { type: "group-header"; label: string; collapsed: boolean; sessionCount: number }
-  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string }
+  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string; hasLinkData: boolean }
   | { type: "spacer" };
 
 const PINNED_GROUP_LABEL = "Pinned";
@@ -208,7 +208,7 @@ function buildRenderPlan(
     items.push({ type: "spacer" });
     if (!isCollapsed) {
       for (const idx of pinnedIndices) {
-        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: PINNED_GROUP_LABEL });
+        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: PINNED_GROUP_LABEL, hasLinkData: false });
         displayOrder.push(idx);
         items.push({ type: "spacer" });
       }
@@ -226,7 +226,7 @@ function buildRenderPlan(
     items.push({ type: "spacer" });
     if (!isCollapsed) {
       for (const idx of group.sessionIndices) {
-        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: group.label });
+        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: group.label, hasLinkData: false });
         displayOrder.push(idx);
         items.push({ type: "spacer" });
       }
@@ -234,7 +234,7 @@ function buildRenderPlan(
   }
 
   for (const idx of ungrouped) {
-    items.push({ type: "session", sessionIndex: idx, grouped: false });
+    items.push({ type: "session", sessionIndex: idx, grouped: false, hasLinkData: false });
     displayOrder.push(idx);
     items.push({ type: "spacer" });
   }
@@ -243,7 +243,9 @@ function buildRenderPlan(
 }
 
 function itemHeight(item: RenderItem): number {
-  return item.type === "session" ? 2 : 1;
+  if (item.type === "session") return item.hasLinkData ? 3 : 2;
+  if (item.type === "group-header") return 1;
+  return 1; // spacer
 }
 
 // --- Sidebar class ---
@@ -278,11 +280,22 @@ export class Sidebar {
     this.height = height;
   }
 
+  private annotateLinkData(): void {
+    for (const item of this.items) {
+      if (item.type === "session") {
+        const name = this.sessions[item.sessionIndex]?.name;
+        const ctx = this.sessionContexts.get(name ?? "");
+        item.hasLinkData = !!(ctx && (ctx.issues.length > 0 || ctx.mrs.length > 0));
+      }
+    }
+  }
+
   updateSessions(sessions: SessionInfo[]): void {
     this.sessions = sessions;
     const { items, displayOrder } = buildRenderPlan(sessions, this.collapsedGroups, this.pinnedSessions);
     this.items = items;
     this.displayOrder = displayOrder;
+    this.annotateLinkData();
     this.clampScroll();
   }
 
@@ -299,6 +312,7 @@ export class Sidebar {
     const { items, displayOrder } = buildRenderPlan(this.sessions, this.collapsedGroups, this.pinnedSessions);
     this.items = items;
     this.displayOrder = displayOrder;
+    this.annotateLinkData();
     this.clampScroll();
   }
 
@@ -307,6 +321,7 @@ export class Sidebar {
     const { items, displayOrder } = buildRenderPlan(this.sessions, this.collapsedGroups, this.pinnedSessions);
     this.items = items;
     this.displayOrder = displayOrder;
+    this.annotateLinkData();
     this.clampScroll();
   }
 
@@ -332,6 +347,8 @@ export class Sidebar {
 
   setSessionContexts(contexts: Map<string, SessionContext>): void {
     this.sessionContexts = contexts;
+    this.annotateLinkData();
+    this.clampScroll();
   }
 
   hasActivity(sessionId: string): boolean {
@@ -542,9 +559,12 @@ export class Sidebar {
     if (!session) return;
 
     const detailRow = nameRow + 1;
+    const linkRow = nameRow + 2;
     const isActive = session.id === this.activeSessionId;
     const isHovered = !isActive && this.hoveredRow !== null &&
-      (this.hoveredRow === nameRow || this.hoveredRow === detailRow);
+      (this.hoveredRow === nameRow ||
+        this.hoveredRow === detailRow ||
+        (item.hasLinkData && this.hoveredRow === linkRow));
     const hasActivity = this.activitySet.has(session.id);
 
     // Map rows to session for click handling
@@ -552,20 +572,29 @@ export class Sidebar {
     if (detailRow < this.height) {
       this.rowToSessionIndex.set(detailRow, sessionIdx);
     }
+    if (item.hasLinkData && linkRow < this.height) {
+      this.rowToSessionIndex.set(linkRow, sessionIdx);
+    }
 
-    // Paint background across both rows
+    // Paint background across all rows
     if (isActive || isHovered) {
       const bg = isActive ? ACTIVE_BG : HOVER_BG;
       const bgFill = " ".repeat(this.width);
       const bgAttrs: CellAttrs = { bg, bgMode: ColorMode.RGB };
       writeString(grid, nameRow, 0, bgFill, bgAttrs);
-      writeString(grid, detailRow, 0, bgFill, bgAttrs);
+      if (detailRow < this.height) writeString(grid, detailRow, 0, bgFill, bgAttrs);
+      if (item.hasLinkData && linkRow < this.height) {
+        writeString(grid, linkRow, 0, bgFill, bgAttrs);
+      }
     }
 
     // Active marker
     if (isActive) {
       writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
-      writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+      if (detailRow < this.height) writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+      if (item.hasLinkData && linkRow < this.height) {
+        writeString(grid, linkRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+      }
     }
 
     // Indicator
@@ -599,12 +628,19 @@ export class Sidebar {
         ? { bg: HOVER_BG, bgMode: ColorMode.RGB }
         : {};
 
-    // Pipeline glyph (between name and window count)
+    // Pipeline glyph — worst state across all MRs
     const ctx = this.sessionContexts.get(session.name);
-    const pipelineState = ctx?.mr?.pipeline?.state;
-    if (pipelineState) {
-      const glyph = PIPELINE_GLYPH_MAP[pipelineState];
-      const glyphAttrs = PIPELINE_GLYPH_COLORS[pipelineState];
+    const allPipelineStates = (ctx?.mrs ?? [])
+      .map((mr) => mr.pipeline?.state)
+      .filter((s): s is NonNullable<typeof s> => s != null);
+    const WORST_ORDER: Array<NonNullable<(typeof allPipelineStates)[number]>> = ["failed", "running", "pending", "passed", "canceled"];
+    let worstState: string | undefined;
+    for (const state of WORST_ORDER) {
+      if (allPipelineStates.includes(state)) { worstState = state; break; }
+    }
+    if (worstState) {
+      const glyph = PIPELINE_GLYPH_MAP[worstState];
+      const glyphAttrs = PIPELINE_GLYPH_COLORS[worstState];
       if (glyph && glyphAttrs) {
         const glyphCol = windowCountCol - 2;
         if (glyphCol > nameStart) {
@@ -699,6 +735,45 @@ export class Sidebar {
           }
           writeString(grid, detailRow, detailStart, displayDir, detailAttrs);
         }
+      }
+    }
+
+    // Link data line (line 3) — issue identifiers + MR count
+    if (item.hasLinkData && linkRow < this.height) {
+      this.rowToSessionIndex.set(linkRow, sessionIdx);
+      if (ctx) {
+        const identifiers = ctx.issues.map((i) => i.identifier);
+        const mrCountStr = ctx.mrs.length > 0 ? `${ctx.mrs.length}M` : "";
+        const mrCountCol = mrCountStr ? this.width - mrCountStr.length - 1 : this.width;
+        const maxIdentWidth = mrCountCol - 1 - detailStart;
+
+        let identStr = identifiers.join(" ");
+        if (identStr.length > maxIdentWidth && identifiers.length > 1) {
+          let shown = 0;
+          let len = 0;
+          for (const id of identifiers) {
+            const needed = len > 0 ? id.length + 1 : id.length;
+            const remaining = identifiers.length - shown - 1;
+            const suffixLen = remaining > 0 ? ` +${remaining}`.length : 0;
+            if (len + needed + suffixLen > maxIdentWidth) break;
+            len += needed;
+            shown++;
+          }
+          identStr = identifiers.slice(0, shown).join(" ");
+          if (shown < identifiers.length) {
+            identStr += ` +${identifiers.length - shown}`;
+          }
+        } else if (identStr.length > maxIdentWidth) {
+          identStr = identStr.slice(0, maxIdentWidth - 1) + "\u2026";
+        }
+
+        const linkAttrs: CellAttrs = isActive
+          ? { ...DIM_ATTRS, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
+          : isHovered
+            ? { ...DIM_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
+            : DIM_ATTRS;
+        if (identStr) writeString(grid, linkRow, detailStart, identStr, linkAttrs);
+        if (mrCountStr) writeString(grid, linkRow, mrCountCol, mrCountStr, linkAttrs);
       }
     }
   }
