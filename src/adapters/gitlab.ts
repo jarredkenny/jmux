@@ -32,7 +32,7 @@ export class GitLabAdapter implements CodeHostAdapter {
   }
 
   async authenticate(): Promise<void> {
-    const token = process.env.GITLAB_TOKEN ?? process.env.GITLAB_PRIVATE_TOKEN ?? null;
+    const token = process.env.GITLAB_TOKEN ?? process.env.GITLAB_PRIVATE_TOKEN ?? process.env.GITLAB_PERSONAL_ACCESS_TOKEN ?? null;
     if (!token) {
       try {
         const proc = Bun.spawnSync(["glab", "auth", "status", "-t"], { stdout: "pipe", stderr: "pipe" });

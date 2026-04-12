@@ -12,13 +12,13 @@ export function extractIssueIdFromBranch(branch: string): string | null {
 export class LinearAdapter implements IssueTrackerAdapter {
   type = "linear";
   authState: AdapterAuthState = "unauthenticated";
-  authHint = "$LINEAR_API_KEY";
+  authHint = "$LINEAR_API_KEY or $LINEAR_TOKEN";
   private token: string | null = null;
 
   constructor(_config: Record<string, unknown>) {}
 
   async authenticate(): Promise<void> {
-    const token = process.env.LINEAR_API_KEY ?? null;
+    const token = process.env.LINEAR_API_KEY ?? process.env.LINEAR_TOKEN ?? null;
     if (!token) { this.authState = "failed"; return; }
     this.token = token;
     this.authState = "ok";
