@@ -1,0 +1,86 @@
+import type { CellGrid } from "./types";
+import { ColorMode } from "./types";
+import { createGrid, writeString, type CellAttrs } from "./cell-grid";
+import type { Issue } from "./adapters/types";
+
+const IDENT_ATTRS: CellAttrs = { fg: 5, fgMode: ColorMode.Palette, bold: true };
+const TITLE_ATTRS: CellAttrs = { fg: (0xC9 << 16) | (0xD1 << 8) | 0xD9, fgMode: ColorMode.RGB, bold: true };
+const LABEL_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
+const VALUE_ATTRS: CellAttrs = { fg: (0xC9 << 16) | (0xD1 << 8) | 0xD9, fgMode: ColorMode.RGB };
+const ACTION_KEY: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
+const ACTION_LABEL: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
+const ERROR_ATTRS: CellAttrs = { fg: 1, fgMode: ColorMode.Palette };
+const EMPTY_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
+const URL_ATTRS: CellAttrs = { fg: (0x58 << 16) | (0xA6 << 8) | 0xFF, fgMode: ColorMode.RGB, dim: true };
+
+export function renderIssuesTab(
+  issue: Issue | null,
+  cols: number,
+  rows: number,
+  error?: string,
+): CellGrid {
+  const grid = createGrid(cols, rows);
+  const pad = 2;
+
+  if (error) {
+    writeString(grid, 2, pad, error, ERROR_ATTRS);
+    return grid;
+  }
+
+  if (!issue) {
+    writeString(grid, 2, pad, "No linked issue found.", EMPTY_ATTRS);
+    writeString(grid, 4, pad, "Link an issue to your MR or use a branch", EMPTY_ATTRS);
+    writeString(grid, 5, pad, "name like eng-1234-description.", EMPTY_ATTRS);
+    return grid;
+  }
+
+  let row = 1;
+
+  // Identifier
+  writeString(grid, row, pad, issue.identifier, IDENT_ATTRS);
+  row += 1;
+
+  // Title
+  const titleStr = issue.title.length > cols - pad * 2
+    ? issue.title.slice(0, cols - pad * 2 - 1) + "…" : issue.title;
+  writeString(grid, row, pad, titleStr, TITLE_ATTRS);
+  row += 2;
+
+  // Status
+  writeString(grid, row, pad, "Status", LABEL_ATTRS);
+  row += 1;
+  writeString(grid, row, pad, issue.status, VALUE_ATTRS);
+  row += 2;
+
+  // Assignee
+  writeString(grid, row, pad, "Assignee", LABEL_ATTRS);
+  row += 1;
+  writeString(grid, row, pad, issue.assignee ?? "Unassigned", issue.assignee ? VALUE_ATTRS : EMPTY_ATTRS);
+  row += 2;
+
+  // Linked MRs
+  if (issue.linkedMrUrls.length > 0) {
+    writeString(grid, row, pad, "Linked MRs", LABEL_ATTRS);
+    row += 1;
+    for (const url of issue.linkedMrUrls) {
+      const display = url.length > cols - pad * 2 ? url.slice(0, cols - pad * 2 - 1) + "…" : url;
+      writeString(grid, row, pad, display, URL_ATTRS);
+      row += 1;
+    }
+    row += 1;
+  }
+
+  // Actions
+  writeString(grid, row, pad, "Actions", LABEL_ATTRS);
+  row += 1;
+  let col = pad;
+  writeString(grid, row, col, "[o]", ACTION_KEY);
+  col += "[o]".length;
+  writeString(grid, row, col, " Open  ", ACTION_LABEL);
+  col += " Open  ".length;
+  writeString(grid, row, col, "[s]", ACTION_KEY);
+  col += "[s]".length;
+  writeString(grid, row, col, " Status", ACTION_LABEL);
+
+  return grid;
+}
