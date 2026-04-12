@@ -78,10 +78,12 @@ describe("resolveSessionContext", () => {
       dir: "/tmp",
       codeHost: null,
       issueTracker: null,
+      manualIssueIds: [],
+      manualMrIds: [],
     });
     expect(ctx.branch).toBeNull();
     expect(ctx.remote).toBeNull();
-    expect(ctx.mr).toBeNull();
-    expect(ctx.issue).toBeNull();
+    expect(ctx.mrs).toEqual([]);
+    expect(ctx.issues).toEqual([]);
   });
 });

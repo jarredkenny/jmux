@@ -2,6 +2,9 @@ import type {
   CodeHostAdapter,
   IssueTrackerAdapter,
   SessionContext,
+  MergeRequest,
+  Issue,
+  LinkSource,
 } from "./types";
 
 export interface GitRemote {
@@ -80,47 +83,129 @@ export interface ResolveOptions {
   dir: string;
   codeHost: CodeHostAdapter | null;
   issueTracker: IssueTrackerAdapter | null;
+  manualIssueIds: string[];
+  manualMrIds: string[];
+}
+
+const MAX_MRS = 10;
+const MAX_ISSUES = 10;
+
+type TaggedMr = MergeRequest & { source: LinkSource };
+type TaggedIssue = Issue & { source: LinkSource };
+
+const SOURCE_PRIORITY: Record<LinkSource, number> = {
+  manual: 0,
+  branch: 1,
+  "mr-link": 2,
+  transitive: 3,
+};
+
+function deduplicateMrs(mrs: TaggedMr[]): TaggedMr[] {
+  const seen = new Map<string, TaggedMr>();
+  for (const mr of mrs) {
+    const existing = seen.get(mr.id);
+    if (!existing || SOURCE_PRIORITY[mr.source] < SOURCE_PRIORITY[existing.source]) {
+      seen.set(mr.id, mr);
+    }
+  }
+  return [...seen.values()];
+}
+
+function deduplicateIssues(issues: TaggedIssue[]): TaggedIssue[] {
+  const seen = new Map<string, TaggedIssue>();
+  for (const issue of issues) {
+    const existing = seen.get(issue.id);
+    if (!existing || SOURCE_PRIORITY[issue.source] < SOURCE_PRIORITY[existing.source]) {
+      seen.set(issue.id, issue);
+    }
+  }
+  return [...seen.values()];
 }
 
 export async function resolveSessionContext(
   opts: ResolveOptions,
 ): Promise<SessionContext> {
-  const { sessionName, dir, codeHost, issueTracker } = opts;
-  const base: SessionContext = {
+  const { sessionName, dir, codeHost, issueTracker, manualIssueIds, manualMrIds } = opts;
+  const mrs: TaggedMr[] = [];
+  const issues: TaggedIssue[] = [];
+
+  // Step 1-2: Git state + branch auto-discovery
+  const branch = await getGitBranch(dir);
+  const remotes = branch ? await getGitRemotes(dir) : [];
+  const remote = selectRemote(remotes, codeHost?.type ?? null);
+
+  if (branch && remote && codeHost && codeHost.authState === "ok") {
+    try {
+      const mr = await codeHost.getMergeRequest(remote.url, branch);
+      if (mr) mrs.push({ ...mr, source: "branch" });
+    } catch {}
+  }
+
+  if (branch && issueTracker && issueTracker.authState === "ok") {
+    try {
+      const issue = await issueTracker.getIssueByBranch(branch);
+      if (issue) issues.push({ ...issue, source: "branch" });
+    } catch {}
+  }
+
+  // Step 3: Resolve manual issue links
+  if (issueTracker && issueTracker.authState === "ok") {
+    for (const id of manualIssueIds) {
+      if (issues.length >= MAX_ISSUES) break;
+      try {
+        const issue = await issueTracker.pollIssue(id);
+        if (issue) issues.push({ ...issue, source: "manual" });
+      } catch {}
+    }
+  }
+
+  // Step 4: Resolve manual MR links
+  if (codeHost && codeHost.authState === "ok" && manualMrIds.length > 0) {
+    try {
+      const resolved = await codeHost.pollMergeRequestsByIds(manualMrIds);
+      for (const [_id, mr] of resolved) {
+        if (mrs.length >= MAX_MRS) break;
+        mrs.push({ ...mr, source: "manual" });
+      }
+    } catch {}
+  }
+
+  // Step 5: Forward links — MR → linked issues
+  if (issueTracker && issueTracker.authState === "ok") {
+    const mrsCopy = [...mrs];
+    for (const mr of mrsCopy) {
+      if (issues.length >= MAX_ISSUES) break;
+      try {
+        const linked = await issueTracker.getLinkedIssue(mr.webUrl);
+        if (linked) issues.push({ ...linked, source: "mr-link" });
+      } catch {}
+    }
+  }
+
+  // Step 6: Transitive links — issue → MR URLs
+  if (codeHost && codeHost.authState === "ok") {
+    const issuesCopy = [...issues];
+    for (const issue of issuesCopy) {
+      if (mrs.length >= MAX_MRS) break;
+      for (const mrUrl of issue.linkedMrUrls) {
+        if (mrs.length >= MAX_MRS) break;
+        const mrId = codeHost.parseMrUrl(mrUrl);
+        if (!mrId) continue;
+        try {
+          const mr = await codeHost.pollMergeRequest(mrId);
+          if (mr) mrs.push({ ...mr, source: "transitive" });
+        } catch {}
+      }
+    }
+  }
+
+  return {
     sessionName,
     dir,
-    branch: null,
-    remote: null,
-    mr: null,
-    issue: null,
+    branch: branch ?? null,
+    remote: remote?.url ?? null,
+    mrs: deduplicateMrs(mrs),
+    issues: deduplicateIssues(issues),
     resolvedAt: Date.now(),
   };
-
-  const branch = await getGitBranch(dir);
-  if (!branch) return base;
-  base.branch = branch;
-
-  const remotes = await getGitRemotes(dir);
-  const remote = selectRemote(remotes, codeHost?.type ?? null);
-  if (!remote) return base;
-  base.remote = remote.url;
-
-  if (codeHost && codeHost.authState === "ok") {
-    try {
-      base.mr = await codeHost.getMergeRequest(remote.url, branch);
-    } catch {}
-  }
-
-  if (issueTracker && issueTracker.authState === "ok") {
-    try {
-      if (base.mr) {
-        base.issue = await issueTracker.getLinkedIssue(base.mr.webUrl);
-      }
-      if (!base.issue) {
-        base.issue = await issueTracker.getIssueByBranch(branch);
-      }
-    } catch {}
-  }
-
-  return base;
 }
