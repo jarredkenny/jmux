@@ -25,6 +25,8 @@ function makeMockCodeHost(overrides: Partial<CodeHostAdapter> = {}): CodeHostAda
     pollAllMergeRequests: mock(() => Promise.resolve(new Map())),
     pollMergeRequestsByIds: mock(() => Promise.resolve(new Map())),
     searchMergeRequests: mock(() => Promise.resolve([])),
+    getMyMergeRequests: mock(() => Promise.resolve([])),
+    getMrsAwaitingMyReview: mock(() => Promise.resolve([])),
     parseMrUrl: mock(() => null),
     openInBrowser: mock(() => {}),
     markReady: mock(() => Promise.resolve()),
@@ -114,6 +116,18 @@ describe("PollCoordinator", () => {
     });
     coordinator.reportAuthFailure("codeHost");
     expect(codeHost.authState).toBe("failed");
+    coordinator.stop();
+  });
+
+  test("global polling lifecycle", () => {
+    const coordinator = new PollCoordinator({
+      codeHost: null, issueTracker: null,
+      onUpdate: () => {}, getSessionDir: () => "/tmp", sessionState: null,
+    });
+    coordinator.start();
+    expect(coordinator.getGlobalIssues()).toEqual([]);
+    expect(coordinator.getGlobalMrs()).toEqual([]);
+    expect(coordinator.getGlobalReviewMrs()).toEqual([]);
     coordinator.stop();
   });
 });

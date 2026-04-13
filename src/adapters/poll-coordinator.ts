@@ -4,6 +4,8 @@ import type {
   IssueTrackerAdapter,
   SessionContext,
   BranchContext,
+  Issue,
+  MergeRequest,
 } from "./types";
 import { getGitBranch } from "./context-resolver";
 import type { SessionState } from "../session-state";
@@ -11,6 +13,7 @@ import type { SessionState } from "../session-state";
 const ACTIVE_INTERVAL_MS = 20_000;
 const BACKGROUND_INTERVAL_MS = 180_000;
 const RATE_LIMITED_ACTIVE_MS = 60_000;
+const GLOBAL_INTERVAL_MS = 300_000; // 5 minutes
 
 export type RateLimitState = "normal" | "rate_limited" | "hard_limited";
 
@@ -29,7 +32,11 @@ export class PollCoordinator {
   private activeSession: string | null = null;
   private activeTimer: ReturnType<typeof setInterval> | null = null;
   private backgroundTimer: ReturnType<typeof setInterval> | null = null;
+  private globalTimer: ReturnType<typeof setInterval> | null = null;
   private _rateLimitState: RateLimitState = "normal";
+  private globalIssues: Issue[] = [];
+  private globalMrs: MergeRequest[] = [];
+  private globalReviewMrs: MergeRequest[] = [];
 
   get rateLimitState(): RateLimitState {
     return this._rateLimitState;
@@ -43,6 +50,10 @@ export class PollCoordinator {
     return this.opts.issueTracker;
   }
 
+  getGlobalIssues(): Issue[] { return this.globalIssues; }
+  getGlobalMrs(): MergeRequest[] { return this.globalMrs; }
+  getGlobalReviewMrs(): MergeRequest[] { return this.globalReviewMrs; }
+
   constructor(opts: PollCoordinatorOptions) {
     this.opts = opts;
   }
@@ -50,17 +61,55 @@ export class PollCoordinator {
   start(): void {
     this.startActivePolling();
     this.startBackgroundPolling();
+    this.startGlobalPolling();
   }
 
   stop(): void {
-    if (this.activeTimer) {
-      clearInterval(this.activeTimer);
-      this.activeTimer = null;
+    if (this.activeTimer) { clearInterval(this.activeTimer); this.activeTimer = null; }
+    if (this.backgroundTimer) { clearInterval(this.backgroundTimer); this.backgroundTimer = null; }
+    if (this.globalTimer) { clearInterval(this.globalTimer); this.globalTimer = null; }
+  }
+
+  async pollGlobal(): Promise<void> {
+    const { codeHost, issueTracker } = this.opts;
+
+    if (issueTracker && issueTracker.authState === "ok") {
+      try {
+        this.globalIssues = await issueTracker.getMyIssues();
+      } catch {}
     }
-    if (this.backgroundTimer) {
-      clearInterval(this.backgroundTimer);
-      this.backgroundTimer = null;
+
+    if (codeHost && codeHost.authState === "ok") {
+      try {
+        this.globalMrs = await codeHost.getMyMergeRequests();
+      } catch {}
+      try {
+        this.globalReviewMrs = await codeHost.getMrsAwaitingMyReview();
+      } catch {}
     }
+
+    this.opts.onUpdate("__global__");
+  }
+
+  async refreshGlobalItem(type: "mr" | "issue", id: string): Promise<void> {
+    const { codeHost, issueTracker } = this.opts;
+    if (type === "mr" && codeHost && codeHost.authState === "ok") {
+      try {
+        const fresh = await codeHost.pollMergeRequest(id);
+        const idx = this.globalMrs.findIndex((m) => m.id === id);
+        if (idx >= 0) this.globalMrs[idx] = fresh;
+        const ridx = this.globalReviewMrs.findIndex((m) => m.id === id);
+        if (ridx >= 0) this.globalReviewMrs[ridx] = fresh;
+      } catch {}
+    }
+    if (type === "issue" && issueTracker && issueTracker.authState === "ok") {
+      try {
+        const fresh = await issueTracker.pollIssue(id);
+        const idx = this.globalIssues.findIndex((i) => i.id === id);
+        if (idx >= 0) this.globalIssues[idx] = fresh;
+      } catch {}
+    }
+    this.opts.onUpdate("__global__");
   }
 
   addSession(name: string, dir: string): void {
@@ -288,5 +337,11 @@ export class PollCoordinator {
     this.backgroundTimer = setInterval(() => {
       this.pollBackgroundSessions().catch(() => {});
     }, BACKGROUND_INTERVAL_MS);
+  }
+
+  private startGlobalPolling(): void {
+    this.globalTimer = setInterval(() => {
+      this.pollGlobal().catch(() => {});
+    }, GLOBAL_INTERVAL_MS);
   }
 }
