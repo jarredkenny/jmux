@@ -106,6 +106,32 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return resp.data.issueSearch.nodes.map((n: any) => this.mapIssue(n));
   }
 
+  async getMyIssues(): Promise<Issue[]> {
+    if (this.authState !== "ok") return [];
+    const query = `
+      query {
+        viewer {
+          assignedIssues(first: 100, filter: { state: { type: { nin: ["completed", "canceled"] } } }) {
+            nodes {
+              id identifier title
+              state { name }
+              assignee { name }
+              team { name }
+              project { name }
+              priority
+              updatedAt
+              attachments { nodes { url } }
+              url
+            }
+          }
+        }
+      }
+    `;
+    const resp = await this.graphql(query, {});
+    if (!resp?.data?.viewer?.assignedIssues?.nodes) return [];
+    return resp.data.viewer.assignedIssues.nodes.map((n: any) => this.mapIssue(n));
+  }
+
   async updateStatus(issueId: string, status: string): Promise<void> {
     const statesQuery = `query($id: String!) { issue(id: $id) { team { states { nodes { id name } } } } }`;
     const statesResp = await this.graphql(statesQuery, { id: issueId });
@@ -130,6 +156,10 @@ export class LinearAdapter implements IssueTrackerAdapter {
         .map((a: any) => a.url)
         .filter((u: string) => u),
       webUrl: raw.url ?? "",
+      team: raw.team?.name ?? undefined,
+      project: raw.project?.name ?? undefined,
+      priority: typeof raw.priority === "number" ? raw.priority : undefined,
+      updatedAt: raw.updatedAt ? new Date(raw.updatedAt).getTime() : undefined,
     };
   }
 

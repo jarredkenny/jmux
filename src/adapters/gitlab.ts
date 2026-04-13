@@ -154,6 +154,37 @@ export class GitLabAdapter implements CodeHostAdapter {
     return result;
   }
 
+  async getMyMergeRequests(): Promise<MergeRequest[]> {
+    if (this.authState !== "ok") return [];
+    const resp = await this.fetch(
+      `${this.baseUrl}/merge_requests?scope=created_by_me&state=opened&per_page=100`,
+    );
+    if (!resp.ok) return [];
+    const mrs = await resp.json();
+    if (!Array.isArray(mrs)) return [];
+    return mrs.map((mr: any) => this.mapMergeRequest(mr));
+  }
+
+  async getMrsAwaitingMyReview(): Promise<MergeRequest[]> {
+    if (this.authState !== "ok") return [];
+    let username = "";
+    try {
+      const userResp = await this.fetch(`${this.baseUrl}/user`);
+      if (userResp.ok) {
+        const user = await userResp.json();
+        username = user.username ?? "";
+      }
+    } catch {}
+    if (!username) return [];
+    const resp = await this.fetch(
+      `${this.baseUrl}/merge_requests?reviewer_username=${encodeURIComponent(username)}&state=opened&per_page=100`,
+    );
+    if (!resp.ok) return [];
+    const mrs = await resp.json();
+    if (!Array.isArray(mrs)) return [];
+    return mrs.map((mr: any) => this.mapMergeRequest(mr));
+  }
+
   private mapMergeRequest(raw: any): MergeRequest {
     let pipeline: PipelineStatus | null = null;
     if (raw.head_pipeline) {
@@ -168,6 +199,9 @@ export class GitLabAdapter implements CodeHostAdapter {
       pipeline,
       approvals: { required: raw.approvals_required ?? 0, current: raw.approved_by?.length ?? 0 },
       webUrl: raw.web_url ?? "",
+      author: raw.author?.username ?? raw.author?.name ?? undefined,
+      reviewers: Array.isArray(raw.reviewers) ? raw.reviewers.map((r: any) => r.username ?? r.name) : undefined,
+      updatedAt: raw.updated_at ? new Date(raw.updated_at).getTime() : undefined,
     };
   }
 

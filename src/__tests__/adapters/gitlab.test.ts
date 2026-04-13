@@ -42,6 +42,22 @@ describe("parseMrUrl", () => {
   });
 });
 
+describe("getMyMergeRequests", () => {
+  test("returns empty array when not authenticated", async () => {
+    const adapter = new GitLabAdapter({ type: "gitlab" });
+    const results = await adapter.getMyMergeRequests();
+    expect(results).toEqual([]);
+  });
+});
+
+describe("getMrsAwaitingMyReview", () => {
+  test("returns empty array when not authenticated", async () => {
+    const adapter = new GitLabAdapter({ type: "gitlab" });
+    const results = await adapter.getMrsAwaitingMyReview();
+    expect(results).toEqual([]);
+  });
+});
+
 describe("GitLabAdapter", () => {
   test("starts in unauthenticated state", () => {
     const adapter = new GitLabAdapter({ type: "gitlab" });
