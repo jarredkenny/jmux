@@ -1011,6 +1011,11 @@ const inputRouter = new InputRouter(
       const viewState = viewStates.get(infoPanel.activeTab);
       if (viewState && viewState.selectedIndex > 0) {
         viewState.selectedIndex--;
+        viewState.detailScrollOffset = 0; // reset detail scroll on item change
+        // Scroll list if selection is above visible area
+        if (viewState.selectedIndex < viewState.scrollOffset) {
+          viewState.scrollOffset = viewState.selectedIndex;
+        }
         scheduleRender();
       }
     },
@@ -1034,6 +1039,13 @@ const inputRouter = new InputRouter(
       const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
       if (viewState.selectedIndex < nodes.length - 1) {
         viewState.selectedIndex++;
+        viewState.detailScrollOffset = 0; // reset detail scroll on item change
+        // Scroll list if selection goes below visible area
+        const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+        const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.25));
+        if (viewState.selectedIndex >= viewState.scrollOffset + listRows) {
+          viewState.scrollOffset = viewState.selectedIndex - listRows + 1;
+        }
         scheduleRender();
       }
     },
@@ -1257,6 +1269,20 @@ const inputRouter = new InputRouter(
       pollCoordinator.setActiveSession(sessionName);
       scheduleRender();
     },
+    onPanelDetailScrollUp: () => {
+      const viewState = viewStates.get(infoPanel.activeTab);
+      if (viewState && viewState.detailScrollOffset > 0) {
+        viewState.detailScrollOffset--;
+        scheduleRender();
+      }
+    },
+    onPanelDetailScrollDown: () => {
+      const viewState = viewStates.get(infoPanel.activeTab);
+      if (viewState) {
+        viewState.detailScrollOffset++;
+        scheduleRender();
+      }
+    },
     onPanelTabHover: (col) => {
       const ranges = infoPanel.getTabRanges();
       let found: string | null = null;
@@ -1273,8 +1299,8 @@ const inputRouter = new InputRouter(
       if (!view) return;
       const viewState = viewStates.get(view.id);
       if (!viewState) return;
-      // The view renderer has a 3-row header, then list items
-      const nodeIndex = row - 3 + viewState.scrollOffset;
+      // row is relative to panel content (after toolbar row)
+      const nodeIndex = row + viewState.scrollOffset;
       if (nodeIndex >= 0) {
         const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
         const ctx = pollCoordinator.getContext(sessionName);

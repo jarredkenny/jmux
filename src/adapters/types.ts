@@ -31,6 +31,7 @@ export interface Issue {
   updatedAt?: number;  // epoch ms
   description?: string;
   branchName?: string;  // Linear's suggested branch name
+  comments?: Array<{ author: string; body: string; createdAt: string }>;
 }
 
 export interface BranchContext {

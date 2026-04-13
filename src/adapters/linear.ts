@@ -4,7 +4,7 @@ import type { IssueTrackerAdapter, AdapterAuthState, Issue } from "./types";
 const LINEAR_API = "https://api.linear.app/graphql";
 
 // Shared GraphQL fields for issue queries
-const ISSUE_FIELDS = `id identifier title description branchName state { name } assignee { name } team { name } project { name } priority updatedAt attachments { nodes { url } } url`;
+const ISSUE_FIELDS = `id identifier title description branchName state { name } assignee { name } team { name } project { name } priority updatedAt attachments { nodes { url } } comments(first: 20) { nodes { body user { name } createdAt } } url`;
 
 export function extractIssueIdFromBranch(branch: string): string | null {
   const match = branch.match(/(?:^|\/?)([a-zA-Z]+-\d+)/);
@@ -163,6 +163,11 @@ export class LinearAdapter implements IssueTrackerAdapter {
       updatedAt: raw.updatedAt ? new Date(raw.updatedAt).getTime() : undefined,
       description: raw.description ?? undefined,
       branchName: raw.branchName ?? undefined,
+      comments: (raw.comments?.nodes ?? []).map((c: any) => ({
+        author: c.user?.name ?? "Unknown",
+        body: c.body ?? "",
+        createdAt: c.createdAt ?? "",
+      })),
     };
   }
 

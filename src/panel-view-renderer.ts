@@ -31,10 +31,11 @@ export interface ViewState {
   selectedIndex: number;
   collapsedGroups: Set<string>;
   scrollOffset: number;
+  detailScrollOffset: number;
 }
 
 export function createViewState(): ViewState {
-  return { selectedIndex: 0, collapsedGroups: new Set(), scrollOffset: 0 };
+  return { selectedIndex: 0, collapsedGroups: new Set(), scrollOffset: 0, detailScrollOffset: 0 };
 }
 
 // --- Data Pipeline ---
@@ -184,6 +185,7 @@ const DETAIL_LABEL: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const DETAIL_VALUE: CellAttrs = { fg: (0xC9 << 16) | (0xD1 << 8) | 0xD9, fgMode: ColorMode.RGB };
 const DETAIL_KEY: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const SEPARATOR_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
+const HINT_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const URL_ATTRS: CellAttrs = { fg: (0x58 << 16) | (0xA6 << 8) | 0xFF, fgMode: ColorMode.RGB, underline: true };
 
 const ACTION_BAR_ROWS = 2;
@@ -202,10 +204,10 @@ export function renderView(
   // Action bar is always pinned to the bottom 2 rows when detail is shown
   const actionBarStart = showDetail ? rows - ACTION_BAR_ROWS : rows;
   const detailContentRows = showDetail ? Math.max(0, rows - Math.ceil(nodes.length * 0.6) - 1 - ACTION_BAR_ROWS) : 0;
-  // Give at least half the space to the list, but at least 4 rows to detail
+  // List gets ~25% of space, detail gets ~75% (minus action bar + separator)
   const minDetailRows = 4;
   const maxListRows = showDetail ? rows - minDetailRows - 1 - ACTION_BAR_ROWS : rows;
-  const listRows = showDetail ? Math.min(maxListRows, Math.max(4, Math.floor((rows - ACTION_BAR_ROWS - 1) * 0.5))) : rows;
+  const listRows = showDetail ? Math.min(maxListRows, Math.max(3, Math.floor((rows - ACTION_BAR_ROWS - 1) * 0.25))) : rows;
   const sepRow = showDetail ? listRows : rows;
   const detailStart = sepRow + 1;
   const detailRows = showDetail ? actionBarStart - detailStart : 0;
@@ -232,10 +234,10 @@ export function renderView(
     // Separator
     writeString(grid, sepRow, 0, "─".repeat(cols), SEPARATOR_ATTRS);
 
-    // Detail content
+    // Detail content (scrollable)
     const selectedNode = nodes[state.selectedIndex];
     if (selectedNode?.kind === "item") {
-      renderDetail(grid, detailStart, cols, detailRows, selectedNode.item);
+      renderDetail(grid, detailStart, cols, detailRows, selectedNode.item, state.detailScrollOffset);
     } else if (selectedNode?.kind === "group") {
       writeString(grid, detailStart, 2, `${selectedNode.label} — ${selectedNode.count} items`, GROUP_ATTRS);
     }
@@ -299,69 +301,129 @@ function renderItem(grid: CellGrid, row: number, cols: number, item: RenderableI
   }
 }
 
-function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: number, item: RenderableItem): void {
-  const pad = 2;
-  let row = startRow;
+type DetailLine = { text: string; attrs: CellAttrs; indent?: number };
 
-  if (item.type === "issue") {
-    const issue = item.raw as Issue;
-    writeString(grid, row, pad, `${issue.identifier} ${issue.title}`.slice(0, cols - pad * 2), { ...DETAIL_VALUE, bold: true });
-    row++;
-    let col = pad;
-    writeString(grid, row, col, `Status: `, DETAIL_LABEL);
-    col += 8;
-    writeString(grid, row, col, issue.status, DETAIL_VALUE);
-    if (issue.priority != null && issue.priority > 0) {
-      col += issue.status.length + 3;
-      writeString(grid, row, col, `Priority: P${issue.priority}`, DETAIL_LABEL);
+function buildIssueDetailLines(item: RenderableItem, cols: number): DetailLine[] {
+  const issue = item.raw as Issue;
+  const pad = 2;
+  const contentWidth = cols - pad * 2;
+  const lines: DetailLine[] = [];
+
+  // Header
+  lines.push({ text: `${issue.identifier} ${issue.title}`.slice(0, contentWidth), attrs: { ...DETAIL_VALUE, bold: true } });
+
+  // Metadata
+  let statusLine = `Status: ${issue.status}`;
+  if (issue.priority != null && issue.priority > 0) statusLine += `   Priority: P${issue.priority}`;
+  lines.push({ text: statusLine, attrs: DETAIL_LABEL });
+  lines.push({ text: `Assignee: ${issue.assignee ?? "Unassigned"}`, attrs: DETAIL_LABEL });
+  if (issue.team) lines.push({ text: `Team: ${issue.team}`, attrs: DETAIL_LABEL });
+
+  // Linked MRs
+  if (issue.linkedMrUrls.length > 0) {
+    lines.push({ text: "", attrs: DIM_ATTRS });
+    lines.push({ text: "Linked MRs:", attrs: DETAIL_LABEL });
+    for (const url of issue.linkedMrUrls) {
+      const m = url.match(/merge_requests\/(\d+)/);
+      const label = m ? `!${m[1]}` : "MR";
+      lines.push({ text: `${label}  ${url}`.slice(0, contentWidth - 1), attrs: URL_ATTRS, indent: 1 });
     }
-    row++;
-    writeString(grid, row, pad, `Assignee: `, DETAIL_LABEL);
-    writeString(grid, row, pad + 10, issue.assignee ?? "Unassigned", DETAIL_VALUE);
-    row++;
-    if (issue.team) {
-      writeString(grid, row, pad, `Team: `, DETAIL_LABEL);
-      writeString(grid, row, pad + 6, issue.team, DETAIL_VALUE);
-      row++;
+  }
+
+  // Description
+  if (issue.description) {
+    lines.push({ text: "", attrs: DIM_ATTRS });
+    lines.push({ text: "Description:", attrs: { ...DETAIL_LABEL, bold: true } });
+    for (const line of wrapText(issue.description, contentWidth)) {
+      lines.push({ text: line, attrs: DETAIL_VALUE });
     }
-    if (issue.linkedMrUrls.length > 0) {
-      writeString(grid, row, pad, `MRs:`, DETAIL_LABEL);
-      row++;
-      for (const url of issue.linkedMrUrls) {
-        if (row >= startRow + maxRows) break;
-        const m = url.match(/merge_requests\/(\d+)/);
-        const label = m ? `!${m[1]}` : "MR";
-        const display = `${label}  ${url}`;
-        writeString(grid, row, pad + 1, display.slice(0, cols - pad * 2 - 1), URL_ATTRS);
-        row++;
+  }
+
+  // Comments
+  if (issue.comments && issue.comments.length > 0) {
+    lines.push({ text: "", attrs: DIM_ATTRS });
+    lines.push({ text: `Comments (${issue.comments.length}):`, attrs: { ...DETAIL_LABEL, bold: true } });
+    for (const comment of issue.comments) {
+      lines.push({ text: "", attrs: DIM_ATTRS });
+      const date = comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : "";
+      lines.push({ text: `${comment.author}  ${date}`, attrs: { ...DETAIL_LABEL, bold: true } });
+      for (const line of wrapText(comment.body, contentWidth)) {
+        lines.push({ text: line, attrs: DETAIL_VALUE });
       }
     }
-  } else {
-    const mr = item.raw as MergeRequest;
-    writeString(grid, row, pad, `${item.primary} ${mr.title}`.slice(0, cols - pad * 2), { ...DETAIL_VALUE, bold: true });
-    row++;
-    let col = pad;
-    const statusLabel = mr.status.charAt(0).toUpperCase() + mr.status.slice(1);
-    writeString(grid, row, col, statusLabel, DETAIL_VALUE);
-    col += statusLabel.length + 2;
-    writeString(grid, row, col, `${mr.sourceBranch} → ${mr.targetBranch}`.slice(0, cols - col - pad), DETAIL_LABEL);
-    row++;
-    if (mr.pipeline) {
-      const glyphs: Record<string, string> = { passed: "✓", running: "⟳", failed: "✗", pending: "○", canceled: "—" };
-      writeString(grid, row, pad, `${glyphs[mr.pipeline.state] ?? "?"} Pipeline ${mr.pipeline.state}`, DETAIL_VALUE);
-      row++;
+  }
+
+  return lines;
+}
+
+function buildMrDetailLines(item: RenderableItem, cols: number): DetailLine[] {
+  const mr = item.raw as MergeRequest;
+  const pad = 2;
+  const contentWidth = cols - pad * 2;
+  const lines: DetailLine[] = [];
+
+  lines.push({ text: `${item.primary} ${mr.title}`.slice(0, contentWidth), attrs: { ...DETAIL_VALUE, bold: true } });
+
+  const statusLabel = mr.status.charAt(0).toUpperCase() + mr.status.slice(1);
+  lines.push({ text: `${statusLabel}  ${mr.sourceBranch} → ${mr.targetBranch}`.slice(0, contentWidth), attrs: DETAIL_LABEL });
+
+  if (mr.pipeline) {
+    const glyphs: Record<string, string> = { passed: "✓", running: "⟳", failed: "✗", pending: "○", canceled: "—" };
+    lines.push({ text: `${glyphs[mr.pipeline.state] ?? "?"} Pipeline ${mr.pipeline.state}`, attrs: DETAIL_VALUE });
+  }
+
+  lines.push({ text: `Approvals: ${mr.approvals.current}/${mr.approvals.required}`, attrs: DETAIL_VALUE });
+  if (mr.author) lines.push({ text: `Author: ${mr.author}`, attrs: DETAIL_LABEL });
+  if (mr.reviewers && mr.reviewers.length > 0) {
+    lines.push({ text: `Reviewers: ${mr.reviewers.join(", ")}`, attrs: DETAIL_LABEL });
+  }
+
+  return lines;
+}
+
+function wrapText(text: string, width: number): string[] {
+  const lines: string[] = [];
+  // Split on newlines first, then wrap each line
+  for (const paragraph of text.split("\n")) {
+    if (paragraph.trim() === "") { lines.push(""); continue; }
+    let remaining = paragraph;
+    while (remaining.length > width) {
+      // Find last space within width
+      let breakAt = remaining.lastIndexOf(" ", width);
+      if (breakAt <= 0) breakAt = width;
+      lines.push(remaining.slice(0, breakAt));
+      remaining = remaining.slice(breakAt).trimStart();
     }
-    writeString(grid, row, pad, `Approvals: ${mr.approvals.current}/${mr.approvals.required}`, DETAIL_VALUE);
-    row++;
-    if (mr.author) {
-      writeString(grid, row, pad, `Author: `, DETAIL_LABEL);
-      writeString(grid, row, pad + 8, mr.author, DETAIL_VALUE);
-      row++;
+    if (remaining) lines.push(remaining);
+  }
+  return lines;
+}
+
+function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: number, item: RenderableItem, scrollOffset: number): void {
+  const pad = 2;
+  const lines = item.type === "issue"
+    ? buildIssueDetailLines(item, cols)
+    : buildMrDetailLines(item, cols);
+
+  // Show scroll indicator if content overflows
+  const totalLines = lines.length;
+  const canScroll = totalLines > maxRows;
+
+  for (let i = 0; i < maxRows; i++) {
+    const lineIdx = i + scrollOffset;
+    if (lineIdx >= totalLines) break;
+    const line = lines[lineIdx];
+    const indent = (line.indent ?? 0) * 2;
+    writeString(grid, startRow + i, pad + indent, line.text.slice(0, cols - pad * 2 - indent), line.attrs);
+  }
+
+  // Scroll indicators
+  if (canScroll) {
+    if (scrollOffset > 0) {
+      writeString(grid, startRow, cols - pad, "↑", HINT_ATTRS);
     }
-    if (mr.reviewers && mr.reviewers.length > 0) {
-      writeString(grid, row, pad, `Reviewers: `, DETAIL_LABEL);
-      writeString(grid, row, pad + 11, mr.reviewers.join(", "), DETAIL_VALUE);
-      row++;
+    if (scrollOffset + maxRows < totalLines) {
+      writeString(grid, startRow + maxRows - 1, cols - pad, "↓", HINT_ATTRS);
     }
   }
 }
@@ -370,33 +432,36 @@ function renderActionBar(grid: CellGrid, startRow: number, cols: number, item: R
   const pad = 2;
   if (!item) return;
 
+  // Helper: write key+label pair, return updated column
+  function writeAction(row: number, col: number, key: string, label: string): number {
+    writeString(grid, row, col, key, DETAIL_KEY);
+    col += key.length;
+    writeString(grid, row, col, label, DETAIL_LABEL);
+    col += label.length;
+    return col;
+  }
+
   if (item.type === "issue") {
     const nLabel = item.issueSessionState === "session" ? "Switch"
       : item.issueSessionState === "worktree" ? "Resume"
       : "Start";
     let col = pad;
-    writeString(grid, startRow, col, "[o]", DETAIL_KEY); col += 3;
-    writeString(grid, startRow, col, " Open ", DETAIL_LABEL); col += 5;
-    writeString(grid, startRow, col, "[n]", DETAIL_KEY); col += 3;
-    writeString(grid, startRow, col, ` ${nLabel} `, DETAIL_LABEL); col += nLabel.length + 2;
-    writeString(grid, startRow, col, "[l]", DETAIL_KEY); col += 3;
-    writeString(grid, startRow, col, " Link ", DETAIL_LABEL); col += 5;
-    writeString(grid, startRow, col, "[s]", DETAIL_KEY); col += 3;
-    writeString(grid, startRow, col, " Status ", DETAIL_LABEL); col += 8;
-    writeString(grid, startRow, col, "[c]", DETAIL_KEY); col += 3;
-    writeString(grid, startRow, col, " Copy", DETAIL_LABEL);
+    col = writeAction(startRow, col, "[o]", " Open  ");
+    col = writeAction(startRow, col, "[n]", ` ${nLabel}  `);
+    col = writeAction(startRow, col, "[l]", " Link  ");
+    col = writeAction(startRow, col, "[s]", " Status  ");
+    col = writeAction(startRow, col, "[c]", " Copy  ");
+    // Detail scroll hint
+    writeAction(startRow + 1, pad, "[J/K]", " Scroll detail");
   } else {
     const mr = item.raw as MergeRequest;
     let col = pad;
-    writeString(grid, startRow, col, "[o]", DETAIL_KEY); col += 3;
-    writeString(grid, startRow, col, " Open ", DETAIL_LABEL); col += 5;
-    writeString(grid, startRow, col, "[l]", DETAIL_KEY); col += 3;
-    writeString(grid, startRow, col, " Link ", DETAIL_LABEL); col += 5;
-    writeString(grid, startRow, col, "[a]", DETAIL_KEY); col += 3;
-    writeString(grid, startRow, col, " Approve ", DETAIL_LABEL); col += 9;
+    col = writeAction(startRow, col, "[o]", " Open  ");
+    col = writeAction(startRow, col, "[l]", " Link  ");
+    col = writeAction(startRow, col, "[a]", " Approve  ");
     if (mr.status === "draft") {
-      writeString(grid, startRow, col, "[r]", DETAIL_KEY); col += 3;
-      writeString(grid, startRow, col, " Ready", DETAIL_LABEL);
+      col = writeAction(startRow, col, "[r]", " Ready  ");
     }
+    writeAction(startRow + 1, pad, "[J/K]", " Scroll detail");
   }
 }

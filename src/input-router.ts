@@ -58,6 +58,8 @@ export interface InputRouterOptions {
   onPanelTabHover?: (col: number) => void; // col relative to panel start, for hover detection
   onPanelSelectPrev?: () => void;
   onPanelSelectNext?: () => void;
+  onPanelDetailScrollUp?: () => void;
+  onPanelDetailScrollDown?: () => void;
   onPanelCycleGroupBy?: () => void;
   onPanelCycleSubGroupBy?: () => void;
   onPanelCycleSortBy?: () => void;
@@ -328,6 +330,8 @@ export class InputRouter {
         }
       }
       if (this.panelTabsActive) {
+        if (data === "J" && this.opts.onPanelDetailScrollDown) { this.opts.onPanelDetailScrollDown(); return; }
+        if (data === "K" && this.opts.onPanelDetailScrollUp) { this.opts.onPanelDetailScrollUp(); return; }
         if (data === "g" && this.opts.onPanelCycleGroupBy) { this.opts.onPanelCycleGroupBy(); return; }
         if (data === "G" && this.opts.onPanelCycleSubGroupBy) { this.opts.onPanelCycleSubGroupBy(); return; }
         if (data === "/" && this.opts.onPanelCycleSortBy) { this.opts.onPanelCycleSortBy(); return; }
