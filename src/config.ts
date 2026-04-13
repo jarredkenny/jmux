@@ -8,6 +8,7 @@ export interface IssueWorkflowConfig {
   teamRepoMap?: Record<string, string>;  // Linear team name → repo directory
   defaultBaseBranch?: string;             // default: "main"
   autoCreateWorktree?: boolean;           // default: true
+  autoLaunchAgent?: boolean;              // default: true — launch claude with issue context
   sessionNameTemplate?: string;           // default: "{identifier}" — supports {identifier}, {title}
 }
 

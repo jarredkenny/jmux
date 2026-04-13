@@ -1079,11 +1079,18 @@ const inputRouter = new InputRouter(
 
         const expandedDir = repoDir.replace("~", homedir());
         const baseBranch = workflow.defaultBaseBranch ?? "main";
-        const template = workflow.sessionNameTemplate ?? "{identifier}";
-        const sessionRaw = template
-          .replace("{identifier}", issue.identifier.toLowerCase())
-          .replace("{title}", issue.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40));
-        const session = sanitizeTmuxSessionName(sessionRaw);
+
+        // Use Linear's branch name if available, fall back to template
+        let branchName: string;
+        if (issue.branchName) {
+          branchName = issue.branchName;
+        } else {
+          const template = workflow.sessionNameTemplate ?? "{identifier}";
+          branchName = template
+            .replace("{identifier}", issue.identifier.toLowerCase())
+            .replace("{title}", issue.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40));
+        }
+        const session = sanitizeTmuxSessionName(branchName);
 
         try {
           // Check if repo is bare (has worktree support)
@@ -1093,7 +1100,7 @@ const inputRouter = new InputRouter(
           ).stdout.toString().trim() === "true";
 
           if (isBare) {
-            // Create worktree via wtm, same pattern as new-session modal
+            // Create worktree via wtm using Linear's branch name
             const wtPath = `${expandedDir}/${session}`;
             const cmd = `wtm create ${session} --from ${baseBranch} --no-shell; cd ${session}; exec $SHELL`;
             await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(expandedDir)} ${tq(cmd)}`);
@@ -1101,12 +1108,22 @@ const inputRouter = new InputRouter(
             await control.sendCommand(`split-window -h -d -t ${tq(session)} -c ${tq(expandedDir)} ${tq(waitCmd)}`);
           } else {
             // Non-bare: create branch and session in the repo directory
-            Bun.spawnSync(["git", "checkout", "-b", session, baseBranch], { cwd: expandedDir, stdout: "ignore", stderr: "ignore" });
+            Bun.spawnSync(["git", "checkout", "-b", branchName, baseBranch], { cwd: expandedDir, stdout: "ignore", stderr: "ignore" });
             await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(expandedDir)}`);
           }
 
           await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(session)}`);
           sessionState.addLink(session, { type: "issue", id: issue.id });
+
+          // Auto-launch agent with issue context if configured
+          if (workflow.autoLaunchAgent !== false && issue.description) {
+            const prompt = `You are working on ${issue.identifier}: ${issue.title}\n\n${issue.description}\n\nStart by understanding the relevant code, then propose an approach.`;
+            const tmpFile = `/tmp/jmux-prompt-${Date.now()}.md`;
+            writeFileSync(tmpFile, prompt);
+            const wtPath = `${expandedDir}/${session}`;
+            const agentCmd = `${claudeCommand} --message-file ${tmpFile}; rm -f ${tmpFile}`;
+            await control.sendCommand(`split-window -h -t ${tq(session)} -c ${tq(isBare ? wtPath : expandedDir)} ${tq(agentCmd)}`);
+          }
         } catch (err) {
           // Show error in a content modal
           const message = err instanceof Error ? err.message : String(err);
@@ -1447,6 +1464,11 @@ function buildPaletteCommands(): PaletteCommand[] {
   commands.push({
     id: "setting-auto-worktree",
     label: `Auto-create worktree: ${wf?.autoCreateWorktree !== false ? "on" : "off"}`,
+    category: "setting",
+  });
+  commands.push({
+    id: "setting-auto-agent",
+    label: `Auto-launch agent: ${wf?.autoLaunchAgent !== false ? "on" : "off"}`,
     category: "setting",
   });
 
@@ -2070,6 +2092,11 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     case "setting-auto-worktree": {
       const current = userConfig.issueWorkflow?.autoCreateWorktree !== false;
       await saveWorkflowSetting("autoCreateWorktree", !current);
+      return;
+    }
+    case "setting-auto-agent": {
+      const current = userConfig.issueWorkflow?.autoLaunchAgent !== false;
+      await saveWorkflowSetting("autoLaunchAgent", !current);
       return;
     }
     case "link-issue": {

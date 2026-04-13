@@ -29,6 +29,8 @@ export interface Issue {
   project?: string;
   priority?: number;   // 0=none, 1=urgent, 2=high, 3=medium, 4=low
   updatedAt?: number;  // epoch ms
+  description?: string;
+  branchName?: string;  // Linear's suggested branch name
 }
 
 export interface BranchContext {
