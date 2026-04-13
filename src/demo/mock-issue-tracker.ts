@@ -4,9 +4,9 @@ import { DEMO_ISSUES, DEMO_TEAMS } from "./seed-data";
 const AVAILABLE_STATUSES = ["Backlog", "Todo", "In Progress", "In Review", "Done"];
 
 export class DemoIssueTrackerAdapter implements IssueTrackerAdapter {
-  readonly type = "demo";
-  readonly authState: AdapterAuthState = "ok";
-  readonly authHint = "demo mode — no credentials needed";
+  type = "demo";
+  authState: AdapterAuthState = "ok";
+  authHint = "demo mode — no credentials needed";
 
   private issues: Map<string, Issue>;
   private byBranch: Map<string, Issue>;
