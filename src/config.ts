@@ -2,6 +2,7 @@ import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import { homedir } from "os";
 import type { AdapterConfig } from "./adapters/types";
+import type { PanelView } from "./panel-view";
 
 export interface JmuxConfig {
   sidebarWidth?: number;
@@ -13,6 +14,7 @@ export interface JmuxConfig {
     hunkCommand?: string;
   };
   adapters?: AdapterConfig;
+  panelViews?: PanelView[];
 }
 
 /**
