@@ -186,7 +186,7 @@ const DETAIL_KEY: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const SEPARATOR_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const URL_ATTRS: CellAttrs = { fg: (0x58 << 16) | (0xA6 << 8) | 0xFF, fgMode: ColorMode.RGB, underline: true };
 
-const DETAIL_ROWS = 8;
+const ACTION_BAR_ROWS = 2;
 const MIN_ROWS_FOR_DETAIL = 15;
 
 export function renderView(
@@ -197,7 +197,18 @@ export function renderView(
 ): CellGrid {
   const grid = createGrid(cols, rows);
   const showDetail = rows >= MIN_ROWS_FOR_DETAIL;
-  const listRows = showDetail ? rows - DETAIL_ROWS - 1 : rows; // -1 for separator
+
+  // Layout: list | separator | detail content | action bar
+  // Action bar is always pinned to the bottom 2 rows when detail is shown
+  const actionBarStart = showDetail ? rows - ACTION_BAR_ROWS : rows;
+  const detailContentRows = showDetail ? Math.max(0, rows - Math.ceil(nodes.length * 0.6) - 1 - ACTION_BAR_ROWS) : 0;
+  // Give at least half the space to the list, but at least 4 rows to detail
+  const minDetailRows = 4;
+  const maxListRows = showDetail ? rows - minDetailRows - 1 - ACTION_BAR_ROWS : rows;
+  const listRows = showDetail ? Math.min(maxListRows, Math.max(4, Math.floor((rows - ACTION_BAR_ROWS - 1) * 0.5))) : rows;
+  const sepRow = showDetail ? listRows : rows;
+  const detailStart = sepRow + 1;
+  const detailRows = showDetail ? actionBarStart - detailStart : 0;
 
   // Render list
   let visibleIdx = 0;
@@ -218,17 +229,24 @@ export function renderView(
 
   // Render detail pane
   if (showDetail) {
-    const sepRow = listRows;
-    const sepChar = "─".repeat(cols);
-    writeString(grid, sepRow, 0, sepChar, SEPARATOR_ATTRS);
+    // Separator
+    writeString(grid, sepRow, 0, "─".repeat(cols), SEPARATOR_ATTRS);
 
+    // Detail content
     const selectedNode = nodes[state.selectedIndex];
     if (selectedNode?.kind === "item") {
-      renderDetail(grid, sepRow + 1, cols, DETAIL_ROWS, selectedNode.item);
+      renderDetail(grid, detailStart, cols, detailRows, selectedNode.item);
     } else if (selectedNode?.kind === "group") {
-      const detailRow = sepRow + 1;
-      writeString(grid, detailRow, 2, `${selectedNode.label} — ${selectedNode.count} items`, GROUP_ATTRS);
+      writeString(grid, detailStart, 2, `${selectedNode.label} — ${selectedNode.count} items`, GROUP_ATTRS);
     }
+
+    // Action bar — always at the bottom
+    const actionSepRow = actionBarStart - 1;
+    if (actionSepRow > detailStart) {
+      writeString(grid, actionSepRow, 0, "─".repeat(cols), SEPARATOR_ATTRS);
+    }
+    const selectedItem = selectedNode?.kind === "item" ? selectedNode.item : null;
+    renderActionBar(grid, actionBarStart, cols, selectedItem);
   }
 
   return grid;
@@ -310,7 +328,7 @@ function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: n
       writeString(grid, row, pad, `MRs:`, DETAIL_LABEL);
       row++;
       for (const url of issue.linkedMrUrls) {
-        if (row >= startRow + maxRows - 2) break; // leave room for actions
+        if (row >= startRow + maxRows) break;
         const m = url.match(/merge_requests\/(\d+)/);
         const label = m ? `!${m[1]}` : "MR";
         const display = `${label}  ${url}`;
@@ -318,21 +336,6 @@ function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: n
         row++;
       }
     }
-    row++;
-    writeString(grid, row, pad, "[o]", DETAIL_KEY);
-    writeString(grid, row, pad + 3, " Open  ", DETAIL_LABEL);
-    const nLabel = item.issueSessionState === "session" ? " Switch  "
-      : item.issueSessionState === "worktree" ? " Resume  "
-      : " Start   ";
-    writeString(grid, row, pad + 10, "[n]", DETAIL_KEY);
-    writeString(grid, row, pad + 13, nLabel, DETAIL_LABEL);
-    writeString(grid, row, pad + 23, "[l]", DETAIL_KEY);
-    writeString(grid, row, pad + 26, " Link", DETAIL_LABEL);
-    row++;
-    writeString(grid, row, pad, "[s]", DETAIL_KEY);
-    writeString(grid, row, pad + 3, " Status  ", DETAIL_LABEL);
-    writeString(grid, row, pad + 12, "[c]", DETAIL_KEY);
-    writeString(grid, row, pad + 15, " Copy prompt", DETAIL_LABEL);
   } else {
     const mr = item.raw as MergeRequest;
     writeString(grid, row, pad, `${item.primary} ${mr.title}`.slice(0, cols - pad * 2), { ...DETAIL_VALUE, bold: true });
@@ -355,17 +358,45 @@ function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: n
       writeString(grid, row, pad + 8, mr.author, DETAIL_VALUE);
       row++;
     }
-    row++;
-    writeString(grid, row, pad, "[o]", DETAIL_KEY);
-    writeString(grid, row, pad + 3, " Open  ", DETAIL_LABEL);
-    writeString(grid, row, pad + 10, "[l]", DETAIL_KEY);
-    writeString(grid, row, pad + 13, " Link  ", DETAIL_LABEL);
-    writeString(grid, row, pad + 20, "[a]", DETAIL_KEY);
-    writeString(grid, row, pad + 23, " Approve", DETAIL_LABEL);
-    row++;
+    if (mr.reviewers && mr.reviewers.length > 0) {
+      writeString(grid, row, pad, `Reviewers: `, DETAIL_LABEL);
+      writeString(grid, row, pad + 11, mr.reviewers.join(", "), DETAIL_VALUE);
+      row++;
+    }
+  }
+}
+
+function renderActionBar(grid: CellGrid, startRow: number, cols: number, item: RenderableItem | null): void {
+  const pad = 2;
+  if (!item) return;
+
+  if (item.type === "issue") {
+    const nLabel = item.issueSessionState === "session" ? "Switch"
+      : item.issueSessionState === "worktree" ? "Resume"
+      : "Start";
+    let col = pad;
+    writeString(grid, startRow, col, "[o]", DETAIL_KEY); col += 3;
+    writeString(grid, startRow, col, " Open ", DETAIL_LABEL); col += 5;
+    writeString(grid, startRow, col, "[n]", DETAIL_KEY); col += 3;
+    writeString(grid, startRow, col, ` ${nLabel} `, DETAIL_LABEL); col += nLabel.length + 2;
+    writeString(grid, startRow, col, "[l]", DETAIL_KEY); col += 3;
+    writeString(grid, startRow, col, " Link ", DETAIL_LABEL); col += 5;
+    writeString(grid, startRow, col, "[s]", DETAIL_KEY); col += 3;
+    writeString(grid, startRow, col, " Status ", DETAIL_LABEL); col += 8;
+    writeString(grid, startRow, col, "[c]", DETAIL_KEY); col += 3;
+    writeString(grid, startRow, col, " Copy", DETAIL_LABEL);
+  } else {
+    const mr = item.raw as MergeRequest;
+    let col = pad;
+    writeString(grid, startRow, col, "[o]", DETAIL_KEY); col += 3;
+    writeString(grid, startRow, col, " Open ", DETAIL_LABEL); col += 5;
+    writeString(grid, startRow, col, "[l]", DETAIL_KEY); col += 3;
+    writeString(grid, startRow, col, " Link ", DETAIL_LABEL); col += 5;
+    writeString(grid, startRow, col, "[a]", DETAIL_KEY); col += 3;
+    writeString(grid, startRow, col, " Approve ", DETAIL_LABEL); col += 9;
     if (mr.status === "draft") {
-      writeString(grid, row, pad, "[r]", DETAIL_KEY);
-      writeString(grid, row, pad + 3, " Ready", DETAIL_LABEL);
+      writeString(grid, startRow, col, "[r]", DETAIL_KEY); col += 3;
+      writeString(grid, startRow, col, " Ready", DETAIL_LABEL);
     }
   }
 }
