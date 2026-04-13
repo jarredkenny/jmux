@@ -1269,20 +1269,6 @@ const inputRouter = new InputRouter(
       pollCoordinator.setActiveSession(sessionName);
       scheduleRender();
     },
-    onPanelDetailScrollUp: () => {
-      const viewState = viewStates.get(infoPanel.activeTab);
-      if (viewState && viewState.detailScrollOffset > 0) {
-        viewState.detailScrollOffset--;
-        scheduleRender();
-      }
-    },
-    onPanelDetailScrollDown: () => {
-      const viewState = viewStates.get(infoPanel.activeTab);
-      if (viewState) {
-        viewState.detailScrollOffset++;
-        scheduleRender();
-      }
-    },
     onPanelScroll: (delta, row) => {
       const view = panelViews.find((v) => v.id === infoPanel.activeTab);
       if (!view) return;
@@ -1320,6 +1306,10 @@ const inputRouter = new InputRouter(
       if (!view) return;
       const viewState = viewStates.get(view.id);
       if (!viewState) return;
+      // Only handle clicks in the list area (top half)
+      const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+      const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
+      if (row >= listRows) return; // click was in detail area — ignore
       // row is relative to panel content (after toolbar row)
       const nodeIndex = row + viewState.scrollOffset;
       if (nodeIndex >= 0) {

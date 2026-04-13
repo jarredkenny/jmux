@@ -59,8 +59,6 @@ export interface InputRouterOptions {
   onPanelScroll?: (delta: number, row: number) => void; // wheel scroll in panel area, row relative to content
   onPanelSelectPrev?: () => void;
   onPanelSelectNext?: () => void;
-  onPanelDetailScrollUp?: () => void;
-  onPanelDetailScrollDown?: () => void;
   onPanelCycleGroupBy?: () => void;
   onPanelCycleSubGroupBy?: () => void;
   onPanelCycleSortBy?: () => void;
@@ -266,11 +264,11 @@ export class InputRouter {
             return;
           }
 
-          // Non-diff tab: clicks select items in the view
+          // Non-diff tab: clicks in list area select items
           if (this.panelTabsActive && !mouse.release && !isMotion && !isWheel) {
             const panelRow = mouse.y - 2; // -1 for 1-indexed, -1 for toolbar row
             if (panelRow >= 0) {
-              this.opts.onPanelItemClick?.(panelRow);
+              this.opts.onPanelItemClick?.(panelRow); // main.ts bounds-checks against listRows
             }
             return;
           }
@@ -339,8 +337,6 @@ export class InputRouter {
         }
       }
       if (this.panelTabsActive) {
-        if (data === "J" && this.opts.onPanelDetailScrollDown) { this.opts.onPanelDetailScrollDown(); return; }
-        if (data === "K" && this.opts.onPanelDetailScrollUp) { this.opts.onPanelDetailScrollUp(); return; }
         if (data === "g" && this.opts.onPanelCycleGroupBy) { this.opts.onPanelCycleGroupBy(); return; }
         if (data === "G" && this.opts.onPanelCycleSubGroupBy) { this.opts.onPanelCycleSubGroupBy(); return; }
         if (data === "/" && this.opts.onPanelCycleSortBy) { this.opts.onPanelCycleSortBy(); return; }

@@ -452,7 +452,6 @@ function renderActionBar(grid: CellGrid, startRow: number, cols: number, item: R
     col = writeAction(startRow, col, "[s]", " Status  ");
     col = writeAction(startRow, col, "[c]", " Copy  ");
     // Detail scroll hint
-    writeAction(startRow + 1, pad, "[J/K]", " Scroll detail");
   } else {
     const mr = item.raw as MergeRequest;
     let col = pad;
@@ -462,6 +461,5 @@ function renderActionBar(grid: CellGrid, startRow: number, cols: number, item: R
     if (mr.status === "draft") {
       col = writeAction(startRow, col, "[r]", " Ready  ");
     }
-    writeAction(startRow + 1, pad, "[J/K]", " Scroll detail");
   }
 }
