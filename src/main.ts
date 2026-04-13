@@ -332,7 +332,7 @@ let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
 const settingsScreen = new SettingsScreen();
 
-import { SettingsScreen, type SettingDef, type SettingsCategory } from "./settings-screen";
+import { SettingsScreen, type SettingDef, type SettingsCategory, type SettingsAction } from "./settings-screen";
 
 const adapters = createAdapters(userConfig.adapters);
 const infoPanel = new InfoPanel({ viewIds: [], viewLabels: new Map() });
@@ -1520,50 +1520,106 @@ function buildPaletteCommands(): PaletteCommand[] {
 }
 
 function buildSettingsCategories(): SettingsCategory[] {
-  const wf = userConfig.issueWorkflow;
-  const adapterCfg = userConfig.adapters;
-  const teamMap = wf?.teamRepoMap ?? {};
+  const wf = () => userConfig.issueWorkflow;
+  const adapterCfg = () => userConfig.adapters;
 
   return [
     {
       label: "Display",
       collapsed: false,
       settings: [
-        { id: "setting-sidebar-width", label: "Sidebar width", type: "text" as const, category: "Display", getValue: () => String(sidebarWidth) },
-        { id: "setting-cache-timers", label: "Cache timers", type: "boolean" as const, category: "Display", getValue: () => cacheTimersEnabled ? "on" : "off" },
+        {
+          id: "sidebar-width", label: "Sidebar width", type: "text" as const,
+          getValue: () => String(sidebarWidth),
+          onTextCommit: (v) => {
+            const n = parseInt(v, 10);
+            if (!isNaN(n) && n >= 10 && n <= 60) applySetting("sidebarWidth", n, "number");
+          },
+        },
+        {
+          id: "cache-timers", label: "Cache timers", type: "boolean" as const,
+          getValue: () => cacheTimersEnabled ? "on" : "off",
+          onToggle: () => {
+            cacheTimersEnabled = !cacheTimersEnabled;
+            sidebar.cacheTimersEnabled = cacheTimersEnabled;
+            applySetting("cacheTimers", cacheTimersEnabled, "boolean");
+          },
+        },
       ],
     },
     {
       label: "Adapters",
       collapsed: false,
       settings: [
-        { id: "setting-code-host", label: "Code host", type: "list" as const, category: "Adapters", getValue: () => adapterCfg?.codeHost?.type ?? "none" },
-        { id: "setting-issue-tracker", label: "Issue tracker", type: "list" as const, category: "Adapters", getValue: () => adapterCfg?.issueTracker?.type ?? "none" },
-        { id: "setting-claude-command", label: "Claude command", type: "text" as const, category: "Adapters", getValue: () => claudeCommand },
+        {
+          id: "code-host", label: "Code host", type: "list" as const,
+          getValue: () => adapterCfg()?.codeHost?.type ?? "none",
+          options: ["gitlab", "github", "none"],
+          onOptionSelect: (v) => applyAdapterSetting("codeHost", v === "none" ? null : { type: v }),
+        },
+        {
+          id: "issue-tracker", label: "Issue tracker", type: "list" as const,
+          getValue: () => adapterCfg()?.issueTracker?.type ?? "none",
+          options: ["linear", "github", "none"],
+          onOptionSelect: (v) => applyAdapterSetting("issueTracker", v === "none" ? null : { type: v }),
+        },
+        {
+          id: "claude-command", label: "Claude command", type: "text" as const,
+          getValue: () => claudeCommand,
+          onTextCommit: (v) => { claudeCommand = v; applySetting("claudeCommand", v, "string"); },
+        },
       ],
     },
     {
       label: "Issue Workflow",
       collapsed: false,
       settings: [
-        { id: "setting-default-branch", label: "Default base branch", type: "text" as const, category: "Issue Workflow", getValue: () => wf?.defaultBaseBranch ?? "main" },
-        { id: "setting-session-template", label: "Session name template", type: "text" as const, category: "Issue Workflow", getValue: () => wf?.sessionNameTemplate ?? "{identifier}" },
-        { id: "setting-auto-worktree", label: "Auto-create worktree", type: "boolean" as const, category: "Issue Workflow", getValue: () => wf?.autoCreateWorktree !== false ? "on" : "off" },
-        { id: "setting-auto-agent", label: "Auto-launch agent", type: "boolean" as const, category: "Issue Workflow", getValue: () => wf?.autoLaunchAgent !== false ? "on" : "off" },
-        { id: "setting-team-repo-map", label: "Team → repo mappings", type: "map" as const, category: "Issue Workflow", getValue: () => {
-          const entries = Object.entries(teamMap);
-          return entries.length > 0 ? `${entries.length} mapped` : "none";
-        }},
+        {
+          id: "default-branch", label: "Default base branch", type: "text" as const,
+          getValue: () => wf()?.defaultBaseBranch ?? "main",
+          onTextCommit: (v) => saveWorkflowSetting("defaultBaseBranch", v),
+        },
+        {
+          id: "session-template", label: "Session name template", type: "text" as const,
+          getValue: () => wf()?.sessionNameTemplate ?? "{identifier}",
+          onTextCommit: (v) => saveWorkflowSetting("sessionNameTemplate", v),
+        },
+        {
+          id: "auto-worktree", label: "Auto-create worktree", type: "boolean" as const,
+          getValue: () => wf()?.autoCreateWorktree !== false ? "on" : "off",
+          onToggle: () => saveWorkflowSetting("autoCreateWorktree", wf()?.autoCreateWorktree === false),
+        },
+        {
+          id: "auto-agent", label: "Auto-launch agent", type: "boolean" as const,
+          getValue: () => wf()?.autoLaunchAgent !== false ? "on" : "off",
+          onToggle: () => saveWorkflowSetting("autoLaunchAgent", wf()?.autoLaunchAgent === false),
+        },
+        {
+          id: "team-repo-map", label: "Team → repo mappings", type: "map" as const,
+          getValue: () => {
+            const entries = Object.entries(wf()?.teamRepoMap ?? {});
+            return entries.length > 0 ? `${entries.length} mapped` : "none";
+          },
+          getMapEntries: () => Object.entries(wf()?.teamRepoMap ?? {}).map(([k, v]) => ({ key: k, value: v })),
+          onMapRemove: (key) => saveTeamRepoMap(key, null),
+        },
       ],
     },
     {
       label: "Project",
       collapsed: false,
       settings: [
-        { id: "setting-project-dirs", label: "Project directories", type: "text" as const, category: "Project", getValue: () => {
-          const dirs = userConfig.pinnedSessions ?? [];
-          return `${(userConfig as any).projectDirs?.length ?? 0} dirs`;
-        }},
+        {
+          id: "project-dirs", label: "Project directories", type: "text" as const,
+          getValue: () => {
+            const dirs = (userConfig as any).projectDirs ?? [];
+            return dirs.length > 0 ? dirs.join(", ") : "auto-detect";
+          },
+          onTextCommit: (v) => {
+            const newDirs = v.split(",").map((s: string) => s.trim()).filter(Boolean);
+            applySetting("projectDirs", newDirs, "array");
+          },
+        },
       ],
     },
   ];
@@ -1581,36 +1637,78 @@ function toggleSettingsScreen(): void {
 }
 
 function handleSettingsInput(data: string): void {
-  if (data === "\x1b" || data === "q") {
-    settingsScreen.close();
+  const action = settingsScreen.handleInput(data);
+
+  // Handle close
+  if (!settingsScreen.isOpen) {
     inputRouter.setModalOpen(false);
     scheduleRender();
     return;
   }
-  if (data === "\x1b[A") { settingsScreen.moveUp(); scheduleRender(); return; }
-  if (data === "\x1b[B") { settingsScreen.moveDown(); scheduleRender(); return; }
-  if (data === "\r") {
-    const cat = settingsScreen.getSelectedCategory();
-    if (cat) {
-      settingsScreen.toggleCollapse();
-      scheduleRender();
-      return;
-    }
-    const setting = settingsScreen.getSelectedSetting();
-    if (setting) {
-      // Close settings, dispatch to existing palette handler, reopen after
+
+  // Handle async actions that need main.ts context
+  if (action.type === "map-add") {
+    // Use the team picker flow — temporarily close settings, run the picker, reopen
+    const setting = buildSettingsCategories()
+      .flatMap((c) => c.settings)
+      .find((s) => s.id === action.settingId);
+    if (setting?.id === "team-repo-map") {
       settingsScreen.close();
-      handlePaletteAction({ commandId: setting.id });
-      // Reopen with refreshed values after a tick
-      setTimeout(() => {
-        if (!settingsScreen.isOpen && !activeModal?.isOpen()) {
-          settingsScreen.open(buildSettingsCategories());
-          scheduleRender();
+      inputRouter.setModalOpen(false);
+      // Fetch teams and show picker
+      (async () => {
+        let teamItems: Array<{ id: string; label: string }> = [];
+        if (adapters.issueTracker?.authState === "ok") {
+          try {
+            const teams = await adapters.issueTracker.getTeams();
+            teamItems = teams.map((t) => ({ id: t.name, label: t.name }));
+          } catch {}
         }
-      }, 100);
+        if (teamItems.length === 0) {
+          // Fallback: manual team name input
+          const teamModal = new InputModal({ header: "Team Name", subheader: "Enter the Linear team name", value: "" });
+          teamModal.open();
+          openModal(teamModal, (teamName) => {
+            pickRepoForTeamThenReopen(teamName as string);
+          });
+          return;
+        }
+        const teamPicker = new ListModal({ items: teamItems, header: "Select Team" });
+        teamPicker.open();
+        openModal(teamPicker, (teamValue) => {
+          const teamSel = teamValue as ListItem;
+          pickRepoForTeamThenReopen(teamSel.label);
+        });
+      })();
     }
     return;
   }
+
+  if (action.type === "map-edit") {
+    if (action.settingId === "team-repo-map") {
+      settingsScreen.close();
+      inputRouter.setModalOpen(false);
+      pickRepoForTeamThenReopen(action.key);
+    }
+    return;
+  }
+
+  scheduleRender();
+}
+
+function pickRepoForTeamThenReopen(teamName: string): void {
+  const dirs = cachedProjectDirs.length > 0 ? cachedProjectDirs : [homedir()];
+  const dirItems = dirs.map((d) => ({ id: d, label: d.replace(homedir(), "~") }));
+  const dirPicker = new ListModal({ items: dirItems, header: `Repository for ${teamName}` });
+  dirPicker.open();
+  openModal(dirPicker, (dirValue) => {
+    const dirSel = dirValue as ListItem;
+    saveTeamRepoMap(teamName, dirSel.id);
+    // Reopen settings with fresh data
+    settingsScreen.open(buildSettingsCategories());
+    inputRouter.setModalOpen(true);
+    scheduleRender();
+  });
 }
 
 function saveWorkflowSetting(key: string, value: unknown): void {
