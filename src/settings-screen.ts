@@ -18,9 +18,10 @@ export interface SettingDef {
   onOptionSelect?: (value: string) => void;
   // For map: entries + CRUD callbacks
   getMapEntries?: () => Array<{ key: string; value: string }>;
-  onMapAdd?: () => Promise<{ key: string; value: string } | null>;  // returns new entry or null
+  getMapKeyOptions?: () => Array<{ id: string; label: string }>;   // available keys to add (e.g., Linear teams)
+  getMapValueOptions?: () => Array<{ id: string; label: string }>; // available values (e.g., project dirs)
+  onMapSave?: (key: string, value: string) => void;
   onMapRemove?: (key: string) => void;
-  onMapEdit?: (key: string) => Promise<string | null>;  // returns new value or null
 }
 
 export interface SettingsCategory {
@@ -62,10 +63,13 @@ type SettingsNode =
   | { kind: "map-entry"; parentId: string; key: string; value: string }
   | { kind: "map-add"; parentId: string };
 
+type PickerItem = { id: string; label: string };
+
 type EditState =
   | null
   | { mode: "text"; settingId: string; buffer: string; cursorPos: number }
-  | { mode: "list"; settingId: string; optionIndex: number; options: string[] };
+  | { mode: "list"; settingId: string; optionIndex: number; options: string[] }
+  | { mode: "picker"; settingId: string; title: string; items: PickerItem[]; filtered: PickerItem[]; selectedIndex: number; filter: string; onSelect: (item: PickerItem) => void };
 
 export type SettingsAction =
   | { type: "none" }
@@ -145,6 +149,12 @@ export class SettingsScreen {
 
   render(cols: number, rows: number): CellGrid {
     this.lastRenderRows = rows;
+
+    // Picker mode gets a dedicated render
+    if (this.editState?.mode === "picker") {
+      return this.renderPicker(cols, rows, this.editState);
+    }
+
     const grid = createGrid(cols, rows);
     const nodes = this.buildNodes();
     const pad = 2;
@@ -373,7 +383,50 @@ export class SettingsScreen {
       return { type: "none" };
     }
 
+    if (this.editState.mode === "picker") {
+      const state = this.editState;
+      if (data === "\x1b") {
+        this.editState = null;
+        return { type: "none" };
+      }
+      if (data === "\x1b[A") { // Up
+        if (state.selectedIndex > 0) state.selectedIndex--;
+        return { type: "none" };
+      }
+      if (data === "\x1b[B") { // Down
+        if (state.selectedIndex < state.filtered.length - 1) state.selectedIndex++;
+        return { type: "none" };
+      }
+      if (data === "\r") {
+        const item = state.filtered[state.selectedIndex];
+        if (item) state.onSelect(item);
+        return { type: "none" };
+      }
+      if (data === "\x7f" || data === "\b") {
+        if (state.filter.length > 0) {
+          state.filter = state.filter.slice(0, -1);
+          this.applyPickerFilter(state);
+        }
+        return { type: "none" };
+      }
+      // Printable character — filter
+      if (data.length === 1 && data.charCodeAt(0) >= 32) {
+        state.filter += data;
+        this.applyPickerFilter(state);
+        return { type: "none" };
+      }
+      return { type: "none" };
+    }
+
     return { type: "none" };
+  }
+
+  private applyPickerFilter(state: Extract<EditState, { mode: "picker" }>): void {
+    const q = state.filter.toLowerCase();
+    state.filtered = q
+      ? state.items.filter((i) => i.label.toLowerCase().includes(q))
+      : state.items;
+    state.selectedIndex = Math.min(state.selectedIndex, Math.max(0, state.filtered.length - 1));
   }
 
   private handleEnter(): SettingsAction {
@@ -424,11 +477,62 @@ export class SettingsScreen {
     }
 
     if (node.kind === "map-add") {
-      return { type: "map-add", settingId: node.parentId };
+      const setting = this.findSetting(node.parentId);
+      if (setting?.getMapKeyOptions && setting?.getMapValueOptions && setting?.onMapSave) {
+        const keyOptions = setting.getMapKeyOptions();
+        if (keyOptions.length > 0) {
+          const valOpts = setting.getMapValueOptions();
+          const saveFn = setting.onMapSave;
+          this.editState = {
+            mode: "picker",
+            settingId: node.parentId,
+            title: "Select team",
+            items: keyOptions,
+            filtered: keyOptions,
+            selectedIndex: 0,
+            filter: "",
+            onSelect: (keyItem) => {
+              // After picking a key, open a second picker for value
+              this.editState = {
+                mode: "picker",
+                settingId: node.parentId,
+                title: `Repository for ${keyItem.label}`,
+                items: valOpts,
+                filtered: valOpts,
+                selectedIndex: 0,
+                filter: "",
+                onSelect: (valItem) => {
+                  saveFn(keyItem.id, valItem.id);
+                  this.editState = null;
+                },
+              };
+            },
+          };
+        }
+      }
+      return { type: "none" };
     }
 
     if (node.kind === "map-entry") {
-      return { type: "map-edit", settingId: node.parentId, key: node.key };
+      const setting = this.findSetting(node.parentId);
+      if (setting?.getMapValueOptions && setting?.onMapSave) {
+        const valOpts = setting.getMapValueOptions();
+        const saveFn = setting.onMapSave;
+        this.editState = {
+          mode: "picker",
+          settingId: node.parentId,
+          title: `Repository for ${node.key}`,
+          items: valOpts,
+          filtered: valOpts,
+          selectedIndex: 0,
+          filter: "",
+          onSelect: (valItem) => {
+            saveFn(node.key, valItem.id);
+            this.editState = null;
+          },
+        };
+      }
+      return { type: "none" };
     }
 
     return { type: "none" };
@@ -486,6 +590,57 @@ export class SettingsScreen {
       }
     }
     return nodes;
+  }
+
+  private renderPicker(cols: number, rows: number, state: Extract<EditState, { mode: "picker" }>): CellGrid {
+    const grid = createGrid(cols, rows);
+    const pad = 2;
+
+    // Title
+    writeString(grid, 0, pad, state.title, HEADER_ATTRS);
+
+    // Filter input
+    const filterLabel = "Filter: ";
+    writeString(grid, 1, pad, filterLabel, HINT_ATTRS);
+    const filterStart = pad + filterLabel.length;
+    const filterWidth = cols - filterStart - pad;
+    const filterBg = " ".repeat(filterWidth);
+    writeString(grid, 1, filterStart, filterBg, EDIT_BG);
+    writeString(grid, 1, filterStart, state.filter, EDIT_TEXT);
+    const filterCursorCol = filterStart + state.filter.length;
+    if (filterCursorCol < cols - pad) {
+      writeString(grid, 1, filterCursorCol, " ", EDIT_CURSOR);
+    }
+
+    // Items
+    const startRow = 3;
+    const maxVisible = rows - startRow;
+    let scrollOff = 0;
+    if (state.selectedIndex >= maxVisible) {
+      scrollOff = state.selectedIndex - maxVisible + 1;
+    }
+
+    for (let i = 0; i < state.filtered.length; i++) {
+      const row = startRow + i - scrollOff;
+      if (row < startRow || row >= rows) continue;
+      const item = state.filtered[i];
+      const isSelected = i === state.selectedIndex;
+
+      if (isSelected) {
+        writeString(grid, row, pad, "▸", CURSOR_ATTRS);
+      }
+      writeString(grid, row, pad + 2, item.label, isSelected ? LABEL_ACTIVE : LABEL_ATTRS);
+    }
+
+    if (state.filtered.length === 0) {
+      writeString(grid, startRow, pad + 2, "No matches", DIM_ATTRS);
+    }
+
+    // Hint
+    const hintRow = rows - 1;
+    writeString(grid, hintRow, pad, "↑↓ select  ·  Enter confirm  ·  Esc cancel  ·  type to filter", HINT_ATTRS);
+
+    return grid;
   }
 
   private ensureVisible(): void {

@@ -1601,6 +1601,20 @@ function buildSettingsCategories(): SettingsCategory[] {
             return entries.length > 0 ? `${entries.length} mapped` : "none";
           },
           getMapEntries: () => Object.entries(wf()?.teamRepoMap ?? {}).map(([k, v]) => ({ key: k, value: v })),
+          getMapKeyOptions: () => {
+            // Provide Linear teams if available, otherwise manual entry
+            // Teams are fetched async in pollGlobal — use cached global issues' teams as proxy
+            const teams = new Set<string>();
+            for (const issue of pollCoordinator.getGlobalIssues()) {
+              if (issue.team) teams.add(issue.team);
+            }
+            return [...teams].sort().map((t) => ({ id: t, label: t }));
+          },
+          getMapValueOptions: () => {
+            const dirs = cachedProjectDirs.length > 0 ? cachedProjectDirs : [homedir()];
+            return dirs.map((d) => ({ id: d, label: d.replace(homedir(), "~") }));
+          },
+          onMapSave: (key, value) => saveTeamRepoMap(key, value),
           onMapRemove: (key) => saveTeamRepoMap(key, null),
         },
       ],
@@ -1637,78 +1651,13 @@ function toggleSettingsScreen(): void {
 }
 
 function handleSettingsInput(data: string): void {
-  const action = settingsScreen.handleInput(data);
+  settingsScreen.handleInput(data);
 
-  // Handle close
   if (!settingsScreen.isOpen) {
     inputRouter.setModalOpen(false);
-    scheduleRender();
-    return;
-  }
-
-  // Handle async actions that need main.ts context
-  if (action.type === "map-add") {
-    // Use the team picker flow — temporarily close settings, run the picker, reopen
-    const setting = buildSettingsCategories()
-      .flatMap((c) => c.settings)
-      .find((s) => s.id === action.settingId);
-    if (setting?.id === "team-repo-map") {
-      settingsScreen.close();
-      inputRouter.setModalOpen(false);
-      // Fetch teams and show picker
-      (async () => {
-        let teamItems: Array<{ id: string; label: string }> = [];
-        if (adapters.issueTracker?.authState === "ok") {
-          try {
-            const teams = await adapters.issueTracker.getTeams();
-            teamItems = teams.map((t) => ({ id: t.name, label: t.name }));
-          } catch {}
-        }
-        if (teamItems.length === 0) {
-          // Fallback: manual team name input
-          const teamModal = new InputModal({ header: "Team Name", subheader: "Enter the Linear team name", value: "" });
-          teamModal.open();
-          openModal(teamModal, (teamName) => {
-            pickRepoForTeamThenReopen(teamName as string);
-          });
-          return;
-        }
-        const teamPicker = new ListModal({ items: teamItems, header: "Select Team" });
-        teamPicker.open();
-        openModal(teamPicker, (teamValue) => {
-          const teamSel = teamValue as ListItem;
-          pickRepoForTeamThenReopen(teamSel.label);
-        });
-      })();
-    }
-    return;
-  }
-
-  if (action.type === "map-edit") {
-    if (action.settingId === "team-repo-map") {
-      settingsScreen.close();
-      inputRouter.setModalOpen(false);
-      pickRepoForTeamThenReopen(action.key);
-    }
-    return;
   }
 
   scheduleRender();
-}
-
-function pickRepoForTeamThenReopen(teamName: string): void {
-  const dirs = cachedProjectDirs.length > 0 ? cachedProjectDirs : [homedir()];
-  const dirItems = dirs.map((d) => ({ id: d, label: d.replace(homedir(), "~") }));
-  const dirPicker = new ListModal({ items: dirItems, header: `Repository for ${teamName}` });
-  dirPicker.open();
-  openModal(dirPicker, (dirValue) => {
-    const dirSel = dirValue as ListItem;
-    saveTeamRepoMap(teamName, dirSel.id);
-    // Reopen settings with fresh data
-    settingsScreen.open(buildSettingsCategories());
-    inputRouter.setModalOpen(true);
-    scheduleRender();
-  });
 }
 
 function saveWorkflowSetting(key: string, value: unknown): void {
