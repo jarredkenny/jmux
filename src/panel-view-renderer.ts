@@ -326,7 +326,9 @@ function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: n
     writeString(grid, row, pad + 26, " Link", DETAIL_LABEL);
     row++;
     writeString(grid, row, pad, "[s]", DETAIL_KEY);
-    writeString(grid, row, pad + 3, " Status", DETAIL_LABEL);
+    writeString(grid, row, pad + 3, " Status  ", DETAIL_LABEL);
+    writeString(grid, row, pad + 12, "[c]", DETAIL_KEY);
+    writeString(grid, row, pad + 15, " Copy prompt", DETAIL_LABEL);
   } else {
     const mr = item.raw as MergeRequest;
     writeString(grid, row, pad, `${item.primary} ${mr.title}`.slice(0, cols - pad * 2), { ...DETAIL_VALUE, bold: true });

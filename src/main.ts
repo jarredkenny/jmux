@@ -287,6 +287,7 @@ const ptyRows = toolbarEnabled ? rows - 1 : rows;
 let hoveredToolbarButton: string | null = null;
 let currentWindows: WindowTab[] = [];
 let hoveredTabId: string | null = null;
+let hoveredPanelTabId: string | null = null;
 let startupComplete = false;
 
 function makeToolbar(): ToolbarConfig {
@@ -800,7 +801,7 @@ function renderFrame(): void {
       }
     }
 
-    const tabBar = infoPanel.hasMultipleTabs ? infoPanel.getTabBarGrid(dpCols) : undefined;
+    const tabBar = infoPanel.hasMultipleTabs ? infoPanel.getTabBarGrid(dpCols, hoveredPanelTabId) : undefined;
     diffPanelArg = {
       grid: contentGrid,
       mode: diffPanel.state as "split" | "full",
@@ -1256,6 +1257,41 @@ const inputRouter = new InputRouter(
       pollCoordinator.setActiveSession(sessionName);
       scheduleRender();
     },
+    onPanelTabHover: (col) => {
+      const ranges = infoPanel.getTabRanges();
+      let found: string | null = null;
+      for (const { tab, startCol, endCol } of ranges) {
+        if (col >= startCol && col <= endCol) { found = tab; break; }
+      }
+      if (found !== hoveredPanelTabId) {
+        hoveredPanelTabId = found;
+        scheduleRender();
+      }
+    },
+    onPanelItemClick: (row) => {
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view) return;
+      const viewState = viewStates.get(view.id);
+      if (!viewState) return;
+      // The view renderer has a 3-row header, then list items
+      const nodeIndex = row - 3 + viewState.scrollOffset;
+      if (nodeIndex >= 0) {
+        const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+        const ctx = pollCoordinator.getContext(sessionName);
+        const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
+        const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
+        const rawItems = view.source === "issues"
+          ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates())
+          : view.filter.scope === "reviewing"
+            ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
+            : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
+        const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+        if (nodeIndex < nodes.length) {
+          viewState.selectedIndex = nodeIndex;
+          scheduleRender();
+        }
+      }
+    },
     onPanelTabClick: (col) => {
       const ranges = infoPanel.getTabRanges();
       for (const { tab, startCol, endCol } of ranges) {
@@ -1294,6 +1330,12 @@ const inputRouter = new InputRouter(
       if (selected.item.type === "issue" && adapters.issueTracker) {
         const issue = selected.item.raw as import("./adapters/types").Issue;
         if (key === "o") adapters.issueTracker.openInBrowser(issue.id);
+        if (key === "c") {
+          // Copy issue prompt to clipboard via OSC 52
+          const prompt = `You are working on ${issue.identifier}: ${issue.title}\n\n${issue.description ?? ""}\n\nStart by understanding the relevant code, then propose an approach.`;
+          const encoded = Buffer.from(prompt).toString("base64");
+          process.stdout.write(`\x1b]52;c;${encoded}\x07`);
+        }
         if (key === "s") {
           adapters.issueTracker.getAvailableStatuses(issue.id).then((statuses) => {
             if (statuses.length === 0) return;

@@ -54,6 +54,8 @@ export interface InputRouterOptions {
   onPanelNextTab?: () => void;
   onPanelAction?: (key: string) => void;
   onPanelTabClick?: (col: number) => void; // col relative to panel start
+  onPanelItemClick?: (row: number) => void; // row relative to panel content start (after toolbar)
+  onPanelTabHover?: (col: number) => void; // col relative to panel start, for hover detection
   onPanelSelectPrev?: () => void;
   onPanelSelectNext?: () => void;
   onPanelCycleGroupBy?: () => void;
@@ -235,21 +237,35 @@ export class InputRouter {
           return;
         }
 
-        // Panel tab bar click — row 1 in the panel area (toolbar row)
-        if (mouse.y === 1 && mouse.x > dividerX && !mouse.release && !isMotion && !isWheel) {
+        // Panel tab bar — row 1 in the panel area (toolbar row)
+        if (mouse.y === 1 && mouse.x > dividerX) {
           const panelCol = mouse.x - dividerX - 1; // 0-indexed in panel
-          this.opts.onPanelTabClick?.(panelCol);
+          if (isMotion) {
+            this.opts.onPanelTabHover?.(panelCol);
+          } else if (!mouse.release && !isWheel) {
+            this.opts.onPanelTabClick?.(panelCol);
+          }
           return;
         }
 
-        // Diff panel region — forward raw translated SGR mouse sequence to hunk
+        // Diff panel region
         if (mouse.x > dividerX) {
-          // Click in diff panel acquires keyboard focus
+          // Click in panel acquires keyboard focus
           if (!mouse.release && !isMotion && !isWheel && !this.diffPanelFocused) {
             this.opts.onDiffPanelFocusToggle?.();
           }
+
+          // Non-diff tab: clicks select items in the view
+          if (this.panelTabsActive && !mouse.release && !isMotion && !isWheel) {
+            const panelRow = mouse.y - 2; // -1 for 1-indexed, -1 for toolbar row
+            if (panelRow >= 0) {
+              this.opts.onPanelItemClick?.(panelRow);
+            }
+            return;
+          }
+
           if (isMotion && (mouse.button & 0x03) === 3) return; // bare motion, skip
-          const diffOffset = dividerX; // x offset to translate into hunk's coordinate space
+          const diffOffset = dividerX;
           const yOffset = 1; // toolbar row
           const m = data.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
           if (m) {
@@ -320,7 +336,7 @@ export class InputRouter {
         if (data === "n" && this.opts.onPanelCreateSession) { this.opts.onPanelCreateSession(); return; }
         if (data === "l" && this.opts.onPanelLinkToSession) { this.opts.onPanelLinkToSession(); return; }
       }
-      if (this.panelTabsActive && this.opts.onPanelAction && (data === "o" || data === "r" || data === "a" || data === "s")) {
+      if (this.panelTabsActive && this.opts.onPanelAction && (data === "o" || data === "r" || data === "a" || data === "s" || data === "c")) {
         this.opts.onPanelAction(data);
         return;
       }

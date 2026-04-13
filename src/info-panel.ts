@@ -16,6 +16,11 @@ const INACTIVE_TAB: CellAttrs = {
   dim: true,
 };
 
+const HOVERED_TAB: CellAttrs = {
+  fg: (0xC9 << 16) | (0xD1 << 8) | 0xD9,
+  fgMode: ColorMode.RGB,
+};
+
 const TAB_BG: CellAttrs = {
   bg: (0x16 << 16) | (0x1b << 8) | 0x22,
   bgMode: ColorMode.RGB,
@@ -81,7 +86,7 @@ export class InfoPanel {
     this._activeTab = this._tabs[(idx - 1 + this._tabs.length) % this._tabs.length];
   }
 
-  getTabBarGrid(cols: number): CellGrid {
+  getTabBarGrid(cols: number, hoveredTab?: string | null): CellGrid {
     const grid = createGrid(cols, 1);
     let col = 1;
 
@@ -94,9 +99,10 @@ export class InfoPanel {
     for (let i = 0; i < this._tabs.length; i++) {
       const tab = this._tabs[i];
       const isActive = tab === this._activeTab;
+      const isHovered = !isActive && hoveredTab === tab;
       const label = ` ${tab === "diff" ? "Diff" : (this._viewLabels.get(tab) ?? tab)} `;
       const attrs: CellAttrs = {
-        ...(isActive ? ACTIVE_TAB : INACTIVE_TAB),
+        ...(isActive ? ACTIVE_TAB : isHovered ? HOVERED_TAB : INACTIVE_TAB),
         ...TAB_BG,
       };
       writeString(grid, 0, col, label, attrs);
