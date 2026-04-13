@@ -1042,7 +1042,7 @@ const inputRouter = new InputRouter(
         viewState.detailScrollOffset = 0; // reset detail scroll on item change
         // Scroll list if selection goes below visible area
         const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-        const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.25));
+        const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
         if (viewState.selectedIndex >= viewState.scrollOffset + listRows) {
           viewState.scrollOffset = viewState.selectedIndex - listRows + 1;
         }
@@ -1291,7 +1291,7 @@ const inputRouter = new InputRouter(
 
       // Determine if scroll is in list area or detail area
       const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
-      const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.25));
+      const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
 
       if (row < listRows) {
         // Scroll list

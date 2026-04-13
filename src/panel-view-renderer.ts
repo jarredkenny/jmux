@@ -204,10 +204,10 @@ export function renderView(
   // Action bar is always pinned to the bottom 2 rows when detail is shown
   const actionBarStart = showDetail ? rows - ACTION_BAR_ROWS : rows;
   const detailContentRows = showDetail ? Math.max(0, rows - Math.ceil(nodes.length * 0.6) - 1 - ACTION_BAR_ROWS) : 0;
-  // List gets ~25% of space, detail gets ~75% (minus action bar + separator)
+  // 50/50 split between list and detail (minus action bar + separator)
   const minDetailRows = 4;
   const maxListRows = showDetail ? rows - minDetailRows - 1 - ACTION_BAR_ROWS : rows;
-  const listRows = showDetail ? Math.min(maxListRows, Math.max(3, Math.floor((rows - ACTION_BAR_ROWS - 1) * 0.25))) : rows;
+  const listRows = showDetail ? Math.min(maxListRows, Math.max(3, Math.floor((rows - ACTION_BAR_ROWS - 1) * 0.5))) : rows;
   const sepRow = showDetail ? listRows : rows;
   const detailStart = sepRow + 1;
   const detailRows = showDetail ? actionBarStart - detailStart : 0;
