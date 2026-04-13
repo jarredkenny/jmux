@@ -24,8 +24,7 @@ interface PanelView {
   label: string;
   source: "issues" | "mrs";
   filter: {
-    scope: "assigned" | "authored" | "reviewing" | "all";
-    state?: "open" | "merged" | "closed" | "all";
+    scope: "assigned" | "authored" | "reviewing";
   };
   groupBy?: "team" | "project" | "status" | "priority" | "none";
   subGroupBy?: "team" | "project" | "status" | "priority" | "none";
@@ -34,6 +33,16 @@ interface PanelView {
   sessionLinkedFirst: boolean;
 }
 ```
+
+**Valid source+scope combinations:**
+
+| source | scope | Adapter method | Description |
+|--------|-------|----------------|-------------|
+| `issues` | `assigned` | `getMyIssues()` | Issues assigned to me |
+| `mrs` | `authored` | `getMyMergeRequests()` | MRs I created |
+| `mrs` | `reviewing` | `getMrsAwaitingMyReview()` | MRs where I'm a reviewer |
+
+Other combinations are invalid and rejected at config validation time with a stderr warning. The `filter.state` field was removed — state filtering is handled by the adapter methods themselves (GitLab fetches `state=opened`, etc.). If we need client-side state filtering later, it can be added as a post-fetch step without changing the schema.
 
 Config example:
 
@@ -55,7 +64,7 @@ Config example:
       "id": "my-mrs",
       "label": "My MRs",
       "source": "mrs",
-      "filter": { "scope": "authored", "state": "open" },
+      "filter": { "scope": "authored" },
       "sortBy": "updated",
       "sortOrder": "desc",
       "sessionLinkedFirst": true
@@ -64,7 +73,7 @@ Config example:
       "id": "review",
       "label": "Review",
       "source": "mrs",
-      "filter": { "scope": "reviewing", "state": "open" },
+      "filter": { "scope": "reviewing" },
       "sortBy": "created",
       "sortOrder": "asc",
       "sessionLinkedFirst": false
@@ -149,6 +158,8 @@ The `PollCoordinator` gains:
 
 The panel reads from these global caches. Session-linked item detection compares global item IDs against the active session's `SessionContext.mrs[].id` and `SessionContext.issues[].id`.
 
+**Action-triggered re-poll:** When the user takes an action that mutates state (approve MR, update issue status, mark MR ready), the affected item is immediately re-fetched via its single-item poll method (`pollMergeRequest` or `pollIssue`) and the global cache entry is updated. This avoids the 5-minute stale window after user actions. The full global re-poll cadence is unchanged.
+
 ### View Rendering Engine
 
 A generic renderer takes a `PanelView` definition, a dataset, and view state, then produces a `CellGrid`.
@@ -212,6 +223,44 @@ A generic renderer takes a `PanelView` definition, a dataset, and view state, th
 
 **Collapse state:** Ephemeral, not persisted. `Enter` on a group/subgroup header toggles.
 
+### Detail Pane
+
+The list view is compact (one line per item). When the cursor is on a leaf item, a detail section renders below the list showing the full rich fields for the selected item. This avoids the UX regression of losing pipeline status, approval counts, and branch info.
+
+**Layout:** The panel splits vertically — list occupies the top portion, detail occupies the bottom. The split is fixed: detail takes up to 8 rows (enough for the richest item), list gets the rest. If the panel is too short (< 15 rows), detail is hidden and only the list shows.
+
+**Issue detail (up to 8 rows):**
+```
+│─────────────────────────────────────│
+│ ENG-1234 Fix auth token refresh     │
+│ Status: In Progress   Priority: P1  │
+│ Assignee: Jarred                    │
+│ Team: Platform                      │
+│ MRs: !482, !483                     │
+│                                     │
+│ [o] Open  [n] Session  [l] Link     │
+│ [s] Status                          │
+│─────────────────────────────────────│
+```
+
+**MR detail (up to 8 rows):**
+```
+│─────────────────────────────────────│
+│ !482 Fix auth token refresh         │
+│ Draft  fix/auth → main              │
+│ ⟳ Pipeline running                  │
+│ Approvals: 1/2                      │
+│ Author: jarred                      │
+│                                     │
+│ [o] Open  [l] Link  [a] Approve    │
+│ [r] Ready                           │
+│─────────────────────────────────────│
+```
+
+The detail pane renders the full `MergeRequest` or `Issue` object — not the `RenderableItem`. The renderer receives the raw item alongside the renderable list. When the cursor is on a group header, the detail pane shows the group summary (item count, worst pipeline state across children).
+
+This replaces the need for `info-panel-mr.ts` and `info-panel-issues.ts` as separate files — the detail rendering logic moves into `panel-view-renderer.ts` as a helper function.
+
 ### View Cycling Keybindings
 
 When the panel is focused on a view tab (not Diff):
@@ -220,12 +269,12 @@ When the panel is focused on a view tab (not Diff):
 |-----|--------|
 | `g` | Cycle `groupBy`: team → project → status → priority → none |
 | `G` | Cycle `subGroupBy`: same options |
-| `s` | Cycle `sortBy`: priority → updated → created → status |
-| `S` | Toggle `sortOrder`: asc ↔ desc |
+| `/` | Cycle `sortBy`: priority → updated → created → status |
+| `?` | Toggle `sortOrder`: asc ↔ desc |
 | `↑`/`↓` | Move selection (through items and group headers) |
 | `Enter` | Toggle collapse on group header |
 
-`g`, `G`, `s`, `S` write back to config via the existing `applySetting` pattern. The view's `id` identifies which entry in `panelViews` to update.
+`g`, `G`, `/`, `?` write back to config via the existing `applySetting` pattern, debounced at 500ms to coalesce rapid cycling. The view's `id` identifies which entry in `panelViews` to update.
 
 ### Panel Actions
 
@@ -290,6 +339,10 @@ Up/down arrow keys move one item. The panel scrolls to keep the cursor visible.
 Validation: `panelViews` must be an array of objects. Each must have `id` (unique string), `label` (non-empty string), `source` ("issues" or "mrs"), `filter.scope` (one of the valid scopes), `sortBy`, `sortOrder`. `groupBy`, `subGroupBy` default to `"none"`. `sessionLinkedFirst` defaults to `true`.
 
 Invalid views are skipped with a stderr warning. If all views are invalid or `panelViews` is empty/missing, the three defaults are used.
+
+**View tab visibility:** A view tab is hidden when its required adapter is not authenticated. Issue-source views require `issueTracker.authState === "ok"`. MR-source views require `codeHost.authState === "ok"`. If the adapter authenticates later (e.g., token fixed mid-session), the tab appears on the next config reload cycle. Hidden views are not removed from config — just not rendered.
+
+**Tab bar overflow:** If tab labels exceed the panel width, labels are truncated with ellipsis starting from the rightmost tabs. The active tab's label is never truncated. If even truncation doesn't fit (> 7 tabs in 40 columns), a `‹`/`›` scroll indicator appears and `[`/`]` scrolls the tab bar in addition to cycling.
 
 ## File Layout
 
