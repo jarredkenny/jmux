@@ -296,7 +296,7 @@ function makeToolbar(): ToolbarConfig {
       { label: "＋", id: "new-window" },
       { label: "⏸", id: "split-v" },
       { label: "⏏", id: "split-h" },
-      { label: "◈", id: "diff", fg: diffPanel.isActive() ? ((0xF0 << 16) | (0x88 << 8) | 0x3E) : undefined, fgMode: diffPanel.isActive() ? 2 : undefined },
+      { label: "◈", id: "panel", fg: diffPanel.isActive() ? ((0xF0 << 16) | (0x88 << 8) | 0x3E) : undefined, fgMode: diffPanel.isActive() ? 2 : undefined },
       { label: "◈", id: "claude", fg: (0xE8 << 16) | (0xA0 << 8) | 0xB4, fgMode: 2 },
       { label: "⚙", id: "settings" },
     ],
@@ -2578,6 +2578,7 @@ async function handleToolbarAction(id: string): Promise<void> {
       await control.sendCommand(`split-window -t ${ptyClientName} -v -c '#{pane_current_path}'`);
       return;
     case "diff":
+    case "panel":
       await toggleDiffPanel();
       return;
     case "claude":
