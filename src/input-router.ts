@@ -55,6 +55,13 @@ export interface InputRouterOptions {
   onPanelTabClick?: (col: number) => void; // col relative to panel start
   onPanelSelectPrev?: () => void;
   onPanelSelectNext?: () => void;
+  onPanelCycleGroupBy?: () => void;
+  onPanelCycleSubGroupBy?: () => void;
+  onPanelCycleSortBy?: () => void;
+  onPanelToggleSortOrder?: () => void;
+  onPanelToggleCollapse?: () => void;
+  onPanelCreateSession?: () => void;  // 'n' key
+  onPanelLinkToSession?: () => void;  // 'l' key
 }
 
 export class InputRouter {
@@ -298,6 +305,15 @@ export class InputRouter {
           this.opts.onPanelSelectNext();
           return;
         }
+      }
+      if (this.panelTabsActive) {
+        if (data === "g" && this.opts.onPanelCycleGroupBy) { this.opts.onPanelCycleGroupBy(); return; }
+        if (data === "G" && this.opts.onPanelCycleSubGroupBy) { this.opts.onPanelCycleSubGroupBy(); return; }
+        if (data === "/" && this.opts.onPanelCycleSortBy) { this.opts.onPanelCycleSortBy(); return; }
+        if (data === "?" && this.opts.onPanelToggleSortOrder) { this.opts.onPanelToggleSortOrder(); return; }
+        if (data === "\r" && this.opts.onPanelToggleCollapse) { this.opts.onPanelToggleCollapse(); return; }
+        if (data === "n" && this.opts.onPanelCreateSession) { this.opts.onPanelCreateSession(); return; }
+        if (data === "l" && this.opts.onPanelLinkToSession) { this.opts.onPanelLinkToSession(); return; }
       }
       if (this.panelTabsActive && this.opts.onPanelAction && (data === "o" || data === "r" || data === "a" || data === "s")) {
         this.opts.onPanelAction(data);

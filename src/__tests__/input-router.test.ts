@@ -565,4 +565,64 @@ describe("InfoPanel tab switching", () => {
     router.handleInput("\x1b[A");
     expect(diffData).toBe("\x1b[A");
   });
+
+  test("g key triggers onPanelCycleGroupBy when tabs active", () => {
+    let called = false;
+    const router = new InputRouter({
+      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPanelCycleGroupBy: () => { called = true; },
+    }, true);
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    router.handleInput("g");
+    expect(called).toBe(true);
+  });
+
+  test("/ key triggers onPanelCycleSortBy when tabs active", () => {
+    let called = false;
+    const router = new InputRouter({
+      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPanelCycleSortBy: () => { called = true; },
+    }, true);
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    router.handleInput("/");
+    expect(called).toBe(true);
+  });
+
+  test("Enter triggers onPanelToggleCollapse when tabs active", () => {
+    let called = false;
+    const router = new InputRouter({
+      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPanelToggleCollapse: () => { called = true; },
+    }, true);
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    router.handleInput("\r");
+    expect(called).toBe(true);
+  });
+
+  test("n key triggers onPanelCreateSession when tabs active", () => {
+    let called = false;
+    const router = new InputRouter({
+      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPanelCreateSession: () => { called = true; },
+    }, true);
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    router.handleInput("n");
+    expect(called).toBe(true);
+  });
+
+  test("l key triggers onPanelLinkToSession when tabs active", () => {
+    let called = false;
+    const router = new InputRouter({
+      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPanelLinkToSession: () => { called = true; },
+    }, true);
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    router.handleInput("l");
+    expect(called).toBe(true);
+  });
 });
