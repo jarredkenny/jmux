@@ -16,13 +16,14 @@ import {
   type NewSessionProviders,
 } from "./new-session-modal";
 import type { CellAttrs } from "./cell-grid";
+import { createGrid } from "./cell-grid";
 import type { Modal } from "./modal";
 import { MODAL_BG } from "./modal";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
 import { InfoPanel } from "./info-panel";
-import { renderMrTab } from "./info-panel-mr";
-import { renderIssuesTab } from "./info-panel-issues";
+import { parseViews, cycleGroupBy, cycleSortBy, toggleSortOrder, type PanelView } from "./panel-view";
+import { transformIssues, transformMrs, buildViewNodes, renderView, createViewState, type ViewState, type ViewNode } from "./panel-view-renderer";
 import { createAdapters } from "./adapters/registry";
 import { PollCoordinator } from "./adapters/poll-coordinator";
 import { SessionState } from "./session-state";
@@ -329,11 +330,14 @@ const diffPanel = new DiffPanel();
 let diffBridge: ScreenBridge | null = null;
 let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
-let mrSelectedIndex = 0;
-let issueSelectedIndex = 0;
 
 const adapters = createAdapters(userConfig.adapters);
 const infoPanel = new InfoPanel({ viewIds: [], viewLabels: new Map() });
+const panelViews = parseViews(userConfig.panelViews);
+const viewStates = new Map<string, ViewState>();
+for (const view of panelViews) {
+  viewStates.set(view.id, createViewState());
+}
 
 async function initAdapters(): Promise<void> {
   if (adapters.codeHost) {
@@ -348,21 +352,15 @@ async function initAdapters(): Promise<void> {
       process.stderr.write(`jmux: ${adapters.issueTracker.type} adapter auth failed — check ${adapters.issueTracker.authHint}\n`);
     }
   }
-  {
-    const viewIds: string[] = [];
-    const viewLabels = new Map<string, string>();
-    if (adapters.issueTracker?.authState === "ok") {
-      viewIds.push("my-issues");
-      viewLabels.set("my-issues", "Issues");
-    }
-    if (adapters.codeHost?.authState === "ok") {
-      viewIds.push("my-mrs");
-      viewLabels.set("my-mrs", "My MRs");
-      viewIds.push("review");
-      viewLabels.set("review", "Review");
-    }
-    infoPanel.updateConfig({ viewIds, viewLabels });
-  }
+  const visibleViews = panelViews.filter((v) => {
+    if (v.source === "issues") return adapters.issueTracker?.authState === "ok";
+    if (v.source === "mrs") return adapters.codeHost?.authState === "ok";
+    return false;
+  });
+  infoPanel.updateConfig({
+    viewIds: visibleViews.map((v) => v.id),
+    viewLabels: new Map(visibleViews.map((v) => [v.id, v.label])),
+  });
 }
 
 const sessionStatePath = resolve(homedir(), ".config", "jmux", "state.json");
@@ -384,6 +382,7 @@ const pollCoordinator = new PollCoordinator({
 
 initAdapters().then(() => {
   pollCoordinator.start();
+  pollCoordinator.pollGlobal();
   scheduleRender();
 }).catch(() => {
   // Adapter init failed — panel runs without adapters, only Diff tab
@@ -707,8 +706,6 @@ async function switchSession(sessionId: string): Promise<void> {
     sidebar.scrollToActive();
     const sessionName = currentSessions.find((s) => s.id === sessionId)?.name;
     if (sessionName) pollCoordinator.setActiveSession(sessionName);
-    mrSelectedIndex = 0;
-    issueSelectedIndex = 0;
     fetchWindows();
     renderFrame();
   } catch {
@@ -752,20 +749,32 @@ function renderFrame(): void {
       } else {
         contentGrid = diffBridge.getGrid();
       }
-    } else if (infoPanel.activeTab === "mr") {
-      const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
-      const ctx = pollCoordinator.getContext(sessionName);
-      const errorMsg = adapters.codeHost?.authState === "failed"
-        ? `Authentication expired — check ${adapters.codeHost.authHint}`
-        : undefined;
-      contentGrid = renderMrTab(ctx?.mrs ?? [], dpCols, dpRows, mrSelectedIndex, errorMsg);
     } else {
-      const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
-      const ctx = pollCoordinator.getContext(sessionName);
-      const errorMsg = adapters.issueTracker?.authState === "failed"
-        ? `Authentication expired — check ${adapters.issueTracker.authHint}`
-        : undefined;
-      contentGrid = renderIssuesTab(ctx?.issues ?? [], dpCols, dpRows, issueSelectedIndex, errorMsg);
+      // View tab — use global panel view renderer
+      const activeViewId = infoPanel.activeTab;
+      const view = panelViews.find((v) => v.id === activeViewId);
+      if (view) {
+        const viewState = viewStates.get(view.id) ?? createViewState();
+
+        const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+        const ctx = pollCoordinator.getContext(sessionName);
+        const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
+        const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
+
+        let rawItems: import("./panel-view-renderer").RenderableItem[];
+        if (view.source === "issues") {
+          rawItems = transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds);
+        } else if (view.filter.scope === "reviewing") {
+          rawItems = transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds);
+        } else {
+          rawItems = transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
+        }
+
+        const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+        contentGrid = renderView(nodes, dpCols, dpRows, viewState);
+      } else {
+        contentGrid = createGrid(dpCols, dpRows);
+      }
     }
 
     const tabBar = infoPanel.hasMultipleTabs ? infoPanel.getTabBarGrid(dpCols) : undefined;
@@ -969,21 +978,154 @@ const inputRouter = new InputRouter(
       scheduleRender();
     },
     onPanelSelectPrev: () => {
-      if (infoPanel.activeTab === "mr") {
-        mrSelectedIndex = Math.max(0, mrSelectedIndex - 1);
-      } else if (infoPanel.activeTab === "issues") {
-        issueSelectedIndex = Math.max(0, issueSelectedIndex - 1);
+      const viewState = viewStates.get(infoPanel.activeTab);
+      if (viewState && viewState.selectedIndex > 0) {
+        viewState.selectedIndex--;
+        scheduleRender();
       }
-      scheduleRender();
     },
     onPanelSelectNext: () => {
+      const viewState = viewStates.get(infoPanel.activeTab);
+      if (!viewState) return;
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view) return;
       const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
       const ctx = pollCoordinator.getContext(sessionName);
-      if (infoPanel.activeTab === "mr" && ctx) {
-        mrSelectedIndex = Math.min(ctx.mrs.length - 1, mrSelectedIndex + 1);
-      } else if (infoPanel.activeTab === "issues" && ctx) {
-        issueSelectedIndex = Math.min(ctx.issues.length - 1, issueSelectedIndex + 1);
+      const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
+      const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
+      let rawItems: import("./panel-view-renderer").RenderableItem[];
+      if (view.source === "issues") {
+        rawItems = transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds);
+      } else if (view.filter.scope === "reviewing") {
+        rawItems = transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds);
+      } else {
+        rawItems = transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
       }
+      const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+      if (viewState.selectedIndex < nodes.length - 1) {
+        viewState.selectedIndex++;
+        scheduleRender();
+      }
+    },
+    onPanelCycleGroupBy: () => {
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view) return;
+      view.groupBy = cycleGroupBy(view.groupBy);
+      debouncedViewSave(view);
+      scheduleRender();
+    },
+    onPanelCycleSubGroupBy: () => {
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view) return;
+      view.subGroupBy = cycleGroupBy(view.subGroupBy);
+      debouncedViewSave(view);
+      scheduleRender();
+    },
+    onPanelCycleSortBy: () => {
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view) return;
+      view.sortBy = cycleSortBy(view.sortBy);
+      debouncedViewSave(view);
+      scheduleRender();
+    },
+    onPanelToggleSortOrder: () => {
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view) return;
+      view.sortOrder = toggleSortOrder(view.sortOrder);
+      debouncedViewSave(view);
+      scheduleRender();
+    },
+    onPanelToggleCollapse: () => {
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view) return;
+      const viewState = viewStates.get(view.id);
+      if (!viewState) return;
+      const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+      const ctx = pollCoordinator.getContext(sessionName);
+      const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
+      const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
+      const rawItems = view.source === "issues"
+        ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds)
+        : view.filter.scope === "reviewing"
+          ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
+          : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
+      const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+      const selected = nodes[viewState.selectedIndex];
+      if (selected?.kind === "group") {
+        const key = selected.depth === 0 ? selected.label : `${selected.label}`;
+        if (viewState.collapsedGroups.has(key)) viewState.collapsedGroups.delete(key);
+        else viewState.collapsedGroups.add(key);
+        scheduleRender();
+      }
+    },
+    onPanelCreateSession: () => {
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view || view.source !== "issues") return;
+      const viewState = viewStates.get(view.id);
+      if (!viewState) return;
+      const rawItems = transformIssues(pollCoordinator.getGlobalIssues(), new Set<string>());
+      const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+      const selected = nodes[viewState.selectedIndex];
+      if (selected?.kind !== "item" || selected.item.type !== "issue") return;
+      const issue = selected.item.raw as import("./adapters/types").Issue;
+      const prefillName = sanitizeTmuxSessionName(issue.identifier.toLowerCase());
+      const initialDirs = cachedProjectDirs.length > 0 ? cachedProjectDirs : [homedir()];
+      const modal = new NewSessionModal(getNewSessionProviders(initialDirs));
+      modal.open();
+      refreshProjectDirsInBackground((dirs) => {
+        modal.updateProjectDirs(dirs);
+        scheduleRender();
+      });
+      openModal(modal, async (value) => {
+        const result = value as NewSessionResult;
+        const parentClient = ptyClientName;
+        if (!parentClient) return;
+        try {
+          switch (result.type) {
+            case "standard": {
+              const session = sanitizeTmuxSessionName(result.name);
+              await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(result.dir)}`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t ${tq(session)}`);
+              sessionState.addLink(session, { type: "issue", id: issue.id });
+              break;
+            }
+            case "existing_worktree": {
+              const session = sanitizeTmuxSessionName(result.branch);
+              await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(result.path)}`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t ${tq(session)}`);
+              sessionState.addLink(session, { type: "issue", id: issue.id });
+              break;
+            }
+          }
+        } catch (err) {
+          showNewSessionError(result, err);
+        }
+      });
+    },
+    onPanelLinkToSession: () => {
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view) return;
+      const viewState = viewStates.get(view.id);
+      if (!viewState) return;
+      const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+      const ctx = pollCoordinator.getContext(sessionName);
+      const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
+      const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
+      const rawItems = view.source === "issues"
+        ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds)
+        : view.filter.scope === "reviewing"
+          ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
+          : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
+      const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+      const selected = nodes[viewState.selectedIndex];
+      if (selected?.kind !== "item") return;
+      if (!sessionName) return;
+      if (selected.item.type === "issue") {
+        sessionState.addLink(sessionName, { type: "issue", id: selected.item.id });
+      } else {
+        sessionState.addLink(sessionName, { type: "mr", id: selected.item.id });
+      }
+      pollCoordinator.setActiveSession(sessionName);
       scheduleRender();
     },
     onPanelTabClick: (col) => {
@@ -998,20 +1140,31 @@ const inputRouter = new InputRouter(
       }
     },
     onPanelAction: (key) => {
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view) return;
+      const viewState = viewStates.get(view.id);
+      if (!viewState) return;
       const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
       const ctx = pollCoordinator.getContext(sessionName);
-      if (!ctx) return;
+      const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
+      const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
+      const rawItems = view.source === "issues"
+        ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds)
+        : view.filter.scope === "reviewing"
+          ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
+          : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
+      const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+      const selected = nodes[viewState.selectedIndex];
+      if (selected?.kind !== "item") return;
 
-      if (infoPanel.activeTab === "mr" && adapters.codeHost) {
-        const mr = ctx.mrs[mrSelectedIndex];
-        if (!mr) return;
+      if (selected.item.type === "mr" && adapters.codeHost) {
+        const mr = selected.item.raw as import("./adapters/types").MergeRequest;
         if (key === "o") adapters.codeHost.openInBrowser(mr.id);
-        if (key === "r") adapters.codeHost.markReady(mr.id).then(() => scheduleRender());
-        if (key === "a") adapters.codeHost.approve(mr.id).then(() => scheduleRender());
+        if (key === "r") adapters.codeHost.markReady(mr.id).then(() => { pollCoordinator.refreshGlobalItem("mr", mr.id); scheduleRender(); });
+        if (key === "a") adapters.codeHost.approve(mr.id).then(() => { pollCoordinator.refreshGlobalItem("mr", mr.id); scheduleRender(); });
       }
-      if (infoPanel.activeTab === "issues" && adapters.issueTracker) {
-        const issue = ctx.issues[issueSelectedIndex];
-        if (!issue) return;
+      if (selected.item.type === "issue" && adapters.issueTracker) {
+        const issue = selected.item.raw as import("./adapters/types").Issue;
         if (key === "o") adapters.issueTracker.openInBrowser(issue.id);
         if (key === "s") {
           adapters.issueTracker.getAvailableStatuses(issue.id).then((statuses) => {
@@ -1022,7 +1175,7 @@ const inputRouter = new InputRouter(
             openModal(listModal, (selected: unknown) => {
               const sel = selected as { id: string };
               if (sel?.id) {
-                adapters.issueTracker!.updateStatus(issue.id, sel.id).then(() => scheduleRender());
+                adapters.issueTracker!.updateStatus(issue.id, sel.id).then(() => { pollCoordinator.refreshGlobalItem("issue", issue.id); scheduleRender(); });
               }
             });
           });
@@ -1231,6 +1384,27 @@ function buildPaletteCommands(): PaletteCommand[] {
   }
 
   return commands;
+}
+
+let viewSaveTimer: ReturnType<typeof setTimeout> | null = null;
+function debouncedViewSave(view: PanelView): void {
+  if (viewSaveTimer) clearTimeout(viewSaveTimer);
+  viewSaveTimer = setTimeout(() => {
+    viewSaveTimer = null;
+    const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+    try {
+      let config: Record<string, any> = {};
+      if (existsSync(cfgPath)) config = JSON.parse(readFileSync(cfgPath, "utf-8"));
+      if (!config.panelViews) config.panelViews = [];
+      const idx = config.panelViews.findIndex((v: any) => v.id === view.id);
+      if (idx >= 0) {
+        config.panelViews[idx] = view;
+      } else {
+        config.panelViews.push(view);
+      }
+      writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
+    } catch {}
+  }, 500);
 }
 
 async function applySetting(key: string, value: string | number | boolean | string[], type: string): Promise<void> {
