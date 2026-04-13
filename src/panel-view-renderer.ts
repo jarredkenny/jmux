@@ -21,7 +21,7 @@ export interface RenderableItem {
 }
 
 export type ViewNode =
-  | { kind: "group"; label: string; count: number; collapsed: boolean; depth: number }
+  | { kind: "group"; key: string; label: string; count: number; collapsed: boolean; depth: number }
   | { kind: "item"; item: RenderableItem; depth: number };
 
 export interface ViewState {
@@ -112,7 +112,7 @@ export function buildViewNodes(
   for (const [label, groupItems] of groups) {
     const groupKey = label;
     const collapsed = collapsedGroups.has(groupKey);
-    nodes.push({ kind: "group", label: label || "(none)", count: groupItems.length, collapsed, depth: 0 });
+    nodes.push({ kind: "group", key: groupKey, label: label || "(none)", count: groupItems.length, collapsed, depth: 0 });
 
     if (collapsed) continue;
 
@@ -127,7 +127,7 @@ export function buildViewNodes(
       for (const [subLabel, subItems] of subGroups) {
         const subKey = `${groupKey}:${subLabel}`;
         const subCollapsed = collapsedGroups.has(subKey);
-        nodes.push({ kind: "group", label: subLabel || "(none)", count: subItems.length, collapsed: subCollapsed, depth: 1 });
+        nodes.push({ kind: "group", key: subKey, label: subLabel || "(none)", count: subItems.length, collapsed: subCollapsed, depth: 1 });
         if (!subCollapsed) {
           for (const item of subItems) {
             nodes.push({ kind: "item", item, depth: 2 });

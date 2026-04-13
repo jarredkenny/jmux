@@ -1052,7 +1052,7 @@ const inputRouter = new InputRouter(
       const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
       const selected = nodes[viewState.selectedIndex];
       if (selected?.kind === "group") {
-        const key = selected.depth === 0 ? selected.label : `${selected.label}`;
+        const key = selected.key;
         if (viewState.collapsedGroups.has(key)) viewState.collapsedGroups.delete(key);
         else viewState.collapsedGroups.add(key);
         scheduleRender();
