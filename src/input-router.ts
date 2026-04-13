@@ -56,6 +56,7 @@ export interface InputRouterOptions {
   onPanelTabClick?: (col: number) => void; // col relative to panel start
   onPanelItemClick?: (row: number) => void; // row relative to panel content start (after toolbar)
   onPanelTabHover?: (col: number) => void; // col relative to panel start, for hover detection
+  onPanelScroll?: (delta: number, row: number) => void; // wheel scroll in panel area, row relative to content
   onPanelSelectPrev?: () => void;
   onPanelSelectNext?: () => void;
   onPanelDetailScrollUp?: () => void;
@@ -255,6 +256,14 @@ export class InputRouter {
           // Click in panel acquires keyboard focus
           if (!mouse.release && !isMotion && !isWheel && !this.diffPanelFocused) {
             this.opts.onDiffPanelFocusToggle?.();
+          }
+
+          // Non-diff tab: wheel scrolls the view
+          if (this.panelTabsActive && isWheel) {
+            const delta = (mouse.button & 1) ? 3 : -3;
+            const panelRow = mouse.y - 2; // -1 for 1-indexed, -1 for toolbar
+            this.opts.onPanelScroll?.(delta, panelRow);
+            return;
           }
 
           // Non-diff tab: clicks select items in the view

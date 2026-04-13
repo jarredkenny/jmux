@@ -1283,6 +1283,27 @@ const inputRouter = new InputRouter(
         scheduleRender();
       }
     },
+    onPanelScroll: (delta, row) => {
+      const view = panelViews.find((v) => v.id === infoPanel.activeTab);
+      if (!view) return;
+      const viewState = viewStates.get(view.id);
+      if (!viewState) return;
+
+      // Determine if scroll is in list area or detail area
+      const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+      const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.25));
+
+      if (row < listRows) {
+        // Scroll list
+        const newOffset = viewState.scrollOffset + delta;
+        viewState.scrollOffset = Math.max(0, newOffset);
+      } else {
+        // Scroll detail
+        const newOffset = viewState.detailScrollOffset + delta;
+        viewState.detailScrollOffset = Math.max(0, newOffset);
+      }
+      scheduleRender();
+    },
     onPanelTabHover: (col) => {
       const ranges = infoPanel.getTabRanges();
       let found: string | null = null;
