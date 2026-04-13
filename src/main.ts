@@ -27,6 +27,7 @@ import { createAdapters } from "./adapters/registry";
 import { PollCoordinator } from "./adapters/poll-coordinator";
 import { SessionState } from "./session-state";
 import type { SessionContext } from "./adapters/types";
+import type { DemoContext } from "./demo/setup";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { ConfigStore, sanitizeTmuxSessionName } from "./config";
@@ -54,6 +55,7 @@ Usage:
 
 Options:
   -L, --socket <name>      Use a separate tmux server socket
+  --demo                   Run in demo mode with mock data
   --install-agent-hooks    Install Claude Code attention flag hooks
   -v, --version            Show version
   -h, --help               Show this help
@@ -170,7 +172,18 @@ process.env.JMUX = "1";
 
 // --- TUI startup ---
 
-const configStore = new ConfigStore();
+// Check for --demo flag early (before config, before arg loop)
+const demoMode = process.argv.includes("--demo");
+let demoCtx: DemoContext | null = null;
+let demoCleanup: ((ctx: DemoContext) => void) | null = null;
+
+if (demoMode) {
+  const mod = await import("./demo/setup");
+  demoCtx = mod.setupDemo();
+  demoCleanup = mod.cleanupDemo;
+}
+
+const configStore = new ConfigStore(demoCtx?.configPath);
 let sidebarWidth = configStore.config.sidebarWidth || 26;
 const BORDER_WIDTH = 1;
 function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
@@ -185,12 +198,18 @@ let hunkCommand = configStore.config.diffPanel?.hunkCommand ?? "hunk";
 const jmuxDir = resolve(dirname(import.meta.dir));
 const configFile = resolve(jmuxDir, "config", "tmux.conf");
 
-// Parse args: jmux [session] [--socket name]
+// Parse args: jmux [session] [--socket name] [--demo]
 let sessionName: string | undefined;
-let socketName: string | undefined;
+let socketName: string | undefined = demoCtx?.socketName;
 for (let i = 2; i < process.argv.length; i++) {
   const arg = process.argv[i];
-  if (arg === "--socket" || arg === "-L") {
+  if (arg === "--demo") {
+    continue; // already handled above
+  } else if (arg === "--socket" || arg === "-L") {
+    if (demoMode) {
+      console.error("--socket cannot be used with --demo");
+      process.exit(1);
+    }
     socketName = process.argv[++i];
   } else if (arg.startsWith("-")) {
     console.error(`Unknown option: ${arg}`);
@@ -335,7 +354,9 @@ const settingsScreen = new SettingsScreen();
 
 import { SettingsScreen, type SettingDef, type SettingsCategory, type SettingsAction } from "./settings-screen";
 
-const adapters = createAdapters(configStore.config.adapters);
+const adapters = demoCtx
+  ? { codeHost: demoCtx.codeHost, issueTracker: demoCtx.issueTracker }
+  : createAdapters(configStore.config.adapters);
 const infoPanel = new InfoPanel({ viewIds: [], viewLabels: new Map() });
 const panelViews = parseViews(configStore.config.panelViews);
 const viewStates = new Map<string, ViewState>();
@@ -367,7 +388,7 @@ async function initAdapters(): Promise<void> {
   });
 }
 
-const sessionStatePath = resolve(homedir(), ".config", "jmux", "state.json");
+const sessionStatePath = demoCtx?.statePath ?? resolve(homedir(), ".config", "jmux", "state.json");
 const sessionState = new SessionState(sessionStatePath);
 
 const pollCoordinator = new PollCoordinator({
@@ -2998,6 +3019,9 @@ function cleanup(): void {
   process.stdout.write("\x1b[?1049l");
   if (process.stdin.setRawMode) {
     process.stdin.setRawMode(false);
+  }
+  if (demoCtx && demoCleanup) {
+    demoCleanup(demoCtx);
   }
   process.exit(0);
 }
