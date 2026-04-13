@@ -293,10 +293,10 @@ let startupComplete = false;
 function makeToolbar(): ToolbarConfig {
   return {
     buttons: [
+      { label: "◈", id: "panel", fg: diffPanel.isActive() ? ((0xF0 << 16) | (0x88 << 8) | 0x3E) : undefined, fgMode: diffPanel.isActive() ? 2 : undefined },
       { label: "＋", id: "new-window" },
       { label: "⏸", id: "split-v" },
       { label: "⏏", id: "split-h" },
-      { label: "◈", id: "panel", fg: diffPanel.isActive() ? ((0xF0 << 16) | (0x88 << 8) | 0x3E) : undefined, fgMode: diffPanel.isActive() ? 2 : undefined },
       { label: "λ", id: "claude", fg: (0xE8 << 16) | (0xA0 << 8) | 0xB4, fgMode: 2 },
       { label: "⚙", id: "settings" },
     ],
