@@ -1058,7 +1058,7 @@ const inputRouter = new InputRouter(
         scheduleRender();
       }
     },
-    onPanelCreateSession: () => {
+    onPanelCreateSession: async () => {
       const view = panelViews.find((v) => v.id === infoPanel.activeTab);
       if (!view || view.source !== "issues") return;
       const viewState = viewStates.get(view.id);
@@ -1068,7 +1068,65 @@ const inputRouter = new InputRouter(
       const selected = nodes[viewState.selectedIndex];
       if (selected?.kind !== "item" || selected.item.type !== "issue") return;
       const issue = selected.item.raw as import("./adapters/types").Issue;
-      const prefillName = sanitizeTmuxSessionName(issue.identifier.toLowerCase());
+
+      const workflow = userConfig.issueWorkflow;
+      const repoDir = workflow?.teamRepoMap?.[issue.team ?? ""];
+
+      // Automated path: config maps this issue's team to a repo
+      if (repoDir && workflow?.autoCreateWorktree !== false) {
+        if (!ptyClientName) await resolveClientName();
+        if (!ptyClientName) return;
+
+        const expandedDir = repoDir.replace("~", homedir());
+        const baseBranch = workflow.defaultBaseBranch ?? "main";
+        const template = workflow.sessionNameTemplate ?? "{identifier}";
+        const sessionRaw = template
+          .replace("{identifier}", issue.identifier.toLowerCase())
+          .replace("{title}", issue.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40));
+        const session = sanitizeTmuxSessionName(sessionRaw);
+
+        try {
+          // Check if repo is bare (has worktree support)
+          const isBare = Bun.spawnSync(
+            ["git", "--git-dir", `${expandedDir}/.git`, "config", "--get", "core.bare"],
+            { stdout: "pipe", stderr: "ignore" },
+          ).stdout.toString().trim() === "true";
+
+          if (isBare) {
+            // Create worktree via wtm, same pattern as new-session modal
+            const wtPath = `${expandedDir}/${session}`;
+            const cmd = `wtm create ${session} --from ${baseBranch} --no-shell; cd ${session}; exec $SHELL`;
+            await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(expandedDir)} ${tq(cmd)}`);
+            const waitCmd = `while [ ! -d ${tq(wtPath)} ]; do sleep 0.2; done; cd ${tq(wtPath)} && exec $SHELL`;
+            await control.sendCommand(`split-window -h -d -t ${tq(session)} -c ${tq(expandedDir)} ${tq(waitCmd)}`);
+          } else {
+            // Non-bare: create branch and session in the repo directory
+            Bun.spawnSync(["git", "checkout", "-b", session, baseBranch], { cwd: expandedDir, stdout: "ignore", stderr: "ignore" });
+            await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(expandedDir)}`);
+          }
+
+          await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(session)}`);
+          sessionState.addLink(session, { type: "issue", id: issue.id });
+        } catch (err) {
+          // Show error in a content modal
+          const message = err instanceof Error ? err.message : String(err);
+          const lines: StyledLine[] = [
+            [],
+            [{ text: `Failed to create session for ${issue.identifier}`, attrs: { fg: 1, fgMode: 1, bg: MODAL_BG, bgMode: 2 } }],
+            [],
+            [{ text: message, attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }],
+            [],
+            [{ text: "Press q or Esc to close.", attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }],
+          ];
+          const errorModal = new ContentModal({ lines, title: "Session Creation Failed" });
+          errorModal.setTermRows(process.stdout.rows || 24);
+          errorModal.open();
+          openModal(errorModal, () => {});
+        }
+        return;
+      }
+
+      // Fallback: no config mapping — open manual modal
       const initialDirs = cachedProjectDirs.length > 0 ? cachedProjectDirs : [homedir()];
       const modal = new NewSessionModal(getNewSessionProviders(initialDirs));
       modal.open();
@@ -1083,17 +1141,17 @@ const inputRouter = new InputRouter(
         try {
           switch (result.type) {
             case "standard": {
-              const session = sanitizeTmuxSessionName(result.name);
-              await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(result.dir)}`);
-              await control.sendCommand(`switch-client -c ${parentClient} -t ${tq(session)}`);
-              sessionState.addLink(session, { type: "issue", id: issue.id });
+              const s = sanitizeTmuxSessionName(result.name);
+              await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${s}`)} -s ${tq(s)} -c ${tq(result.dir)}`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t ${tq(s)}`);
+              sessionState.addLink(s, { type: "issue", id: issue.id });
               break;
             }
             case "existing_worktree": {
-              const session = sanitizeTmuxSessionName(result.branch);
-              await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(result.path)}`);
-              await control.sendCommand(`switch-client -c ${parentClient} -t ${tq(session)}`);
-              sessionState.addLink(session, { type: "issue", id: issue.id });
+              const s = sanitizeTmuxSessionName(result.branch);
+              await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${s}`)} -s ${tq(s)} -c ${tq(result.path)}`);
+              await control.sendCommand(`switch-client -c ${parentClient} -t ${tq(s)}`);
+              sessionState.addLink(s, { type: "issue", id: issue.id });
               break;
             }
           }
@@ -1366,6 +1424,19 @@ function buildPaletteCommands(): PaletteCommand[] {
   commands.push({
     id: "setting-issue-tracker",
     label: `Issue tracker: ${issueTrackerType}`,
+    category: "setting",
+  });
+
+  // Issue workflow settings
+  const wf = settings.issueWorkflow;
+  commands.push({
+    id: "setting-default-branch",
+    label: `Default base branch: ${wf?.defaultBaseBranch ?? "main"}`,
+    category: "setting",
+  });
+  commands.push({
+    id: "setting-team-repo-map",
+    label: `Team → repo mappings: ${Object.keys(wf?.teamRepoMap ?? {}).length} configured`,
     category: "setting",
   });
 
@@ -1841,6 +1912,55 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       openModal(modal, async (value) => {
         const selected = value as ListItem;
         await applyAdapterSetting("issueTracker", selected.id === "none" ? null : { type: selected.id });
+      });
+      return;
+    }
+    case "setting-default-branch": {
+      const current = userConfig.issueWorkflow?.defaultBaseBranch ?? "main";
+      const modal = new InputModal({
+        header: "Default Base Branch",
+        subheader: "Branch to create worktrees from",
+        value: current,
+      });
+      modal.open();
+      openModal(modal, async (value) => {
+        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+        try {
+          let config: Record<string, any> = {};
+          if (existsSync(cfgPath)) config = JSON.parse(readFileSync(cfgPath, "utf-8"));
+          if (!config.issueWorkflow) config.issueWorkflow = {};
+          config.issueWorkflow.defaultBaseBranch = value as string;
+          writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
+        } catch {}
+      });
+      return;
+    }
+    case "setting-team-repo-map": {
+      const current = userConfig.issueWorkflow?.teamRepoMap ?? {};
+      const entries = Object.entries(current);
+      const display = entries.length > 0
+        ? entries.map(([team, repo]) => `${team} → ${repo}`).join(", ")
+        : "none";
+      const modal = new InputModal({
+        header: "Team → Repo Mappings",
+        subheader: `Current: ${display}\nFormat: Team=~/path, Team2=~/path2`,
+        value: entries.map(([t, r]) => `${t}=${r}`).join(", "),
+      });
+      modal.open();
+      openModal(modal, async (value) => {
+        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+        try {
+          let config: Record<string, any> = {};
+          if (existsSync(cfgPath)) config = JSON.parse(readFileSync(cfgPath, "utf-8"));
+          if (!config.issueWorkflow) config.issueWorkflow = {};
+          const map: Record<string, string> = {};
+          for (const pair of (value as string).split(",")) {
+            const [team, repo] = pair.split("=").map((s) => s.trim());
+            if (team && repo) map[team] = repo;
+          }
+          config.issueWorkflow.teamRepoMap = map;
+          writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
+        } catch {}
       });
       return;
     }

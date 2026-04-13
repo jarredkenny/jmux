@@ -4,6 +4,13 @@ import { homedir } from "os";
 import type { AdapterConfig } from "./adapters/types";
 import type { PanelView } from "./panel-view";
 
+export interface IssueWorkflowConfig {
+  teamRepoMap?: Record<string, string>;  // Linear team name → repo directory
+  defaultBaseBranch?: string;             // default: "main"
+  autoCreateWorktree?: boolean;           // default: true
+  sessionNameTemplate?: string;           // default: "{identifier}" — supports {identifier}, {title}
+}
+
 export interface JmuxConfig {
   sidebarWidth?: number;
   claudeCommand?: string;
@@ -15,6 +22,7 @@ export interface JmuxConfig {
   };
   adapters?: AdapterConfig;
   panelViews?: PanelView[];
+  issueWorkflow?: IssueWorkflowConfig;
 }
 
 /**
