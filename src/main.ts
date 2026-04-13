@@ -1477,6 +1477,9 @@ function saveWorkflowSetting(key: string, value: unknown): void {
     const dir = dirname(cfgPath);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
+    // Update in-memory config so changes take effect immediately
+    if (!userConfig.issueWorkflow) (userConfig as any).issueWorkflow = {};
+    (userConfig.issueWorkflow as any)[key] = value;
   } catch {}
 }
 
@@ -1495,6 +1498,14 @@ function saveTeamRepoMap(team: string, repoDir: string | null): void {
     const dir = dirname(cfgPath);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
+    // Update in-memory config
+    if (!userConfig.issueWorkflow) (userConfig as any).issueWorkflow = {};
+    if (!(userConfig.issueWorkflow as any).teamRepoMap) (userConfig.issueWorkflow as any).teamRepoMap = {};
+    if (repoDir === null) {
+      delete (userConfig.issueWorkflow as any).teamRepoMap[team];
+    } else {
+      (userConfig.issueWorkflow as any).teamRepoMap[team] = repoDir;
+    }
   } catch {}
 }
 
