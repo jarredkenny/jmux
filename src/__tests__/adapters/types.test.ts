@@ -123,4 +123,24 @@ describe("adapter types", () => {
     expect(cfg.codeHost).toBeUndefined();
     expect(cfg.issueTracker).toBeUndefined();
   });
+
+  test("Issue with extended fields", () => {
+    const issue: Issue = {
+      id: "1", identifier: "ENG-1234", title: "Fix auth", status: "In Progress",
+      assignee: "jarred", linkedMrUrls: [], webUrl: "",
+      team: "Platform", project: "Auth Rewrite", priority: 1, updatedAt: Date.now(),
+    };
+    expect(issue.team).toBe("Platform");
+    expect(issue.priority).toBe(1);
+  });
+
+  test("MergeRequest with extended fields", () => {
+    const mr: MergeRequest = {
+      id: "1", title: "Fix", status: "open", sourceBranch: "fix", targetBranch: "main",
+      pipeline: null, approvals: { required: 0, current: 0 }, webUrl: "",
+      author: "jarred", reviewers: ["alice"], updatedAt: Date.now(),
+    };
+    expect(mr.author).toBe("jarred");
+    expect(mr.reviewers).toEqual(["alice"]);
+  });
 });

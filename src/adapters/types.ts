@@ -12,6 +12,9 @@ export interface MergeRequest {
   pipeline: PipelineStatus | null;
   approvals: { required: number; current: number };
   webUrl: string;
+  author?: string;
+  reviewers?: string[];
+  updatedAt?: number;  // epoch ms
 }
 
 export interface Issue {
@@ -22,6 +25,10 @@ export interface Issue {
   assignee: string | null;
   linkedMrUrls: string[];
   webUrl: string;
+  team?: string;
+  project?: string;
+  priority?: number;   // 0=none, 1=urgent, 2=high, 3=medium, 4=low
+  updatedAt?: number;  // epoch ms
 }
 
 export interface BranchContext {
@@ -59,6 +66,8 @@ export interface CodeHostAdapter {
   searchMergeRequests(query: string): Promise<MergeRequest[]>;
   parseMrUrl(url: string): string | null;
   pollMergeRequestsByIds(ids: string[]): Promise<Map<string, MergeRequest>>;
+  getMyMergeRequests(): Promise<MergeRequest[]>;
+  getMrsAwaitingMyReview(): Promise<MergeRequest[]>;
 }
 
 export interface IssueTrackerAdapter {
@@ -75,6 +84,7 @@ export interface IssueTrackerAdapter {
   openInBrowser(issueId: string): void;
   updateStatus(issueId: string, status: string): Promise<void>;
   searchIssues(query: string): Promise<Issue[]>;
+  getMyIssues(): Promise<Issue[]>;
 }
 
 export interface AdapterConfig {
