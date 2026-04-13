@@ -32,6 +32,7 @@ export interface Issue {
   description?: string;
   branchName?: string;  // Linear's suggested branch name
   comments?: Array<{ author: string; body: string; createdAt: string }>;
+  links?: Array<{ type: string; title?: string; url: string }>;
 }
 
 export interface BranchContext {

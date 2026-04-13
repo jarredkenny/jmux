@@ -4,7 +4,7 @@ import type { IssueTrackerAdapter, AdapterAuthState, Issue } from "./types";
 const LINEAR_API = "https://api.linear.app/graphql";
 
 // Shared GraphQL fields for issue queries
-const ISSUE_FIELDS = `id identifier title description branchName state { name } assignee { name } team { name } project { name } priority updatedAt attachments { nodes { url } } comments(first: 20) { nodes { body user { name } createdAt } } url`;
+const ISSUE_FIELDS = `id identifier title description branchName state { name } assignee { name } team { name } project { name } priority updatedAt attachments { nodes { title url sourceType } } comments(first: 20) { nodes { body user { name } createdAt } } url`;
 
 export function extractIssueIdFromBranch(branch: string): string | null {
   const match = branch.match(/(?:^|\/?)([a-zA-Z]+-\d+)/);
@@ -155,7 +155,7 @@ export class LinearAdapter implements IssueTrackerAdapter {
       assignee: raw.assignee?.name ?? null,
       linkedMrUrls: (raw.attachments?.nodes ?? [])
         .map((a: any) => a.url)
-        .filter((u: string) => u),
+        .filter((u: string) => u && (u.includes("merge_requests") || u.includes("/pull/"))),
       webUrl: raw.url ?? "",
       team: raw.team?.name ?? undefined,
       project: raw.project?.name ?? undefined,
@@ -168,6 +168,13 @@ export class LinearAdapter implements IssueTrackerAdapter {
         body: c.body ?? "",
         createdAt: c.createdAt ?? "",
       })),
+      links: (raw.attachments?.nodes ?? [])
+        .filter((a: any) => a.url)
+        .map((a: any) => ({
+          type: a.sourceType ?? "",
+          title: a.title ?? undefined,
+          url: a.url,
+        })),
     };
   }
 

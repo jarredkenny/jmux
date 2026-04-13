@@ -709,7 +709,11 @@ async function switchSession(sessionId: string): Promise<void> {
     sidebar.setActiveSession(sessionId);
     sidebar.scrollToActive();
     const sessionName = currentSessions.find((s) => s.id === sessionId)?.name;
-    if (sessionName) pollCoordinator.setActiveSession(sessionName);
+    if (sessionName) {
+      pollCoordinator.setActiveSession(sessionName);
+      // Auto-focus the session's linked issue in the panel
+      focusPanelOnSessionIssue(sessionName);
+    }
     fetchWindows();
     renderFrame();
   } catch {
@@ -1805,6 +1809,43 @@ function getIssueSessionStates(): Map<string, IssueSessionState> {
     }
   }
   return states;
+}
+
+function focusPanelOnSessionIssue(sessionName: string): void {
+  // Find the first issue linked to this session
+  const ctx = pollCoordinator.getContext(sessionName);
+  const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
+  if (linkedIssueIds.size === 0) return;
+
+  // Find the issues view and locate the linked issue in it
+  for (const view of panelViews) {
+    if (view.source !== "issues") continue;
+    const viewState = viewStates.get(view.id);
+    if (!viewState) continue;
+
+    const rawItems = transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates());
+    const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      if (node.kind === "item" && node.item.type === "issue" && linkedIssueIds.has(node.item.id)) {
+        viewState.selectedIndex = i;
+        viewState.detailScrollOffset = 0;
+        // Ensure visible
+        const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+        const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
+        if (i >= viewState.scrollOffset + listRows) {
+          viewState.scrollOffset = i - listRows + 1;
+        } else if (i < viewState.scrollOffset) {
+          viewState.scrollOffset = i;
+        }
+        // Switch to this view tab
+        infoPanel.setActiveTab(view.id);
+        inputRouter.setPanelTabsActive(true);
+        return;
+      }
+    }
+  }
 }
 
 function saveWorkflowSetting(key: string, value: unknown): void {

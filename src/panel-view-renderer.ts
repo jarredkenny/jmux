@@ -319,14 +319,16 @@ function buildIssueDetailLines(item: RenderableItem, cols: number): DetailLine[]
   lines.push({ text: `Assignee: ${issue.assignee ?? "Unassigned"}`, attrs: DETAIL_LABEL });
   if (issue.team) lines.push({ text: `Team: ${issue.team}`, attrs: DETAIL_LABEL });
 
-  // Linked MRs
-  if (issue.linkedMrUrls.length > 0) {
+  // Links
+  if (issue.links && issue.links.length > 0) {
     lines.push({ text: "", attrs: DIM_ATTRS });
-    lines.push({ text: "Linked MRs:", attrs: DETAIL_LABEL });
-    for (const url of issue.linkedMrUrls) {
-      const m = url.match(/merge_requests\/(\d+)/);
-      const label = m ? `!${m[1]}` : "MR";
-      lines.push({ text: `${label}  ${url}`.slice(0, contentWidth - 1), attrs: URL_ATTRS, indent: 1 });
+    lines.push({ text: "Links:", attrs: { ...DETAIL_LABEL, bold: true } });
+    for (const link of issue.links) {
+      const label = link.title ?? link.url;
+      lines.push({ text: `${label}`.slice(0, contentWidth - 1), attrs: URL_ATTRS, indent: 1 });
+      if (link.title) {
+        lines.push({ text: link.url.slice(0, contentWidth - 1), attrs: DIM_ATTRS, indent: 1 });
+      }
     }
   }
 
