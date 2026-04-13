@@ -184,6 +184,7 @@ const DETAIL_LABEL: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const DETAIL_VALUE: CellAttrs = { fg: (0xC9 << 16) | (0xD1 << 8) | 0xD9, fgMode: ColorMode.RGB };
 const DETAIL_KEY: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const SEPARATOR_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
+const URL_ATTRS: CellAttrs = { fg: (0x58 << 16) | (0xA6 << 8) | 0xFF, fgMode: ColorMode.RGB, underline: true };
 
 const DETAIL_ROWS = 8;
 const MIN_ROWS_FOR_DETAIL = 15;
@@ -306,13 +307,16 @@ function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: n
       row++;
     }
     if (issue.linkedMrUrls.length > 0) {
-      const mrList = issue.linkedMrUrls.map((u) => {
-        const m = u.match(/merge_requests\/(\d+)/);
-        return m ? `!${m[1]}` : "MR";
-      }).join(", ");
-      writeString(grid, row, pad, `MRs: `, DETAIL_LABEL);
-      writeString(grid, row, pad + 5, mrList.slice(0, cols - pad * 2 - 5), DETAIL_VALUE);
+      writeString(grid, row, pad, `MRs:`, DETAIL_LABEL);
       row++;
+      for (const url of issue.linkedMrUrls) {
+        if (row >= startRow + maxRows - 2) break; // leave room for actions
+        const m = url.match(/merge_requests\/(\d+)/);
+        const label = m ? `!${m[1]}` : "MR";
+        const display = `${label}  ${url}`;
+        writeString(grid, row, pad + 1, display.slice(0, cols - pad * 2 - 1), URL_ATTRS);
+        row++;
+      }
     }
     row++;
     writeString(grid, row, pad, "[o]", DETAIL_KEY);
