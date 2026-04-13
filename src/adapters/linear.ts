@@ -1,5 +1,6 @@
 // src/adapters/linear.ts
-import type { IssueTrackerAdapter, AdapterAuthState, Issue } from "./types";
+import { HttpError, type IssueTrackerAdapter, type AdapterAuthState, type Issue } from "./types";
+import { logError } from "../log";
 
 const LINEAR_API = "https://api.linear.app/graphql";
 
@@ -53,9 +54,7 @@ export class LinearAdapter implements IssueTrackerAdapter {
     const query = `query($id: String!) { issue(id: $id) { ${ISSUE_FIELDS} } }`;
     const resp = await this.graphql(query, { id: issueId });
     if (!resp?.data?.issue) {
-      const err = new Error("Issue not found");
-      (err as any).status = 404;
-      throw err;
+      throw new HttpError("Issue not found", 404);
     }
     return this.mapIssue(resp.data.issue);
   }
@@ -193,13 +192,12 @@ export class LinearAdapter implements IssueTrackerAdapter {
       });
       if (!resp.ok) {
         if (resp.status === 401 || resp.status === 403) this.authState = "failed";
-        const err = new Error(`Linear API error: ${resp.status}`);
-        (err as any).status = resp.status;
-        throw err;
+        throw new HttpError(`Linear API error: ${resp.status}`, resp.status);
       }
       return await resp.json();
-    } catch (e: any) {
-      if (e?.status) throw e;
+    } catch (e) {
+      if (e instanceof HttpError) throw e;
+      logError("Linear", `request failed: ${(e as Error).message}`);
       return null;
     }
   }

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { translateMouseX, parseSgrMouse, InputRouter } from "../input-router";
+import { translateMouse, parseSgrMouse, InputRouter } from "../input-router";
 
 describe("parseSgrMouse", () => {
   test("parses SGR mouse button press", () => {
@@ -30,19 +30,29 @@ describe("parseSgrMouse", () => {
   });
 });
 
-describe("translateMouseX", () => {
-  test("translates x coordinate by subtracting sidebar offset", () => {
-    const result = translateMouseX("\x1b[<0;30;5M", 25);
+describe("translateMouse", () => {
+  test("translates x coordinate by subtracting offset", () => {
+    const result = translateMouse("\x1b[<0;30;5M", 25);
     expect(result).toBe("\x1b[<0;5;5M");
   });
 
   test("preserves release suffix", () => {
-    const result = translateMouseX("\x1b[<0;30;5m", 25);
+    const result = translateMouse("\x1b[<0;30;5m", 25);
     expect(result).toBe("\x1b[<0;5;5m");
   });
 
   test("returns null if translated x would be <= 0", () => {
-    const result = translateMouseX("\x1b[<0;10;5M", 25);
+    const result = translateMouse("\x1b[<0;10;5M", 25);
+    expect(result).toBeNull();
+  });
+
+  test("translates both x and y when yOffset provided", () => {
+    const result = translateMouse("\x1b[<0;30;10M", 25, 1);
+    expect(result).toBe("\x1b[<0;5;9M");
+  });
+
+  test("returns null if translated y would be <= 0", () => {
+    const result = translateMouse("\x1b[<0;30;1M", 25, 1);
     expect(result).toBeNull();
   });
 });

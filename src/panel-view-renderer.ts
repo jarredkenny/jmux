@@ -203,7 +203,6 @@ export function renderView(
   // Layout: list | separator | detail content | action bar
   // Action bar is always pinned to the bottom 2 rows when detail is shown
   const actionBarStart = showDetail ? rows - ACTION_BAR_ROWS : rows;
-  const detailContentRows = showDetail ? Math.max(0, rows - Math.ceil(nodes.length * 0.6) - 1 - ACTION_BAR_ROWS) : 0;
   // 50/50 split between list and detail (minus action bar + separator)
   const minDetailRows = 4;
   const maxListRows = showDetail ? rows - minDetailRows - 1 - ACTION_BAR_ROWS : rows;

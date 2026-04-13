@@ -111,14 +111,6 @@ export const SELECTED_CURRENT_TAG_ATTRS: CellAttrs = {
   bgMode: ColorMode.RGB,
 };
 
-export const MODAL_BORDER_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  dim: true,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
-
 export const BREADCRUMB_ATTRS: CellAttrs = {
   fg: 8,
   fgMode: ColorMode.Palette,

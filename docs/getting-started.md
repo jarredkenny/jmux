@@ -113,17 +113,18 @@ No prefix key needed — these work instantly.
 | Toggle pane zoom | `Ctrl-a` then `z` |
 | Window picker | `Ctrl-a` then `j` |
 
-### Diff panel
+### Info panel
 
 | Action | Keys |
 |--------|------|
-| Toggle diff panel | `Ctrl-a` then `g` |
-| Zoom diff panel (split ↔ full) | `Ctrl-a` then `z` (when diff is focused) |
-| Switch focus (tmux ↔ diff) | `Ctrl-a` then `Tab` |
-| Focus diff from rightmost pane | `Shift-Right` |
-| Return focus to tmux | `Shift-Left` (from diff panel) |
+| Toggle info panel | `Ctrl-a` then `g` |
+| Cycle tabs (Diff/Issues/MRs/Review) | `[` / `]` (when panel is focused) |
+| Zoom panel (split ↔ full) | `Ctrl-a` then `z` (when panel is focused) |
+| Switch focus (tmux ↔ panel) | `Ctrl-a` then `Tab` |
+| Focus panel from rightmost pane | `Shift-Right` |
+| Return focus to tmux | `Shift-Left` (from panel) |
 
-Powered by [hunk](https://github.com/modem-dev/hunk) — a review-first terminal diff viewer with syntax highlighting and word-level diffs. Install with `npm i -g hunkdiff`.
+The Diff tab is powered by [hunk](https://github.com/modem-dev/hunk) — install with `npm i -g hunkdiff`. The Issues and MRs tabs require adapter configuration — see [issue-tracking.md](issue-tracking.md).
 
 ### Utilities
 
@@ -201,17 +202,17 @@ myproject (sidebar)
     add-tests
 ```
 
-### Reviewing agent changes with the diff panel
+### Reviewing agent changes with the info panel
 
 When an agent finishes work and the `!` flag appears:
 
 1. Switch to that session
-2. Press `Ctrl-a g` to open the diff panel in split mode — you'll see the agent's terminal on the left and its code changes on the right
-3. Click the diff panel or press `Shift-Right` to focus it, then use `j`/`k` to scroll and `[`/`]` to jump between hunks
-4. Press `Ctrl-a z` to zoom the diff to full-screen for thorough review
+2. Press `Ctrl-a g` to open the info panel in split mode — you'll see the agent's terminal on the left and its code changes on the right (Diff tab)
+3. Click the panel or press `Shift-Right` to focus it, then use `j`/`k` to scroll and `[`/`]` to jump between hunks — or between tabs
+4. Press `Ctrl-a z` to zoom the panel to full-screen for thorough review
 5. Press `Ctrl-a z` again to unzoom, or `Ctrl-a g` to close the panel entirely
 
-The diff panel shows the working tree changes for whichever session is active. Switch sessions in the sidebar and the diff updates automatically.
+The Diff tab shows the working tree changes for whichever session is active. Switch sessions in the sidebar and the diff updates automatically. The Issues and MRs tabs show your tracked items across all sessions — see [issue-tracking.md](issue-tracking.md).
 
 ### Monitoring multiple agents
 
@@ -237,13 +238,61 @@ Now when Claude Code completes a response in any session, that session gets an o
 
 ---
 
+## Issue tracking with Linear and GitLab
+
+Connect your issue tracker and code host to see issues, MRs, and pipeline status directly in jmux.
+
+### 1. Set your API tokens
+
+```bash
+# Add to your shell profile (~/.zshrc, ~/.bashrc, etc.)
+export LINEAR_API_KEY="lin_api_..."    # from linear.app/settings/api
+export GITLAB_TOKEN="glpat-..."        # personal access token with api scope
+```
+
+### 2. Enable the adapters
+
+Open settings with `Ctrl-a` then `i`, navigate to **Integrations**, and set:
+- **Code host** → `gitlab`
+- **Issue tracker** → `linear`
+
+Or edit `~/.config/jmux/config.json` directly:
+
+```json
+{
+  "adapters": {
+    "codeHost": { "type": "gitlab" },
+    "issueTracker": { "type": "linear" }
+  }
+}
+```
+
+### 3. Restart jmux
+
+Adapters authenticate on startup. Once connected, press `Ctrl-a g` and use `[`/`]` to cycle to the Issues or MRs tab.
+
+### 4. Map your teams to repos (optional)
+
+If you want to create sessions directly from issues (press `n` on an issue), tell jmux which Linear team maps to which local repository:
+
+In settings (`Ctrl-a i` > **Issue Workflow** > **Team -> repo mappings**), add entries like:
+- `Platform` → `~/repos/backend`
+- `Frontend` → `~/repos/frontend`
+
+Now selecting an issue and pressing `n` will create a worktree, open a session, and optionally launch Claude Code with the issue context — all in one step.
+
+See [issue-tracking.md](issue-tracking.md) for the full reference including custom views, pipeline glyphs, and manual linking.
+
+---
+
 ## Settings
 
-Press `Ctrl-a` then `i` to open the settings modal:
+Press `Ctrl-a` then `i` to open the settings screen:
 
-- **Sidebar Width** — adjust how wide the sidebar is
-- **Project Directories** — which directories to search when creating new sessions
-- **wtm Integration** — toggle git worktree support
+- **Display** — sidebar width, cache timers
+- **Integrations** — code host (GitLab), issue tracker (Linear), Claude command
+- **Issue Workflow** — base branch, worktree creation, agent launch, team-to-repo mapping
+- **Directories** — project directories for session creation
 
 Settings are saved to `~/.config/jmux/config.json` and most take effect immediately.
 
@@ -266,5 +315,6 @@ Settings are saved to `~/.config/jmux/config.json` and most take effect immediat
 
 - Read the [cheat sheet](cheat-sheet.md) for a complete keybinding reference
 - Set up [Claude Code integration](claude-code-integration.md) for agent notifications
+- Connect [Linear and GitLab](issue-tracking.md) for issue tracking and MR status in the panel
 - Try [wtm](https://github.com/jarredkenny/worktree-manager) for git worktree workflows
 - See [configuration](configuration.md) for advanced tmux config layering

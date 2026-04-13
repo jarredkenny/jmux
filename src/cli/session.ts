@@ -1,6 +1,6 @@
 import { sanitizeTmuxSessionName, buildOtelResourceAttrs } from "../config";
-import { runTmuxDirect, type TmuxResult } from "./tmux";
-import { resolveCurrentSession, CliError, type CliContext } from "./context";
+import { runTmuxDirect } from "./tmux";
+import { resolveCurrentSession, tmuxOrThrow, CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
 
 export interface SessionEntry {
@@ -11,13 +11,6 @@ export interface SessionEntry {
   windows: number;
   attention: boolean;
   path: string;
-}
-
-function tmuxOrThrow(result: TmuxResult): string[] {
-  if (!result.ok) {
-    throw new CliError(result.error);
-  }
-  return result.lines;
 }
 
 export function parseSessionListOutput(lines: string[]): SessionEntry[] {

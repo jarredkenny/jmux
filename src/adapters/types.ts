@@ -96,3 +96,13 @@ export interface AdapterConfig {
   codeHost?: { type: string; [key: string]: unknown };
   issueTracker?: { type: string; [key: string]: unknown };
 }
+
+export class HttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+  }
+}

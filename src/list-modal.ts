@@ -1,6 +1,6 @@
 import type { CellGrid } from "./types";
 import { createGrid, writeString } from "./cell-grid";
-import { fuzzyMatch, type FuzzyResult } from "./command-palette";
+import { fuzzyMatch, truncateLabel, type FuzzyResult } from "./fuzzy";
 import {
   HEADER_ATTRS, SUBHEADER_ATTRS, PROMPT_ATTRS, INPUT_ATTRS,
   RESULT_ATTRS, SELECTED_RESULT_ATTRS,
@@ -28,13 +28,6 @@ export interface ListModalConfig {
 interface FilteredItem {
   item: ListItem;
   match: FuzzyResult;
-}
-
-function truncateLabel(label: string, maxLen: number): string {
-  if (maxLen <= 0) return "";
-  if (label.length <= maxLen) return label;
-  if (maxLen <= 1) return "…";
-  return label.slice(0, maxLen - 1) + "…";
 }
 
 export class ListModal {

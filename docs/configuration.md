@@ -111,3 +111,36 @@ vim $(npm root -g)/@jx0/jmux/config/defaults.conf
 ```
 
 Changes here persist until you update jmux. For durable customizations, prefer `~/.tmux.conf` instead.
+
+## jmux Application Config
+
+jmux's own settings (not tmux settings) live in `~/.config/jmux/config.json`. Edit it directly or use the settings screen (`Ctrl-a i`). Changes are hot-reloaded.
+
+```json
+{
+  "sidebarWidth": 26,
+  "claudeCommand": "claude",
+  "cacheTimers": true,
+  "pinnedSessions": [],
+  "projectDirs": ["~/Code", "~/Projects"],
+  "wtmIntegration": true,
+  "diffPanel": {
+    "splitRatio": 0.4,
+    "hunkCommand": "hunk"
+  },
+  "adapters": {
+    "codeHost": { "type": "gitlab" },
+    "issueTracker": { "type": "linear" }
+  },
+  "issueWorkflow": {
+    "teamRepoMap": {},
+    "defaultBaseBranch": "main",
+    "autoCreateWorktree": true,
+    "autoLaunchAgent": true,
+    "sessionNameTemplate": "{identifier}"
+  },
+  "panelViews": []
+}
+```
+
+See [issue-tracking.md](issue-tracking.md) for adapter and workflow configuration details.

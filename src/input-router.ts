@@ -18,15 +18,17 @@ export function parseSgrMouse(seq: string): SgrMouseEvent | null {
   };
 }
 
-export function translateMouseX(
+export function translateMouse(
   seq: string,
-  offset: number,
+  xOffset: number,
+  yOffset = 0,
 ): string | null {
   const match = seq.match(SGR_MOUSE_RE);
   if (!match) return null;
-  const newX = parseInt(match[2], 10) - offset;
-  if (newX <= 0) return null;
-  return `\x1b[<${match[1]};${newX};${match[3]}${match[4]}`;
+  const newX = parseInt(match[2], 10) - xOffset;
+  const newY = parseInt(match[3], 10) - yOffset;
+  if (newX <= 0 || newY <= 0) return null;
+  return `\x1b[<${match[1]};${newX};${newY}${match[4]}`;
 }
 
 export interface InputRouterOptions {
@@ -274,15 +276,9 @@ export class InputRouter {
           }
 
           if (isMotion && (mouse.button & 0x03) === 3) return; // bare motion, skip
-          const diffOffset = dividerX;
-          const yOffset = 1; // toolbar row
-          const m = data.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
-          if (m) {
-            const newX = parseInt(m[2], 10) - diffOffset;
-            const newY = parseInt(m[3], 10) - yOffset;
-            if (newX > 0 && newY > 0) {
-              this.opts.onDiffPanelData?.(`\x1b[<${m[1]};${newX};${newY}${m[4]}`);
-            }
+          const translated = translateMouse(data, dividerX, 1);
+          if (translated) {
+            this.opts.onDiffPanelData?.(translated);
           }
           return;
         }
@@ -295,15 +291,9 @@ export class InputRouter {
       }
       // Don't forward bare motion events to PTY (too noisy)
       if (isMotion && (mouse.button & 0x03) === 3) return;
-      const offset = this.opts.sidebarCols + 1;
-      const yOffset = 1;
-      const match = data.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
-      if (match) {
-        const newX = parseInt(match[2], 10) - offset;
-        const newY = parseInt(match[3], 10) - yOffset;
-        if (newX > 0 && newY > 0) {
-          this.opts.onPtyData(`\x1b[<${match[1]};${newX};${newY}${match[4]}`);
-        }
+      const mainTranslated = translateMouse(data, this.opts.sidebarCols + 1, 1);
+      if (mainTranslated) {
+        this.opts.onPtyData(mainTranslated);
       }
       return;
     }

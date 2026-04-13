@@ -2,16 +2,9 @@ import { writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { resolve } from "path";
 import { sanitizeTmuxSessionName, buildOtelResourceAttrs, loadUserConfig } from "../config";
-import { runTmuxDirect, type TmuxResult } from "./tmux";
-import { CliError, type CliContext } from "./context";
+import { runTmuxDirect } from "./tmux";
+import { tmuxOrThrow, CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
-
-function tmuxOrThrow(result: TmuxResult): string[] {
-  if (!result.ok) {
-    throw new CliError(result.error);
-  }
-  return result.lines;
-}
 
 export function validateRunClaude(flags: Record<string, string | boolean>): {
   name: string;

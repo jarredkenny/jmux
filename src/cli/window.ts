@@ -1,5 +1,5 @@
-import { runTmuxDirect, type TmuxResult } from "./tmux";
-import { resolveCurrentSession, requireSession, CliError, type CliContext } from "./context";
+import { runTmuxDirect } from "./tmux";
+import { resolveCurrentSession, requireSession, tmuxOrThrow, CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
 
 const WINDOW_FORMAT =
@@ -12,13 +12,6 @@ export interface WindowEntry {
   active: boolean;
   bell: boolean;
   zoomed: boolean;
-}
-
-function tmuxOrThrow(result: TmuxResult): string[] {
-  if (!result.ok) {
-    throw new CliError(result.error);
-  }
-  return result.lines;
 }
 
 export function parseWindowListOutput(lines: string[]): WindowEntry[] {

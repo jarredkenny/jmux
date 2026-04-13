@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
-import { runTmuxDirect, type TmuxResult } from "./tmux";
-import { requireSession, CliError, type CliContext } from "./context";
+import { runTmuxDirect } from "./tmux";
+import { requireSession, tmuxOrThrow, CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
 
 const PANE_FORMAT =
@@ -14,13 +14,6 @@ export interface PaneEntry {
   height: number;
   command: string;
   path: string;
-}
-
-function tmuxOrThrow(result: TmuxResult): string[] {
-  if (!result.ok) {
-    throw new CliError(result.error);
-  }
-  return result.lines;
 }
 
 export function parsePaneListOutput(lines: string[]): PaneEntry[] {

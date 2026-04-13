@@ -42,11 +42,13 @@ Your workflow shouldn't change because you added an orchestrator.
 
 ### Session Sidebar
 
-Every session visible at a glance — name, window count, git branch. Sessions sharing a parent directory are automatically grouped under a header. Mouse wheel scrolling when sessions overflow.
+Every session visible at a glance — name, window count, git branch, pipeline status, linked issues. Sessions sharing a parent directory are automatically grouped under a header. Mouse wheel scrolling when sessions overflow.
 
 - Green `▎` marker + highlighted background on the active session
 - Green `●` dot for sessions with new output
 - Orange `!` flag for attention (e.g., an agent finished and needs review)
+- Pipeline glyphs: `✓` passed, `⟳` running, `✗` failed, `◆` merged
+- Linked issue identifiers (e.g., `ENG-1234`) and MR count on a third row
 
 ### Toolbar with Window Tabs
 
@@ -93,6 +95,31 @@ The sidebar automatically detects worktrees and groups sessions by project. Each
 
 **The workflow:** spin up 5 worktrees from `main`, start Claude Code in each one, and let them work in parallel on different features. Review each one when the `!` flag appears. Merge the good ones.
 
+### Issue Tracking & MR Panel
+
+Connect [Linear](https://linear.app) and [GitLab](https://about.gitlab.com) to see your issues, merge requests, and pipeline status directly in jmux. The info panel docks to the right side of the terminal with tabbed views.
+
+**What you get:**
+- **My Issues** — issues assigned to you, grouped by team and status, sorted by priority
+- **My MRs** — merge requests you authored, with pipeline status and approval counts
+- **Review** — MRs awaiting your review
+
+Each session automatically links to its branch's MR and associated issues. Select an issue and press `n` to spin up a new worktree session with the agent pre-loaded with the issue context. Press `o` to open anything in your browser, `s` to update an issue's status, `a` to approve an MR — all without leaving the terminal.
+
+**Setup:**
+
+```json
+// ~/.config/jmux/config.json
+{
+  "adapters": {
+    "codeHost": { "type": "gitlab" },
+    "issueTracker": { "type": "linear" }
+  }
+}
+```
+
+Set `$LINEAR_API_KEY` and `$GITLAB_TOKEN` in your environment. See [docs/issue-tracking.md](docs/issue-tracking.md) for the full guide.
+
 ### Integrated Diff Panel
 
 Press `Ctrl-a g` to open an embedded [hunk](https://github.com/modem-dev/hunk) diff panel — the best terminal diff viewer, integrated directly into jmux for reviewing agent-authored changes without leaving your workspace.
@@ -113,6 +140,8 @@ Requires `hunkdiff` (`npm i -g hunkdiff`). If not installed, jmux shows an insta
 
 - **[hunk](https://github.com/modem-dev/hunk)** — The best terminal diff viewer. Powers jmux's integrated diff panel — syntax-highlighted, word-level diffs with split and full-screen views
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — The leading AI coding agent. jmux reads its telemetry for cache timers and attention flags — no configuration required
+- **[Linear](https://linear.app)** — Modern issue tracking. jmux pulls your assigned issues, links them to sessions, and updates statuses — all from the terminal
+- **[GitLab](https://about.gitlab.com)** — jmux shows MR status, pipeline results, and approval state in the sidebar and info panel. Approve and undraft MRs without opening a browser
 - **[lazygit](https://github.com/jesseduffield/lazygit)** — The best terminal Git UI. Run it in a jmux pane alongside your agent
 - **[gh](https://cli.github.com/)** / **[glab](https://gitlab.com/gitlab-org/cli)** — The standard GitHub and GitLab CLIs. PRs, issues, and reviews without leaving the terminal
 
@@ -194,15 +223,25 @@ When `$JMUX=1` is set (automatic inside jmux), Claude Code can use the skill to 
 | `Ctrl-a z` | Toggle pane zoom |
 
 
-### Diff Panel
+### Info Panel
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-a g` | Toggle diff panel on/off |
-| `Ctrl-a z` | Zoom diff panel (split ↔ full, when focused) |
-| `Ctrl-a Tab` | Switch focus between tmux and diff panel |
-| `Shift-Right` | Focus diff panel from rightmost pane |
-| `Shift-Left` | Return focus to tmux from diff panel |
+| `Ctrl-a g` | Toggle info panel on/off |
+| `[` / `]` | Cycle tabs (Diff, Issues, MRs, Review) |
+| `Ctrl-a z` | Zoom panel (split ↔ full, when focused) |
+| `Ctrl-a Tab` | Switch focus between tmux and panel |
+| `Shift-Right` | Focus panel from rightmost pane |
+| `Shift-Left` | Return focus to tmux from panel |
+| `↑` / `↓` | Navigate items in issue/MR views |
+| `o` | Open selected item in browser |
+| `n` | Start session from selected issue |
+| `l` | Link selected item to current session |
+| `s` | Update issue status |
+| `a` | Approve MR |
+| `r` | Mark MR ready (undraft) |
+| `g` / `G` | Cycle group-by / sub-group-by |
+| `/` / `?` | Cycle sort field / toggle sort order |
 
 ### Utilities
 
@@ -236,20 +275,26 @@ See [docs/configuration.md](docs/configuration.md) for the full guide.
 ```
 Terminal (Ghostty, iTerm, etc.)
   +-- jmux (owns the terminal surface)
-       +-- Sidebar (26 cols) -- session groups, indicators, hover states
+       +-- Sidebar (26 cols) -- session groups, indicators, pipeline glyphs
        +-- Border (1 col)
        +-- Main area (remaining cols)
        |    +-- Toolbar (row 0) -- window tabs (left), action buttons (right)
        |    +-- tmux PTY (remaining rows)
        |         +-- PTY client ---- @xterm/headless for VT emulation
        |         +-- Control client - tmux -C for real-time metadata
-       +-- Diff Panel (optional, split/full)
-       |    +-- hunk PTY ----------- @xterm/headless for VT emulation
+       +-- Info Panel (optional, split/full)
+       |    +-- Tab bar ------------ Diff | Issues | MRs | Review
+       |    +-- hunk PTY ----------- @xterm/headless (Diff tab)
+       |    +-- Panel views -------- grouped/sorted item lists (other tabs)
+       +-- Adapters
+       |    +-- Linear ------------- issues, statuses, comments (GraphQL)
+       |    +-- GitLab ------------- MRs, pipelines, approvals (REST)
+       |    +-- Poll coordinator --- tiered polling, rate-limit backoff
        +-- jmux ctl (JSON API, used by agents inside sessions)
             +-- session / window / pane / run-claude
 ```
 
-~6600 lines of TypeScript. No opinions about what you run inside tmux.
+No opinions about what you run inside tmux.
 
 ---
 

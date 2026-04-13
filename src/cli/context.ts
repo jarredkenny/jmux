@@ -1,4 +1,4 @@
-import { parseTmuxSocket, runTmuxDirect } from "./tmux";
+import { parseTmuxSocket, runTmuxDirect, type TmuxResult } from "./tmux";
 
 export interface CliFlags {
   socket?: string;
@@ -23,6 +23,16 @@ export class CliError extends Error {
     super(message);
     this.name = "CliError";
   }
+}
+
+/**
+ * Run a tmux command and return the output lines, or throw CliError on failure.
+ */
+export function tmuxOrThrow(result: TmuxResult): string[] {
+  if (!result.ok) {
+    throw new CliError(result.error);
+  }
+  return result.lines;
 }
 
 // Pure function — testable without tmux

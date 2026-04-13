@@ -1,11 +1,13 @@
 import { resolveSessionContext } from "./context-resolver";
-import type {
-  CodeHostAdapter,
-  IssueTrackerAdapter,
-  SessionContext,
-  BranchContext,
-  Issue,
-  MergeRequest,
+import { logError } from "../log";
+import {
+  HttpError,
+  type CodeHostAdapter,
+  type IssueTrackerAdapter,
+  type SessionContext,
+  type BranchContext,
+  type Issue,
+  type MergeRequest,
 } from "./types";
 import { getGitBranch } from "./context-resolver";
 import type { SessionState } from "../session-state";
@@ -76,16 +78,22 @@ export class PollCoordinator {
     if (issueTracker && issueTracker.authState === "ok") {
       try {
         this.globalIssues = await issueTracker.getMyIssues();
-      } catch {}
+      } catch (e) {
+        logError("PollCoordinator", `global issues poll failed: ${(e as Error).message}`);
+      }
     }
 
     if (codeHost && codeHost.authState === "ok") {
       try {
         this.globalMrs = await codeHost.getMyMergeRequests();
-      } catch {}
+      } catch (e) {
+        logError("PollCoordinator", `global MRs poll failed: ${(e as Error).message}`);
+      }
       try {
         this.globalReviewMrs = await codeHost.getMrsAwaitingMyReview();
-      } catch {}
+      } catch (e) {
+        logError("PollCoordinator", `global review MRs poll failed: ${(e as Error).message}`);
+      }
     }
 
     this.opts.onUpdate("__global__");
@@ -100,14 +108,18 @@ export class PollCoordinator {
         if (idx >= 0) this.globalMrs[idx] = fresh;
         const ridx = this.globalReviewMrs.findIndex((m) => m.id === id);
         if (ridx >= 0) this.globalReviewMrs[ridx] = fresh;
-      } catch {}
+      } catch (e) {
+        logError("PollCoordinator", `refresh MR failed: ${(e as Error).message}`);
+      }
     }
     if (type === "issue" && issueTracker && issueTracker.authState === "ok") {
       try {
         const fresh = await issueTracker.pollIssue(id);
         const idx = this.globalIssues.findIndex((i) => i.id === id);
         if (idx >= 0) this.globalIssues[idx] = fresh;
-      } catch {}
+      } catch (e) {
+        logError("PollCoordinator", `refresh issue failed: ${(e as Error).message}`);
+      }
     }
     this.opts.onUpdate("__global__");
   }
@@ -167,7 +179,9 @@ export class PollCoordinator {
       });
       this.contexts.set(name, ctx);
       this.opts.onUpdate(name);
-    } catch {}
+    } catch (e) {
+      logError("PollCoordinator", `resolve session "${name}" failed: ${(e as Error).message}`);
+    }
   }
 
   private async pollActiveSession(): Promise<void> {
@@ -204,9 +218,11 @@ export class PollCoordinator {
             changed = true;
           }
         }
-      } catch (e: any) {
-        if (e?.status === 401 || e?.status === 403) this.reportAuthFailure("codeHost");
-        else if (e?.status === 429) this.reportRateLimit("rate_limited");
+      } catch (e) {
+        const status = e instanceof HttpError ? e.status : 0;
+        if (status === 401 || status === 403) this.reportAuthFailure("codeHost");
+        else if (status === 429) this.reportRateLimit("rate_limited");
+        else logError("PollCoordinator", `poll error: ${(e as Error).message}`);
       }
     }
 
@@ -222,9 +238,11 @@ export class PollCoordinator {
             changed = true;
           }
         }
-      } catch (e: any) {
-        if (e?.status === 401 || e?.status === 403) this.reportAuthFailure("issueTracker");
-        else if (e?.status === 429) this.reportRateLimit("rate_limited");
+      } catch (e) {
+        const status = e instanceof HttpError ? e.status : 0;
+        if (status === 401 || status === 403) this.reportAuthFailure("issueTracker");
+        else if (status === 429) this.reportRateLimit("rate_limited");
+        else logError("PollCoordinator", `poll error: ${(e as Error).message}`);
       }
     }
 
@@ -274,8 +292,10 @@ export class PollCoordinator {
             this.opts.onUpdate(sessionName);
           }
         }
-      } catch (e: any) {
-        if (e?.status === 429) this.reportRateLimit("rate_limited");
+      } catch (e) {
+        const status = e instanceof HttpError ? e.status : 0;
+        if (status === 429) this.reportRateLimit("rate_limited");
+        else logError("PollCoordinator", `poll error: ${(e as Error).message}`);
       }
     }
 
@@ -296,8 +316,10 @@ export class PollCoordinator {
             }
           }
         }
-      } catch (e: any) {
-        if (e?.status === 429) this.reportRateLimit("rate_limited");
+      } catch (e) {
+        const status = e instanceof HttpError ? e.status : 0;
+        if (status === 429) this.reportRateLimit("rate_limited");
+        else logError("PollCoordinator", `poll error: ${(e as Error).message}`);
       }
     }
 
@@ -318,8 +340,10 @@ export class PollCoordinator {
             }
           }
         }
-      } catch (e: any) {
-        if (e?.status === 429) this.reportRateLimit("rate_limited");
+      } catch (e) {
+        const status = e instanceof HttpError ? e.status : 0;
+        if (status === 429) this.reportRateLimit("rate_limited");
+        else logError("PollCoordinator", `poll error: ${(e as Error).message}`);
       }
     }
   }

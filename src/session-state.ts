@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { dirname } from "path";
+import { logError } from "./log";
 
 export interface SessionLink {
   type: "issue" | "mr";
@@ -86,7 +87,9 @@ export class SessionState {
           this.data = raw as StateData;
         }
       }
-    } catch {}
+    } catch (e) {
+      logError("SessionState", `failed to load: ${(e as Error).message}`);
+    }
   }
 
   private save(): void {
@@ -94,6 +97,8 @@ export class SessionState {
       const dir = dirname(this.filePath);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       writeFileSync(this.filePath, JSON.stringify(this.data, null, 2) + "\n");
-    } catch {}
+    } catch (e) {
+      logError("SessionState", `failed to save: ${(e as Error).message}`);
+    }
   }
 }

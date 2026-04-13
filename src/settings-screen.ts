@@ -266,14 +266,15 @@ export class SettingsScreen {
     const bg = " ".repeat(fieldWidth);
     writeString(grid, row, fieldStart, bg, EDIT_BG);
 
-    // Buffer text
-    const displayBuf = state.buffer.length > fieldWidth - 1
-      ? state.buffer.slice(state.buffer.length - fieldWidth + 1)
-      : state.buffer;
+    // Buffer text — when overflowing, show a window around the cursor
+    const sliceOffset = state.buffer.length > fieldWidth - 1
+      ? Math.max(0, Math.min(state.cursorPos - Math.floor(fieldWidth / 2), state.buffer.length - fieldWidth + 1))
+      : 0;
+    const displayBuf = state.buffer.slice(sliceOffset, sliceOffset + fieldWidth - 1);
     writeString(grid, row, fieldStart, displayBuf, EDIT_TEXT);
 
     // Cursor
-    const cursorCol = fieldStart + Math.min(state.cursorPos, fieldWidth - 1);
+    const cursorCol = fieldStart + state.cursorPos - sliceOffset;
     const cursorChar = state.cursorPos < state.buffer.length ? state.buffer[state.cursorPos] : " ";
     writeString(grid, row, cursorCol, cursorChar, EDIT_CURSOR);
   }

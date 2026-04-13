@@ -10,7 +10,6 @@ import { ListModal, type ListItem } from "./list-modal";
 import { ContentModal, type StyledLine } from "./content-modal";
 import {
   NewSessionModal,
-  sanitizeTmuxSessionName,
   tq,
   type NewSessionResult,
   type NewSessionProviders,
@@ -30,15 +29,16 @@ import { SessionState } from "./session-state";
 import type { SessionContext } from "./adapters/types";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
-import { loadUserConfig } from "./config";
+import { ConfigStore, sanitizeTmuxSessionName } from "./config";
 import { OtelReceiver } from "./otel-receiver";
+import { logError } from "./log";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.12.0";
+const VERSION = "0.13.0";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -170,16 +170,16 @@ process.env.JMUX = "1";
 
 // --- TUI startup ---
 
-const userConfig = loadUserConfig();
-let sidebarWidth = (userConfig.sidebarWidth as number) || 26;
+const configStore = new ConfigStore();
+let sidebarWidth = configStore.config.sidebarWidth || 26;
 const BORDER_WIDTH = 1;
 function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
 const toolbarEnabled = true;
-let claudeCommand = (userConfig.claudeCommand as string) || "claude";
-let cacheTimersEnabled = (userConfig.cacheTimers as boolean) !== false;
-let pinnedSessions = new Set<string>((userConfig.pinnedSessions as string[]) ?? []);
-let diffPanelSplitRatio = (userConfig.diffPanel as any)?.splitRatio ?? 0.4;
-let hunkCommand = (userConfig.diffPanel as any)?.hunkCommand ?? "hunk";
+let claudeCommand = configStore.config.claudeCommand || "claude";
+let cacheTimersEnabled = configStore.config.cacheTimers !== false;
+let pinnedSessions = new Set<string>(configStore.config.pinnedSessions ?? []);
+let diffPanelSplitRatio = configStore.config.diffPanel?.splitRatio ?? 0.4;
+let hunkCommand = configStore.config.diffPanel?.hunkCommand ?? "hunk";
 
 // Resolve paths relative to source
 const jmuxDir = resolve(dirname(import.meta.dir));
@@ -335,9 +335,9 @@ const settingsScreen = new SettingsScreen();
 
 import { SettingsScreen, type SettingDef, type SettingsCategory, type SettingsAction } from "./settings-screen";
 
-const adapters = createAdapters(userConfig.adapters);
+const adapters = createAdapters(configStore.config.adapters);
 const infoPanel = new InfoPanel({ viewIds: [], viewLabels: new Map() });
-const panelViews = parseViews(userConfig.panelViews);
+const panelViews = parseViews(configStore.config.panelViews);
 const viewStates = new Map<string, ViewState>();
 for (const view of panelViews) {
   viewStates.set(view.id, createViewState());
@@ -388,8 +388,8 @@ initAdapters().then(() => {
   pollCoordinator.start();
   pollCoordinator.pollGlobal();
   scheduleRender();
-}).catch(() => {
-  // Adapter init failed — panel runs without adapters, only Diff tab
+}).catch((e) => {
+  logError("jmux", `adapter init failed, panel running without adapters: ${(e as Error).message}`);
 });
 
 function setDiffFocus(focused: boolean): void {
@@ -1116,7 +1116,7 @@ const inputRouter = new InputRouter(
       const issue = selected.item.raw as import("./adapters/types").Issue;
       const issueState = selected.item.issueSessionState ?? "none";
 
-      const workflow = userConfig.issueWorkflow;
+      const workflow = configStore.config.issueWorkflow;
       const repoDir = workflow?.teamRepoMap?.[issue.team ?? ""];
 
       // Automated path: config maps this issue's team to a repo
@@ -1460,11 +1460,7 @@ function openPalette(): void {
 function buildPaletteCommands(): PaletteCommand[] {
   const commands: PaletteCommand[] = [];
 
-  let settings: Record<string, any> = {};
-  try {
-    const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-    if (existsSync(cfgPath)) settings = JSON.parse(readFileSync(cfgPath, "utf-8"));
-  } catch {}
+  const cfg = configStore.config;
 
   // Dynamic: switch to session (excluding current)
   for (const session of currentSessions) {
@@ -1547,7 +1543,7 @@ function buildPaletteCommands(): PaletteCommand[] {
 
   commands.push({
     id: "setting-wtm",
-    label: `wtm integration: ${settings.wtmIntegration !== false ? "on" : "off"}`,
+    label: `wtm integration: ${cfg.wtmIntegration !== false ? "on" : "off"}`,
     category: "setting",
   });
   commands.push({
@@ -1562,14 +1558,14 @@ function buildPaletteCommands(): PaletteCommand[] {
   });
   commands.push({
     id: "setting-cache-timers",
-    label: `Cache timers: ${settings.cacheTimers !== false ? "on" : "off"}`,
+    label: `Cache timers: ${cfg.cacheTimers !== false ? "on" : "off"}`,
     category: "setting",
   });
 
   // Adapter settings
-  const adapterCfg = settings.adapters ?? {};
-  const codeHostType = adapterCfg.codeHost?.type ?? "none";
-  const issueTrackerType = adapterCfg.issueTracker?.type ?? "none";
+  const adaptersCfg = cfg.adapters ?? {};
+  const codeHostType = adaptersCfg.codeHost?.type ?? "none";
+  const issueTrackerType = adaptersCfg.issueTracker?.type ?? "none";
   commands.push({
     id: "setting-code-host",
     label: `Code host: ${codeHostType}`,
@@ -1582,7 +1578,7 @@ function buildPaletteCommands(): PaletteCommand[] {
   });
 
   // Issue workflow settings
-  const wf = settings.issueWorkflow;
+  const wf = cfg.issueWorkflow;
   commands.push({
     id: "setting-default-branch",
     label: `Default base branch: ${wf?.defaultBaseBranch ?? "main"}`,
@@ -1627,8 +1623,8 @@ function buildPaletteCommands(): PaletteCommand[] {
 }
 
 function buildSettingsCategories(): SettingsCategory[] {
-  const wf = () => userConfig.issueWorkflow;
-  const adapterCfg = () => userConfig.adapters;
+  const wf = () => configStore.config.issueWorkflow;
+  const adapterCfg = () => configStore.config.adapters;
 
   return [
     {
@@ -1640,7 +1636,7 @@ function buildSettingsCategories(): SettingsCategory[] {
           getValue: () => String(sidebarWidth),
           onTextCommit: (v) => {
             const n = parseInt(v, 10);
-            if (!isNaN(n) && n >= 10 && n <= 60) applySetting("sidebarWidth", n, "number");
+            if (!isNaN(n) && n >= 10 && n <= 60) configStore.set("sidebarWidth", n);
           },
         },
         {
@@ -1649,7 +1645,7 @@ function buildSettingsCategories(): SettingsCategory[] {
           onToggle: () => {
             cacheTimersEnabled = !cacheTimersEnabled;
             sidebar.cacheTimersEnabled = cacheTimersEnabled;
-            applySetting("cacheTimers", cacheTimersEnabled, "boolean");
+            configStore.set("cacheTimers", cacheTimersEnabled);
           },
         },
       ],
@@ -1662,18 +1658,18 @@ function buildSettingsCategories(): SettingsCategory[] {
           id: "code-host", label: "Code host", type: "list" as const,
           getValue: () => adapterCfg()?.codeHost?.type ?? "none",
           options: ["gitlab", "github", "none"],
-          onOptionSelect: (v) => applyAdapterSetting("codeHost", v === "none" ? null : { type: v }),
+          onOptionSelect: (v) => configStore.setAdapter("codeHost", v === "none" ? null : { type: v }),
         },
         {
           id: "issue-tracker", label: "Issue tracker", type: "list" as const,
           getValue: () => adapterCfg()?.issueTracker?.type ?? "none",
           options: ["linear", "github", "none"],
-          onOptionSelect: (v) => applyAdapterSetting("issueTracker", v === "none" ? null : { type: v }),
+          onOptionSelect: (v) => configStore.setAdapter("issueTracker", v === "none" ? null : { type: v }),
         },
         {
           id: "claude-command", label: "Claude command", type: "text" as const,
           getValue: () => claudeCommand,
-          onTextCommit: (v) => { claudeCommand = v; applySetting("claudeCommand", v, "string"); },
+          onTextCommit: (v) => { claudeCommand = v; configStore.set("claudeCommand", v); },
         },
       ],
     },
@@ -1684,22 +1680,22 @@ function buildSettingsCategories(): SettingsCategory[] {
         {
           id: "default-branch", label: "Default base branch", type: "text" as const,
           getValue: () => wf()?.defaultBaseBranch ?? "main",
-          onTextCommit: (v) => saveWorkflowSetting("defaultBaseBranch", v),
+          onTextCommit: (v) => configStore.setWorkflow("defaultBaseBranch", v),
         },
         {
           id: "session-template", label: "Session name template", type: "text" as const,
           getValue: () => wf()?.sessionNameTemplate ?? "{identifier}",
-          onTextCommit: (v) => saveWorkflowSetting("sessionNameTemplate", v),
+          onTextCommit: (v) => configStore.setWorkflow("sessionNameTemplate", v),
         },
         {
           id: "auto-worktree", label: "Auto-create worktree", type: "boolean" as const,
           getValue: () => wf()?.autoCreateWorktree !== false ? "on" : "off",
-          onToggle: () => saveWorkflowSetting("autoCreateWorktree", wf()?.autoCreateWorktree === false),
+          onToggle: () => configStore.setWorkflow("autoCreateWorktree", wf()?.autoCreateWorktree === false),
         },
         {
           id: "auto-agent", label: "Auto-launch agent", type: "boolean" as const,
           getValue: () => wf()?.autoLaunchAgent !== false ? "on" : "off",
-          onToggle: () => saveWorkflowSetting("autoLaunchAgent", wf()?.autoLaunchAgent === false),
+          onToggle: () => configStore.setWorkflow("autoLaunchAgent", wf()?.autoLaunchAgent === false),
         },
         {
           id: "team-repo-map", label: "Team → repo mappings", type: "map" as const,
@@ -1721,8 +1717,8 @@ function buildSettingsCategories(): SettingsCategory[] {
             const dirs = cachedProjectDirs.length > 0 ? cachedProjectDirs : [homedir()];
             return dirs.map((d) => ({ id: d, label: d.replace(homedir(), "~") }));
           },
-          onMapSave: (key, value) => saveTeamRepoMap(key, value),
-          onMapRemove: (key) => saveTeamRepoMap(key, null),
+          onMapSave: (key, value) => configStore.setTeamRepo(key, value),
+          onMapRemove: (key) => configStore.setTeamRepo(key, null),
         },
       ],
     },
@@ -1733,12 +1729,12 @@ function buildSettingsCategories(): SettingsCategory[] {
         {
           id: "project-dirs", label: "Project directories", type: "text" as const,
           getValue: () => {
-            const dirs = (userConfig as any).projectDirs ?? [];
+            const dirs = configStore.config.projectDirs ?? [];
             return dirs.length > 0 ? dirs.join(", ") : "auto-detect";
           },
           onTextCommit: (v) => {
             const newDirs = v.split(",").map((s: string) => s.trim()).filter(Boolean);
-            applySetting("projectDirs", newDirs, "array");
+            configStore.set("projectDirs", newDirs);
           },
         },
       ],
@@ -1768,7 +1764,7 @@ function handleSettingsInput(data: string): void {
 }
 
 function resolveIssueSessionName(issue: import("./adapters/types").Issue): string | null {
-  const workflow = userConfig.issueWorkflow;
+  const workflow = configStore.config.issueWorkflow;
   const repoDir = workflow?.teamRepoMap?.[issue.team ?? ""];
   if (!repoDir) return null;
 
@@ -1786,7 +1782,7 @@ function resolveIssueSessionName(issue: import("./adapters/types").Issue): strin
 
 function getIssueSessionStates(): Map<string, IssueSessionState> {
   const states = new Map<string, IssueSessionState>();
-  const workflow = userConfig.issueWorkflow;
+  const workflow = configStore.config.issueWorkflow;
   if (!workflow?.teamRepoMap) return states;
 
   const sessionNames = new Set(currentSessions.map((s) => s.name));
@@ -1848,48 +1844,6 @@ function focusPanelOnSessionIssue(sessionName: string): void {
   }
 }
 
-function saveWorkflowSetting(key: string, value: unknown): void {
-  const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-  try {
-    let config: Record<string, any> = {};
-    if (existsSync(cfgPath)) config = JSON.parse(readFileSync(cfgPath, "utf-8"));
-    if (!config.issueWorkflow) config.issueWorkflow = {};
-    config.issueWorkflow[key] = value;
-    const dir = dirname(cfgPath);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
-    // Update in-memory config so changes take effect immediately
-    if (!userConfig.issueWorkflow) (userConfig as any).issueWorkflow = {};
-    (userConfig.issueWorkflow as any)[key] = value;
-  } catch {}
-}
-
-function saveTeamRepoMap(team: string, repoDir: string | null): void {
-  const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-  try {
-    let config: Record<string, any> = {};
-    if (existsSync(cfgPath)) config = JSON.parse(readFileSync(cfgPath, "utf-8"));
-    if (!config.issueWorkflow) config.issueWorkflow = {};
-    if (!config.issueWorkflow.teamRepoMap) config.issueWorkflow.teamRepoMap = {};
-    if (repoDir === null) {
-      delete config.issueWorkflow.teamRepoMap[team];
-    } else {
-      config.issueWorkflow.teamRepoMap[team] = repoDir;
-    }
-    const dir = dirname(cfgPath);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
-    // Update in-memory config
-    if (!userConfig.issueWorkflow) (userConfig as any).issueWorkflow = {};
-    if (!(userConfig.issueWorkflow as any).teamRepoMap) (userConfig.issueWorkflow as any).teamRepoMap = {};
-    if (repoDir === null) {
-      delete (userConfig.issueWorkflow as any).teamRepoMap[team];
-    } else {
-      (userConfig.issueWorkflow as any).teamRepoMap[team] = repoDir;
-    }
-  } catch {}
-}
-
 function pickRepoForTeam(teamName: string): void {
   const dirs = cachedProjectDirs.length > 0 ? cachedProjectDirs : [homedir()];
   const dirItems = dirs.map((d) => ({ id: d, label: d.replace(homedir(), "~") }));
@@ -1897,7 +1851,7 @@ function pickRepoForTeam(teamName: string): void {
   dirPicker.open();
   openModal(dirPicker, (dirValue) => {
     const dirSel = dirValue as ListItem;
-    saveTeamRepoMap(teamName, dirSel.id);
+    configStore.setTeamRepo(teamName, dirSel.id);
   });
 }
 
@@ -1906,69 +1860,8 @@ function debouncedViewSave(view: PanelView): void {
   if (viewSaveTimer) clearTimeout(viewSaveTimer);
   viewSaveTimer = setTimeout(() => {
     viewSaveTimer = null;
-    const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-    try {
-      let config: Record<string, any> = {};
-      if (existsSync(cfgPath)) config = JSON.parse(readFileSync(cfgPath, "utf-8"));
-      if (!config.panelViews) config.panelViews = [];
-      const idx = config.panelViews.findIndex((v: any) => v.id === view.id);
-      if (idx >= 0) {
-        config.panelViews[idx] = view;
-      } else {
-        config.panelViews.push(view);
-      }
-      writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
-    } catch {}
+    configStore.saveView(view);
   }, 500);
-}
-
-async function applySetting(key: string, value: string | number | boolean | string[], type: string): Promise<void> {
-  const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-  try {
-    let config: Record<string, any> = {};
-    if (existsSync(cfgPath)) {
-      config = JSON.parse(readFileSync(cfgPath, "utf-8"));
-    }
-    if (type === "number") {
-      config[key] = typeof value === "number" ? value : parseInt(String(value), 10);
-    } else if (type === "boolean") {
-      config[key] = value;
-    } else if (type === "array") {
-      config[key] = value;
-    } else {
-      config[key] = value;
-    }
-    const dir = dirname(cfgPath);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
-  } catch {
-    // Non-critical
-  }
-}
-
-async function applyAdapterSetting(key: "codeHost" | "issueTracker", value: { type: string } | null): Promise<void> {
-  const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-  try {
-    let config: Record<string, any> = {};
-    if (existsSync(cfgPath)) {
-      config = JSON.parse(readFileSync(cfgPath, "utf-8"));
-    }
-    if (!config.adapters) config.adapters = {};
-    if (value === null) {
-      delete config.adapters[key];
-    } else {
-      config.adapters[key] = value;
-    }
-    // Clean up empty adapters object
-    if (Object.keys(config.adapters).length === 0) {
-      delete config.adapters;
-    }
-    const dir = dirname(cfgPath);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
-  } catch {
-    // Non-critical
-  }
 }
 
 const projectDirsCachePath = resolve(homedir(), ".config", "jmux", "cache", "project-dirs.json");
@@ -1978,12 +1871,7 @@ let cachedProjectDirs: string[] = loadProjectDirsCache(projectDirsCachePath);
 let projectDirsScanInFlight: Promise<string[]> | null = null;
 
 async function scanProjectDirsAsync(): Promise<string[]> {
-  const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-  let searchDirs: string[] = [];
-  try {
-    const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));
-    searchDirs = (cfg.projectDirs ?? []).map((d: string) => d.replace("~", homedir()));
-  } catch {}
+  let searchDirs: string[] = (configStore.config.projectDirs ?? []).map((d: string) => d.replace("~", homedir()));
   if (searchDirs.length === 0) {
     searchDirs = ["Code", "Projects", "src", "work", "dev"].map(d => resolve(homedir(), d));
   }
@@ -2109,7 +1997,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
         pinnedSessions.delete(currentName);
       }
       sidebar.setPinnedSessions(pinnedSessions);
-      await applySetting("pinnedSessions", [...pinnedSessions], "array");
+      configStore.set("pinnedSessions", [...pinnedSessions]);
       scheduleRender();
     }
     return;
@@ -2257,30 +2145,18 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       openModal(modal, async (value) => {
         const newWidth = parseInt(value as string, 10);
         if (!isNaN(newWidth) && newWidth >= 10 && newWidth <= 60) {
-          await applySetting("sidebarWidth", newWidth, "number");
+          configStore.set("sidebarWidth", newWidth);
         }
       });
       return;
     }
     case "setting-wtm": {
-      let wtmSettings: Record<string, any> = {};
-      try {
-        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-        if (existsSync(cfgPath)) wtmSettings = JSON.parse(readFileSync(cfgPath, "utf-8"));
-      } catch {}
-      const current = wtmSettings.wtmIntegration !== false;
-      await applySetting("wtmIntegration", !current, "boolean");
+      const current = configStore.config.wtmIntegration !== false;
+      configStore.set("wtmIntegration", !current);
       return;
     }
     case "setting-claude-command": {
-      let current = "claude";
-      try {
-        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-        if (existsSync(cfgPath)) {
-          const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));
-          current = cfg.claudeCommand ?? "claude";
-        }
-      } catch {}
+      const current = configStore.config.claudeCommand ?? "claude";
       const modal = new InputModal({
         header: "Claude Command",
         subheader: "Command to launch Claude Code from toolbar",
@@ -2288,19 +2164,12 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       });
       modal.open();
       openModal(modal, async (value) => {
-        await applySetting("claudeCommand", value as string, "string");
+        configStore.set("claudeCommand", value as string);
       });
       return;
     }
     case "setting-project-dirs": {
-      let dirs: string[] = [];
-      try {
-        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-        if (existsSync(cfgPath)) {
-          const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));
-          dirs = cfg.projectDirs ?? [];
-        }
-      } catch {}
+      let dirs = configStore.config.projectDirs ?? [];
       if (dirs.length === 0) dirs = ["~/Code", "~/Projects", "~/src", "~/work", "~/dev"];
       const modal = new InputModal({
         header: "Project Directories",
@@ -2310,18 +2179,13 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       modal.open();
       openModal(modal, async (value) => {
         const newDirs = (value as string).split(",").map(s => s.trim()).filter(Boolean);
-        await applySetting("projectDirs", newDirs, "array");
+        configStore.set("projectDirs", newDirs);
       });
       return;
     }
     case "setting-cache-timers": {
-      let ctSettings: Record<string, any> = {};
-      try {
-        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-        if (existsSync(cfgPath)) ctSettings = JSON.parse(readFileSync(cfgPath, "utf-8"));
-      } catch {}
-      const current = ctSettings.cacheTimers !== false;
-      await applySetting("cacheTimers", !current, "boolean");
+      const current = configStore.config.cacheTimers !== false;
+      configStore.set("cacheTimers", !current);
       return;
     }
     case "setting-code-host": {
@@ -2330,7 +2194,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
         { id: "github", label: "GitHub" },
         { id: "none", label: "None (disable)" },
       ];
-      const current = userConfig.adapters?.codeHost?.type ?? "none";
+      const current = configStore.config.adapters?.codeHost?.type ?? "none";
       const modal = new ListModal({
         header: "Code Host",
         subheader: `Current: ${current}`,
@@ -2339,7 +2203,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       modal.open();
       openModal(modal, async (value) => {
         const selected = value as ListItem;
-        await applyAdapterSetting("codeHost", selected.id === "none" ? null : { type: selected.id });
+        configStore.setAdapter("codeHost", selected.id === "none" ? null : { type: selected.id });
       });
       return;
     }
@@ -2349,7 +2213,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
         { id: "github", label: "GitHub Issues" },
         { id: "none", label: "None (disable)" },
       ];
-      const current = userConfig.adapters?.issueTracker?.type ?? "none";
+      const current = configStore.config.adapters?.issueTracker?.type ?? "none";
       const modal = new ListModal({
         header: "Issue Tracker",
         subheader: `Current: ${current}`,
@@ -2358,12 +2222,12 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       modal.open();
       openModal(modal, async (value) => {
         const selected = value as ListItem;
-        await applyAdapterSetting("issueTracker", selected.id === "none" ? null : { type: selected.id });
+        configStore.setAdapter("issueTracker", selected.id === "none" ? null : { type: selected.id });
       });
       return;
     }
     case "setting-default-branch": {
-      const current = userConfig.issueWorkflow?.defaultBaseBranch ?? "main";
+      const current = configStore.config.issueWorkflow?.defaultBaseBranch ?? "main";
       const modal = new InputModal({
         header: "Default Base Branch",
         subheader: "Branch to create worktrees from",
@@ -2371,19 +2235,12 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       });
       modal.open();
       openModal(modal, async (value) => {
-        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-        try {
-          let config: Record<string, any> = {};
-          if (existsSync(cfgPath)) config = JSON.parse(readFileSync(cfgPath, "utf-8"));
-          if (!config.issueWorkflow) config.issueWorkflow = {};
-          config.issueWorkflow.defaultBaseBranch = value as string;
-          writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
-        } catch {}
+        configStore.setWorkflow("defaultBaseBranch", value as string);
       });
       return;
     }
     case "setting-team-repo-map": {
-      const current = userConfig.issueWorkflow?.teamRepoMap ?? {};
+      const current = configStore.config.issueWorkflow?.teamRepoMap ?? {};
       const entries = Object.entries(current);
       const items: Array<{ id: string; label: string }> = entries.map(([team, repo]) => ({
         id: `edit:${team}`,
@@ -2429,7 +2286,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
           openModal(editModal, async (editValue) => {
             const editSel = editValue as ListItem;
             if (editSel.id === "remove") {
-              await saveTeamRepoMap(teamName, null);
+              configStore.setTeamRepo(teamName, null);
             } else {
               pickRepoForTeam(teamName);
             }
@@ -2439,7 +2296,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       return;
     }
     case "setting-session-template": {
-      const current = userConfig.issueWorkflow?.sessionNameTemplate ?? "{identifier}";
+      const current = configStore.config.issueWorkflow?.sessionNameTemplate ?? "{identifier}";
       const modal = new InputModal({
         header: "Session Name Template",
         subheader: "Variables: {identifier}, {title}",
@@ -2447,18 +2304,18 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       });
       modal.open();
       openModal(modal, async (value) => {
-        await saveWorkflowSetting("sessionNameTemplate", value as string);
+        configStore.setWorkflow("sessionNameTemplate", value as string);
       });
       return;
     }
     case "setting-auto-worktree": {
-      const current = userConfig.issueWorkflow?.autoCreateWorktree !== false;
-      await saveWorkflowSetting("autoCreateWorktree", !current);
+      const current = configStore.config.issueWorkflow?.autoCreateWorktree !== false;
+      configStore.setWorkflow("autoCreateWorktree", !current);
       return;
     }
     case "setting-auto-agent": {
-      const current = userConfig.issueWorkflow?.autoLaunchAgent !== false;
-      await saveWorkflowSetting("autoLaunchAgent", !current);
+      const current = configStore.config.issueWorkflow?.autoLaunchAgent !== false;
+      configStore.setWorkflow("autoLaunchAgent", !current);
       return;
     }
     case "link-issue": {
@@ -2714,15 +2571,15 @@ process.on("SIGWINCH", () => {
 
 // --- Config file watcher ---
 
-const configPath = resolve(homedir(), ".config", "jmux", "config.json");
+let configWatcher: ReturnType<typeof import("fs").watch> | null = null;
 try {
   const { watch } = await import("fs");
-  watch(configPath, () => {
-    const updated = loadUserConfig();
-    const newWidth = (updated.sidebarWidth as number) || 26;
-    const newClaudeCmd = (updated.claudeCommand as string) || "claude";
+  configWatcher = watch(configStore.configPath, () => {
+    const updated = configStore.reload();
+    const newWidth = updated.sidebarWidth || 26;
+    const newClaudeCmd = updated.claudeCommand || "claude";
     claudeCommand = newClaudeCmd;
-    const newCacheTimers = (updated.cacheTimers as boolean) !== false;
+    const newCacheTimers = updated.cacheTimers !== false;
     if (newCacheTimers !== cacheTimersEnabled) {
       cacheTimersEnabled = newCacheTimers;
       sidebar.cacheTimersEnabled = newCacheTimers;
@@ -2734,7 +2591,7 @@ try {
       scheduleRender();
     }
 
-    const newPinned = new Set<string>((updated.pinnedSessions as string[]) ?? []);
+    const newPinned = new Set<string>(updated.pinnedSessions ?? []);
     if (newPinned.size !== pinnedSessions.size || [...newPinned].some(n => !pinnedSessions.has(n))) {
       pinnedSessions = newPinned;
       sidebar.setPinnedSessions(pinnedSessions);
@@ -2761,8 +2618,8 @@ try {
     }
 
     // Hot-apply diff panel config changes
-    diffPanelSplitRatio = (updated.diffPanel as any)?.splitRatio ?? 0.4;
-    hunkCommand = (updated.diffPanel as any)?.hunkCommand ?? "hunk";
+    diffPanelSplitRatio = updated.diffPanel?.splitRatio ?? 0.4;
+    hunkCommand = updated.diffPanel?.hunkCommand ?? "hunk";
   });
 } catch {
   // Config file may not exist yet — watcher will fail silently
@@ -3062,11 +2919,7 @@ async function start(): Promise<void> {
   renderFrame();
 
   // First-run welcome screen
-  const configDir = resolve(homedir(), ".config", "jmux");
-  const configPath = resolve(configDir, "config.json");
-  if (!existsSync(configPath)) {
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(configPath, JSON.stringify({}, null, 2) + "\n");
+  if (configStore.ensureExists()) {
 
     const g: CellAttrs = { fg: 2, fgMode: 1, bg: MODAL_BG, bgMode: 2 };
     const b: CellAttrs = { bold: true, bg: MODAL_BG, bgMode: 2 };
@@ -3133,6 +2986,9 @@ function cleanup(): void {
   pollCoordinator.stop();
   otelReceiver.stop();
   stopCacheTimerTick();
+  if (renderTimer !== null) { clearTimeout(renderTimer); renderTimer = null; }
+  if (viewSaveTimer !== null) { clearTimeout(viewSaveTimer); viewSaveTimer = null; }
+  configWatcher?.close();
   control.close().catch(() => {});
   process.stdout.write("\x1b[?2004l"); // disable bracketed paste mode
   process.stdout.write("\x1b[?1000l"); // disable mouse button tracking

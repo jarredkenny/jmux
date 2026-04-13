@@ -1,6 +1,7 @@
 import type { PaletteCommand, PaletteAction } from "./types";
 import type { CellGrid } from "./types";
 import { createGrid, writeString } from "./cell-grid";
+import { fuzzyMatch, truncateLabel, type FuzzyResult } from "./fuzzy";
 import {
   PROMPT_ATTRS, INPUT_ATTRS, RESULT_ATTRS, SELECTED_RESULT_ATTRS,
   MATCH_ATTRS, SELECTED_MATCH_ATTRS, CATEGORY_ATTRS, SELECTED_CATEGORY_ATTRS,
@@ -8,54 +9,13 @@ import {
   BREADCRUMB_ATTRS, NO_MATCHES_ATTRS, BG_ATTRS, SELECTED_BG_ATTRS,
 } from "./modal";
 
+export { fuzzyMatch, type FuzzyResult } from "./fuzzy";
+
 const MAX_VISIBLE_RESULTS = 16;
 
 export interface FilteredItem {
   command: PaletteCommand;
   match: FuzzyResult;
-}
-
-export interface FuzzyResult {
-  score: number;
-  indices: number[];
-}
-
-export function fuzzyMatch(query: string, label: string): FuzzyResult | null {
-  if (query.length === 0) return { score: 0, indices: [] };
-  if (label.length === 0) return null;
-
-  const lowerQuery = query.toLowerCase();
-  const lowerLabel = label.toLowerCase();
-  const indices: number[] = [];
-  let qi = 0;
-
-  for (let li = 0; li < lowerLabel.length && qi < lowerQuery.length; li++) {
-    if (lowerLabel[li] === lowerQuery[qi]) {
-      indices.push(li);
-      qi++;
-    }
-  }
-
-  if (qi < lowerQuery.length) return null;
-
-  let score = 0;
-  for (let i = 1; i < indices.length; i++) {
-    if (indices[i] === indices[i - 1] + 1) score += 10;
-  }
-  for (const idx of indices) {
-    if (idx === 0 || label[idx - 1] === " " || label[idx - 1] === "-" || label[idx - 1] === "_") {
-      score += 6;
-    }
-  }
-
-  return { score, indices };
-}
-
-function truncateLabel(label: string, maxLen: number): string {
-  if (maxLen <= 0) return "";
-  if (label.length <= maxLen) return label;
-  if (maxLen <= 1) return "…";
-  return label.slice(0, maxLen - 1) + "…";
 }
 
 const CONSUMED: PaletteAction = { type: "consumed" };

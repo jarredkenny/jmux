@@ -79,23 +79,40 @@ Press `Ctrl-a p` to open the command palette — a floating overlay for fuzzy-se
 
 ---
 
-## Diff Panel
+## Info Panel
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-a g` | Toggle diff panel on/off |
-| `Ctrl-a z` | Zoom diff panel (split ↔ full, when focused) |
-| `Ctrl-a Tab` | Switch focus between tmux and diff panel |
-| `Shift-Right` | Focus diff panel from rightmost pane |
-| `Shift-Left` | Return focus to tmux from diff panel |
-| Click diff panel | Focus diff panel for keyboard navigation |
+| `Ctrl-a g` | Toggle info panel on/off |
+| `[` / `]` | Cycle tabs (Diff, Issues, MRs, Review) |
+| `Ctrl-a z` | Zoom panel (split ↔ full, when focused) |
+| `Ctrl-a Tab` | Switch focus between tmux and panel |
+| `Shift-Right` | Focus panel from rightmost pane |
+| `Shift-Left` | Return focus to tmux from panel |
+| Click panel | Focus panel for keyboard navigation |
 | Click divider | Toggle focus between panels |
 
-The diff panel is powered by [hunk](https://github.com/modem-dev/hunk) — a review-first terminal diff viewer with syntax highlighting and word-level diffs. Install with `npm i -g hunkdiff`.
+The **Diff** tab is powered by [hunk](https://github.com/modem-dev/hunk). Install with `npm i -g hunkdiff`.
 
-In split mode, the diff panel docks to the right (~40% width). In full mode, it replaces the main area. Switching sessions reloads the diff automatically.
+In split mode, the panel docks to the right (~40% width). In full mode, it replaces the main area. Switching sessions reloads the diff automatically.
 
-Also available via the command palette: "Toggle diff panel", "Zoom diff panel".
+### Issue & MR views (when on Issues/MRs/Review tab)
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate items |
+| `Enter` | Collapse/expand group |
+| `o` | Open in browser |
+| `n` | Start session from issue |
+| `l` | Link to current session |
+| `s` | Update issue status |
+| `a` | Approve MR |
+| `r` | Mark MR ready (undraft) |
+| `c` | Copy issue prompt |
+| `g` / `G` | Cycle group-by / sub-group-by |
+| `/` / `?` | Cycle sort field / toggle sort order |
+
+See [issue-tracking.md](issue-tracking.md) for setup and configuration.
 
 ---
 

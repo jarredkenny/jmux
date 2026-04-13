@@ -1,9 +1,10 @@
-import type {
-  CodeHostAdapter,
-  AdapterAuthState,
-  MergeRequest,
-  PipelineStatus,
-  BranchContext,
+import {
+  HttpError,
+  type CodeHostAdapter,
+  type AdapterAuthState,
+  type MergeRequest,
+  type PipelineStatus,
+  type BranchContext,
 } from "./types";
 
 const GITLAB_API = "https://gitlab.com/api/v4";
@@ -62,7 +63,7 @@ export class GitLabAdapter implements CodeHostAdapter {
   async pollMergeRequest(mrId: string): Promise<MergeRequest> {
     const [project, iid] = mrId.split(":");
     const resp = await this.fetch(`${this.baseUrl}/projects/${project}/merge_requests/${iid}`);
-    if (!resp.ok) { const err = new Error(`GitLab API error: ${resp.status}`); (err as any).status = resp.status; throw err; }
+    if (!resp.ok) throw new HttpError(`GitLab API error: ${resp.status}`, resp.status);
     return this.mapMergeRequest(await resp.json());
   }
 
