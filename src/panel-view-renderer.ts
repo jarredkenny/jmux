@@ -5,6 +5,8 @@ import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { PanelView } from "./panel-view";
 import type { Issue, MergeRequest } from "./adapters/types";
 
+export type IssueSessionState = "none" | "worktree" | "session";
+
 export interface RenderableItem {
   id: string;
   type: "issue" | "mr";
@@ -18,6 +20,7 @@ export interface RenderableItem {
   priority: number;
   updatedAt: number;
   raw: Issue | MergeRequest;
+  issueSessionState?: IssueSessionState;  // only for issues
 }
 
 export type ViewNode =
@@ -36,7 +39,11 @@ export function createViewState(): ViewState {
 
 // --- Data Pipeline ---
 
-export function transformIssues(issues: Issue[], linkedIds: Set<string>): RenderableItem[] {
+export function transformIssues(
+  issues: Issue[],
+  linkedIds: Set<string>,
+  sessionStates?: Map<string, IssueSessionState>,
+): RenderableItem[] {
   return issues.map((issue) => ({
     id: issue.id,
     type: "issue" as const,
@@ -50,6 +57,7 @@ export function transformIssues(issues: Issue[], linkedIds: Set<string>): Render
     priority: issue.priority ?? 0,
     updatedAt: issue.updatedAt ?? 0,
     raw: issue,
+    issueSessionState: sessionStates?.get(issue.id) ?? "none",
   }));
 }
 
@@ -309,8 +317,11 @@ function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: n
     row++;
     writeString(grid, row, pad, "[o]", DETAIL_KEY);
     writeString(grid, row, pad + 3, " Open  ", DETAIL_LABEL);
+    const nLabel = item.issueSessionState === "session" ? " Switch  "
+      : item.issueSessionState === "worktree" ? " Resume  "
+      : " Start   ";
     writeString(grid, row, pad + 10, "[n]", DETAIL_KEY);
-    writeString(grid, row, pad + 13, " Session  ", DETAIL_LABEL);
+    writeString(grid, row, pad + 13, nLabel, DETAIL_LABEL);
     writeString(grid, row, pad + 23, "[l]", DETAIL_KEY);
     writeString(grid, row, pad + 26, " Link", DETAIL_LABEL);
     row++;

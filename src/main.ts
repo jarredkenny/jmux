@@ -23,7 +23,7 @@ import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
 import { InfoPanel } from "./info-panel";
 import { parseViews, cycleGroupBy, cycleSortBy, toggleSortOrder, type PanelView } from "./panel-view";
-import { transformIssues, transformMrs, buildViewNodes, renderView, createViewState, type ViewState, type ViewNode } from "./panel-view-renderer";
+import { transformIssues, transformMrs, buildViewNodes, renderView, createViewState, type ViewState, type ViewNode, type IssueSessionState } from "./panel-view-renderer";
 import { createAdapters } from "./adapters/registry";
 import { PollCoordinator } from "./adapters/poll-coordinator";
 import { SessionState } from "./session-state";
@@ -786,7 +786,7 @@ function renderFrame(): void {
 
         let rawItems: import("./panel-view-renderer").RenderableItem[];
         if (view.source === "issues") {
-          rawItems = transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds);
+          rawItems = transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates());
         } else if (view.filter.scope === "reviewing") {
           rawItems = transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds);
         } else {
@@ -1024,7 +1024,7 @@ const inputRouter = new InputRouter(
       const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
       let rawItems: import("./panel-view-renderer").RenderableItem[];
       if (view.source === "issues") {
-        rawItems = transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds);
+        rawItems = transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates());
       } else if (view.filter.scope === "reviewing") {
         rawItems = transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds);
       } else {
@@ -1074,7 +1074,7 @@ const inputRouter = new InputRouter(
       const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
       const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
       const rawItems = view.source === "issues"
-        ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds)
+        ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates())
         : view.filter.scope === "reviewing"
           ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
           : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
@@ -1092,51 +1092,76 @@ const inputRouter = new InputRouter(
       if (!view || view.source !== "issues") return;
       const viewState = viewStates.get(view.id);
       if (!viewState) return;
-      const rawItems = transformIssues(pollCoordinator.getGlobalIssues(), new Set<string>());
+      const rawItems = transformIssues(pollCoordinator.getGlobalIssues(), new Set<string>(), getIssueSessionStates());
       const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
       const selected = nodes[viewState.selectedIndex];
       if (selected?.kind !== "item" || selected.item.type !== "issue") return;
       const issue = selected.item.raw as import("./adapters/types").Issue;
+      const issueState = selected.item.issueSessionState ?? "none";
 
       const workflow = userConfig.issueWorkflow;
       const repoDir = workflow?.teamRepoMap?.[issue.team ?? ""];
 
       // Automated path: config maps this issue's team to a repo
-      if (repoDir && workflow?.autoCreateWorktree !== false) {
+      if (repoDir) {
         if (!ptyClientName) await resolveClientName();
         if (!ptyClientName) return;
 
-        const expandedDir = repoDir.replace("~", homedir());
-        const baseBranch = workflow.defaultBaseBranch ?? "main";
+        const session = resolveIssueSessionName(issue);
+        if (!session) return;
 
-        // Use Linear's branch name if available, fall back to template
-        let branchName: string;
-        if (issue.branchName) {
-          branchName = issue.branchName;
-        } else {
-          const template = workflow.sessionNameTemplate ?? "{identifier}";
-          branchName = template
-            .replace("{identifier}", issue.identifier.toLowerCase())
-            .replace("{title}", issue.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40));
-        }
-        const session = sanitizeTmuxSessionName(branchName);
+        const expandedDir = repoDir.replace("~", homedir());
+        const baseBranch = workflow?.defaultBaseBranch ?? "main";
 
         try {
-          // Check if repo is bare (has worktree support)
+          // STATE 3: Session already exists → just switch
+          if (issueState === "session") {
+            await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(session)}`);
+            return;
+          }
+
+          // STATE 2: Worktree exists but no session → create session in existing worktree
+          if (issueState === "worktree") {
+            const wtPath = `${expandedDir}/${session}`;
+            await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(wtPath)}`);
+            await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(session)}`);
+            sessionState.addLink(session, { type: "issue", id: issue.id });
+
+            // Auto-launch agent
+            if (workflow?.autoLaunchAgent !== false && issue.description) {
+              const prompt = `You are working on ${issue.identifier}: ${issue.title}\n\n${issue.description}\n\nStart by understanding the relevant code, then propose an approach.`;
+              const tmpFile = `/tmp/jmux-prompt-${Date.now()}.md`;
+              writeFileSync(tmpFile, prompt);
+              const agentCmd = `${claudeCommand} --message-file ${tmpFile}; rm -f ${tmpFile}`;
+              await control.sendCommand(`split-window -h -t ${tq(session)} -c ${tq(wtPath)} ${tq(agentCmd)}`);
+            }
+            return;
+          }
+
+          // STATE 1: Nothing exists → create worktree + session
           const isBare = Bun.spawnSync(
             ["git", "--git-dir", `${expandedDir}/.git`, "config", "--get", "core.bare"],
             { stdout: "pipe", stderr: "ignore" },
           ).stdout.toString().trim() === "true";
 
+          // Use Linear's branch name for the git branch
+          let branchName: string;
+          if (issue.branchName) {
+            branchName = issue.branchName;
+          } else {
+            const template = workflow?.sessionNameTemplate ?? "{identifier}";
+            branchName = template
+              .replace("{identifier}", issue.identifier.toLowerCase())
+              .replace("{title}", issue.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40));
+          }
+
           if (isBare) {
-            // Create worktree via wtm using Linear's branch name
             const wtPath = `${expandedDir}/${session}`;
             const cmd = `wtm create ${session} --from ${baseBranch} --no-shell; cd ${session}; exec $SHELL`;
             await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(expandedDir)} ${tq(cmd)}`);
             const waitCmd = `while [ ! -d ${tq(wtPath)} ]; do sleep 0.2; done; cd ${tq(wtPath)} && exec $SHELL`;
             await control.sendCommand(`split-window -h -d -t ${tq(session)} -c ${tq(expandedDir)} ${tq(waitCmd)}`);
           } else {
-            // Non-bare: create branch and session in the repo directory
             Bun.spawnSync(["git", "checkout", "-b", branchName, baseBranch], { cwd: expandedDir, stdout: "ignore", stderr: "ignore" });
             await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(expandedDir)}`);
           }
@@ -1144,17 +1169,16 @@ const inputRouter = new InputRouter(
           await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(session)}`);
           sessionState.addLink(session, { type: "issue", id: issue.id });
 
-          // Auto-launch agent with issue context if configured
-          if (workflow.autoLaunchAgent !== false && issue.description) {
+          // Auto-launch agent
+          if (workflow?.autoLaunchAgent !== false && issue.description) {
             const prompt = `You are working on ${issue.identifier}: ${issue.title}\n\n${issue.description}\n\nStart by understanding the relevant code, then propose an approach.`;
             const tmpFile = `/tmp/jmux-prompt-${Date.now()}.md`;
             writeFileSync(tmpFile, prompt);
-            const wtPath = `${expandedDir}/${session}`;
+            const wtPath = isBare ? `${expandedDir}/${session}` : expandedDir;
             const agentCmd = `${claudeCommand} --message-file ${tmpFile}; rm -f ${tmpFile}`;
-            await control.sendCommand(`split-window -h -t ${tq(session)} -c ${tq(isBare ? wtPath : expandedDir)} ${tq(agentCmd)}`);
+            await control.sendCommand(`split-window -h -t ${tq(session)} -c ${tq(wtPath)} ${tq(agentCmd)}`);
           }
         } catch (err) {
-          // Show error in a content modal
           const message = err instanceof Error ? err.message : String(err);
           const lines: StyledLine[] = [
             [],
@@ -1216,7 +1240,7 @@ const inputRouter = new InputRouter(
       const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
       const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
       const rawItems = view.source === "issues"
-        ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds)
+        ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates())
         : view.filter.scope === "reviewing"
           ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
           : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
@@ -1253,7 +1277,7 @@ const inputRouter = new InputRouter(
       const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
       const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
       const rawItems = view.source === "issues"
-        ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds)
+        ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates())
         : view.filter.scope === "reviewing"
           ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
           : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
@@ -1658,6 +1682,50 @@ function handleSettingsInput(data: string): void {
   }
 
   scheduleRender();
+}
+
+function resolveIssueSessionName(issue: import("./adapters/types").Issue): string | null {
+  const workflow = userConfig.issueWorkflow;
+  const repoDir = workflow?.teamRepoMap?.[issue.team ?? ""];
+  if (!repoDir) return null;
+
+  let branchName: string;
+  if (issue.branchName) {
+    branchName = issue.branchName;
+  } else {
+    const template = workflow?.sessionNameTemplate ?? "{identifier}";
+    branchName = template
+      .replace("{identifier}", issue.identifier.toLowerCase())
+      .replace("{title}", issue.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40));
+  }
+  return sanitizeTmuxSessionName(branchName);
+}
+
+function getIssueSessionStates(): Map<string, IssueSessionState> {
+  const states = new Map<string, IssueSessionState>();
+  const workflow = userConfig.issueWorkflow;
+  if (!workflow?.teamRepoMap) return states;
+
+  const sessionNames = new Set(currentSessions.map((s) => s.name));
+
+  for (const issue of pollCoordinator.getGlobalIssues()) {
+    const session = resolveIssueSessionName(issue);
+    if (!session) continue;
+
+    if (sessionNames.has(session)) {
+      states.set(issue.id, "session");
+    } else {
+      const repoDir = workflow.teamRepoMap[issue.team ?? ""];
+      if (repoDir) {
+        const expandedDir = repoDir.replace("~", homedir());
+        const wtPath = `${expandedDir}/${session}`;
+        if (existsSync(wtPath)) {
+          states.set(issue.id, "worktree");
+        }
+      }
+    }
+  }
+  return states;
 }
 
 function saveWorkflowSetting(key: string, value: unknown): void {
