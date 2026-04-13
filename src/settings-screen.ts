@@ -65,6 +65,7 @@ export class SettingsScreen {
   private selectedIndex = 0;
   private scrollOffset = 0;
   private _open = false;
+  private lastRenderRows = 24;
 
   get isOpen(): boolean {
     return this._open;
@@ -130,6 +131,7 @@ export class SettingsScreen {
   }
 
   render(cols: number, rows: number): CellGrid {
+    this.lastRenderRows = rows;
     const grid = createGrid(cols, rows);
     const nodes = this.buildNodes();
     const pad = 2;
@@ -205,12 +207,12 @@ export class SettingsScreen {
   }
 
   private ensureVisible(): void {
-    const startRow = 3;
+    const visibleCount = this.lastRenderRows - 3; // subtract header rows
     const relativeIdx = this.selectedIndex - this.scrollOffset;
     if (relativeIdx < 0) {
       this.scrollOffset = this.selectedIndex;
-    } else if (relativeIdx >= 20) { // rough visible count
-      this.scrollOffset = this.selectedIndex - 19;
+    } else if (relativeIdx >= visibleCount) {
+      this.scrollOffset = this.selectedIndex - visibleCount + 1;
     }
   }
 }
