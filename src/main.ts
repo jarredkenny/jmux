@@ -333,10 +333,7 @@ let mrSelectedIndex = 0;
 let issueSelectedIndex = 0;
 
 const adapters = createAdapters(userConfig.adapters);
-const infoPanel = new InfoPanel({
-  hasCodeHost: false,
-  hasIssueTracker: false,
-});
+const infoPanel = new InfoPanel({ viewIds: [], viewLabels: new Map() });
 
 async function initAdapters(): Promise<void> {
   if (adapters.codeHost) {
@@ -351,10 +348,21 @@ async function initAdapters(): Promise<void> {
       process.stderr.write(`jmux: ${adapters.issueTracker.type} adapter auth failed — check ${adapters.issueTracker.authHint}\n`);
     }
   }
-  infoPanel.updateConfig({
-    hasCodeHost: adapters.codeHost?.authState === "ok",
-    hasIssueTracker: adapters.issueTracker?.authState === "ok",
-  });
+  {
+    const viewIds: string[] = [];
+    const viewLabels = new Map<string, string>();
+    if (adapters.issueTracker?.authState === "ok") {
+      viewIds.push("my-issues");
+      viewLabels.set("my-issues", "Issues");
+    }
+    if (adapters.codeHost?.authState === "ok") {
+      viewIds.push("my-mrs");
+      viewLabels.set("my-mrs", "My MRs");
+      viewIds.push("review");
+      viewLabels.set("review", "Review");
+    }
+    infoPanel.updateConfig({ viewIds, viewLabels });
+  }
 }
 
 const sessionStatePath = resolve(homedir(), ".config", "jmux", "state.json");

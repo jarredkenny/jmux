@@ -2,13 +2,7 @@ import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeString, cellWidth, type CellAttrs } from "./cell-grid";
 
-export type InfoTab = "diff" | "mr" | "issues";
-
-const TAB_LABELS: Record<InfoTab, string> = {
-  diff: "Diff",
-  mr: "MR",
-  issues: "Issues",
-};
+export type InfoTab = "diff" | string; // "diff" is special, others are view IDs
 
 const ACTIVE_TAB: CellAttrs = {
   fg: (0xfb << 16) | (0xd4 << 8) | 0xb8,
@@ -28,8 +22,8 @@ const TAB_BG: CellAttrs = {
 };
 
 export interface InfoPanelConfig {
-  hasCodeHost: boolean;
-  hasIssueTracker: boolean;
+  viewIds: string[];      // ordered list of view IDs to show as tabs
+  viewLabels: Map<string, string>; // id → label for tab bar rendering
 }
 
 function textCols(text: string): number {
@@ -43,6 +37,7 @@ function textCols(text: string): number {
 export class InfoPanel {
   private _tabs: InfoTab[] = [];
   private _activeTab: InfoTab = "diff";
+  private _viewLabels = new Map<string, string>();
 
   constructor(config: InfoPanelConfig) {
     this.rebuildTabs(config);
@@ -99,7 +94,7 @@ export class InfoPanel {
     for (let i = 0; i < this._tabs.length; i++) {
       const tab = this._tabs[i];
       const isActive = tab === this._activeTab;
-      const label = ` ${TAB_LABELS[tab]} `;
+      const label = ` ${tab === "diff" ? "Diff" : (this._viewLabels.get(tab) ?? tab)} `;
       const attrs: CellAttrs = {
         ...(isActive ? ACTIVE_TAB : INACTIVE_TAB),
         ...TAB_BG,
@@ -127,7 +122,7 @@ export class InfoPanel {
     let col = 1; // 1 col padding
     for (let i = 0; i < this._tabs.length; i++) {
       const tab = this._tabs[i];
-      const label = ` ${TAB_LABELS[tab]} `;
+      const label = ` ${tab === "diff" ? "Diff" : (this._viewLabels.get(tab) ?? tab)} `;
       const labelWidth = textCols(label);
       ranges.push({ tab, startCol: col, endCol: col + labelWidth - 1 });
       col += labelWidth;
@@ -138,7 +133,9 @@ export class InfoPanel {
 
   private rebuildTabs(config: InfoPanelConfig): void {
     this._tabs = ["diff"];
-    if (config.hasCodeHost) this._tabs.push("mr");
-    if (config.hasIssueTracker) this._tabs.push("issues");
+    for (const id of config.viewIds) {
+      this._tabs.push(id);
+    }
+    this._viewLabels = config.viewLabels;
   }
 }
