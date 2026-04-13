@@ -40,6 +40,7 @@ export interface InputRouterOptions {
   onModalToggle?: () => void;
   onNewSession?: () => void;
   onSettings?: () => void;
+  onSettingsScreen?: () => void;  // Ctrl-a I (uppercase) — full settings screen
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
   // Diff panel additions
@@ -142,6 +143,10 @@ export class InputRouter {
         }
         if (data === "i") {
           this.opts.onSettings?.();
+          return;
+        }
+        if (data === "I") {
+          this.opts.onSettingsScreen?.();
           return;
         }
         if (data === "g") {

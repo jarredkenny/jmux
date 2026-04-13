@@ -330,6 +330,9 @@ const diffPanel = new DiffPanel();
 let diffBridge: ScreenBridge | null = null;
 let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
+const settingsScreen = new SettingsScreen();
+
+import { SettingsScreen, type SettingDef, type SettingsCategory } from "./settings-screen";
 
 const adapters = createAdapters(userConfig.adapters);
 const infoPanel = new InfoPanel({ viewIds: [], viewLabels: new Map() });
@@ -719,6 +722,26 @@ let renderTimer: ReturnType<typeof setTimeout> | null = null;
 
 function renderFrame(): void {
   if (writesPending > 0) return;
+
+  // Settings screen replaces main content
+  if (settingsScreen.isOpen) {
+    const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
+    const totalCols = process.stdout.columns || 80;
+    const contentCols = sidebarShown ? totalCols - sidebarTotal() : totalCols;
+    const contentRows = process.stdout.rows || 24;
+    const settingsGrid = settingsScreen.render(contentCols, contentRows);
+    renderer.render(
+      settingsGrid,
+      { x: 0, y: 0 },
+      sidebarGrid,
+      null, // no toolbar
+      null, // no modal
+      null, // no modal cursor
+      undefined, // no diff panel
+    );
+    return;
+  }
+
   const grid = bridge.getGrid();
   const cursor = bridge.getCursor();
   const tb = toolbarEnabled ? makeToolbar() : null;
@@ -922,7 +945,13 @@ const inputRouter = new InputRouter(
     onModalToggle: () => togglePalette(),
     onNewSession: () => handlePaletteAction({ commandId: "new-session" }),
     onSettings: () => handleToolbarAction("settings"),
+    onSettingsScreen: () => toggleSettingsScreen(),
     onModalInput: (data) => {
+      // Settings screen consumes input when open
+      if (settingsScreen.isOpen) {
+        handleSettingsInput(data);
+        return;
+      }
       if (!activeModal?.isOpen()) return;
       const action = activeModal.handleInput(data);
       switch (action.type) {
@@ -1393,6 +1422,7 @@ function buildPaletteCommands(): PaletteCommand[] {
     { id: "zoom-pane", label: "Zoom pane", category: "pane" },
     { id: "close-pane", label: "Close pane", category: "pane" },
     { id: "open-claude", label: "Open Claude", category: "other" },
+    { id: "settings-screen", label: "Settings", category: "other" },
   );
 
   // Diff panel commands
@@ -1487,6 +1517,100 @@ function buildPaletteCommands(): PaletteCommand[] {
   }
 
   return commands;
+}
+
+function buildSettingsCategories(): SettingsCategory[] {
+  const wf = userConfig.issueWorkflow;
+  const adapterCfg = userConfig.adapters;
+  const teamMap = wf?.teamRepoMap ?? {};
+
+  return [
+    {
+      label: "Display",
+      collapsed: false,
+      settings: [
+        { id: "setting-sidebar-width", label: "Sidebar width", type: "text" as const, category: "Display", getValue: () => String(sidebarWidth) },
+        { id: "setting-cache-timers", label: "Cache timers", type: "boolean" as const, category: "Display", getValue: () => cacheTimersEnabled ? "on" : "off" },
+      ],
+    },
+    {
+      label: "Adapters",
+      collapsed: false,
+      settings: [
+        { id: "setting-code-host", label: "Code host", type: "list" as const, category: "Adapters", getValue: () => adapterCfg?.codeHost?.type ?? "none" },
+        { id: "setting-issue-tracker", label: "Issue tracker", type: "list" as const, category: "Adapters", getValue: () => adapterCfg?.issueTracker?.type ?? "none" },
+        { id: "setting-claude-command", label: "Claude command", type: "text" as const, category: "Adapters", getValue: () => claudeCommand },
+      ],
+    },
+    {
+      label: "Issue Workflow",
+      collapsed: false,
+      settings: [
+        { id: "setting-default-branch", label: "Default base branch", type: "text" as const, category: "Issue Workflow", getValue: () => wf?.defaultBaseBranch ?? "main" },
+        { id: "setting-session-template", label: "Session name template", type: "text" as const, category: "Issue Workflow", getValue: () => wf?.sessionNameTemplate ?? "{identifier}" },
+        { id: "setting-auto-worktree", label: "Auto-create worktree", type: "boolean" as const, category: "Issue Workflow", getValue: () => wf?.autoCreateWorktree !== false ? "on" : "off" },
+        { id: "setting-auto-agent", label: "Auto-launch agent", type: "boolean" as const, category: "Issue Workflow", getValue: () => wf?.autoLaunchAgent !== false ? "on" : "off" },
+        { id: "setting-team-repo-map", label: "Team → repo mappings", type: "map" as const, category: "Issue Workflow", getValue: () => {
+          const entries = Object.entries(teamMap);
+          return entries.length > 0 ? `${entries.length} mapped` : "none";
+        }},
+      ],
+    },
+    {
+      label: "Project",
+      collapsed: false,
+      settings: [
+        { id: "setting-project-dirs", label: "Project directories", type: "text" as const, category: "Project", getValue: () => {
+          const dirs = userConfig.pinnedSessions ?? [];
+          return `${(userConfig as any).projectDirs?.length ?? 0} dirs`;
+        }},
+      ],
+    },
+  ];
+}
+
+function toggleSettingsScreen(): void {
+  if (settingsScreen.isOpen) {
+    settingsScreen.close();
+    inputRouter.setModalOpen(false);
+  } else {
+    settingsScreen.open(buildSettingsCategories());
+    inputRouter.setModalOpen(true);
+  }
+  scheduleRender();
+}
+
+function handleSettingsInput(data: string): void {
+  if (data === "\x1b" || data === "q") {
+    settingsScreen.close();
+    inputRouter.setModalOpen(false);
+    scheduleRender();
+    return;
+  }
+  if (data === "\x1b[A") { settingsScreen.moveUp(); scheduleRender(); return; }
+  if (data === "\x1b[B") { settingsScreen.moveDown(); scheduleRender(); return; }
+  if (data === "\r") {
+    const cat = settingsScreen.getSelectedCategory();
+    if (cat) {
+      settingsScreen.toggleCollapse();
+      scheduleRender();
+      return;
+    }
+    const setting = settingsScreen.getSelectedSetting();
+    if (setting) {
+      // Close settings, dispatch to existing palette handler, reopen after
+      settingsScreen.close();
+      handlePaletteAction({ commandId: setting.id });
+      // Reopen with refreshed values after a tick
+      setTimeout(() => {
+        if (!settingsScreen.isOpen && !activeModal?.isOpen()) {
+          settingsScreen.open(buildSettingsCategories());
+          scheduleRender();
+        }
+      }, 100);
+    }
+    return;
+  }
 }
 
 function saveWorkflowSetting(key: string, value: unknown): void {
@@ -1884,6 +2008,9 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       return;
     case "open-claude":
       await handleToolbarAction("claude");
+      return;
+    case "settings-screen":
+      toggleSettingsScreen();
       return;
     case "setting-sidebar-width": {
       const modal = new InputModal({
