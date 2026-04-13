@@ -132,6 +132,14 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return resp.data.viewer.assignedIssues.nodes.map((n: any) => this.mapIssue(n));
   }
 
+  async getTeams(): Promise<Array<{ id: string; name: string }>> {
+    if (this.authState !== "ok") return [];
+    const query = `query { teams { nodes { id name } } }`;
+    const resp = await this.graphql(query, {});
+    if (!resp?.data?.teams?.nodes) return [];
+    return resp.data.teams.nodes.map((t: any) => ({ id: t.id ?? "", name: t.name ?? "" }));
+  }
+
   async updateStatus(issueId: string, status: string): Promise<void> {
     const statesQuery = `query($id: String!) { issue(id: $id) { team { states { nodes { id name } } } } }`;
     const statesResp = await this.graphql(statesQuery, { id: issueId });

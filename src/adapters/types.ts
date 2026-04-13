@@ -85,6 +85,7 @@ export interface IssueTrackerAdapter {
   updateStatus(issueId: string, status: string): Promise<void>;
   searchIssues(query: string): Promise<Issue[]>;
   getMyIssues(): Promise<Issue[]>;
+  getTeams(): Promise<Array<{ id: string; name: string }>>;
 }
 
 export interface AdapterConfig {

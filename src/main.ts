@@ -1436,7 +1436,17 @@ function buildPaletteCommands(): PaletteCommand[] {
   });
   commands.push({
     id: "setting-team-repo-map",
-    label: `Team → repo mappings: ${Object.keys(wf?.teamRepoMap ?? {}).length} configured`,
+    label: `Team → repo mappings (${Object.keys(wf?.teamRepoMap ?? {}).length})`,
+    category: "setting",
+  });
+  commands.push({
+    id: "setting-session-template",
+    label: `Session name template: ${wf?.sessionNameTemplate ?? "{identifier}"}`,
+    category: "setting",
+  });
+  commands.push({
+    id: "setting-auto-worktree",
+    label: `Auto-create worktree: ${wf?.autoCreateWorktree !== false ? "on" : "off"}`,
     category: "setting",
   });
 
@@ -1455,6 +1465,48 @@ function buildPaletteCommands(): PaletteCommand[] {
   }
 
   return commands;
+}
+
+function saveWorkflowSetting(key: string, value: unknown): void {
+  const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+  try {
+    let config: Record<string, any> = {};
+    if (existsSync(cfgPath)) config = JSON.parse(readFileSync(cfgPath, "utf-8"));
+    if (!config.issueWorkflow) config.issueWorkflow = {};
+    config.issueWorkflow[key] = value;
+    const dir = dirname(cfgPath);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
+  } catch {}
+}
+
+function saveTeamRepoMap(team: string, repoDir: string | null): void {
+  const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
+  try {
+    let config: Record<string, any> = {};
+    if (existsSync(cfgPath)) config = JSON.parse(readFileSync(cfgPath, "utf-8"));
+    if (!config.issueWorkflow) config.issueWorkflow = {};
+    if (!config.issueWorkflow.teamRepoMap) config.issueWorkflow.teamRepoMap = {};
+    if (repoDir === null) {
+      delete config.issueWorkflow.teamRepoMap[team];
+    } else {
+      config.issueWorkflow.teamRepoMap[team] = repoDir;
+    }
+    const dir = dirname(cfgPath);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
+  } catch {}
+}
+
+function pickRepoForTeam(teamName: string): void {
+  const dirs = cachedProjectDirs.length > 0 ? cachedProjectDirs : [homedir()];
+  const dirItems = dirs.map((d) => ({ id: d, label: d.replace(homedir(), "~") }));
+  const dirPicker = new ListModal({ items: dirItems, header: `Repository for ${teamName}` });
+  dirPicker.open();
+  openModal(dirPicker, (dirValue) => {
+    const dirSel = dirValue as ListItem;
+    saveTeamRepoMap(teamName, dirSel.id);
+  });
 }
 
 let viewSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1938,30 +1990,75 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     case "setting-team-repo-map": {
       const current = userConfig.issueWorkflow?.teamRepoMap ?? {};
       const entries = Object.entries(current);
-      const display = entries.length > 0
-        ? entries.map(([team, repo]) => `${team} → ${repo}`).join(", ")
-        : "none";
+      const items: Array<{ id: string; label: string }> = entries.map(([team, repo]) => ({
+        id: `edit:${team}`,
+        label: `${team} → ${repo}`,
+      }));
+      items.push({ id: "add", label: "➕ Add new mapping" });
+      const modal = new ListModal({ items, header: "Team → Repo Mappings" });
+      modal.open();
+      openModal(modal, async (value) => {
+        const sel = value as ListItem;
+        if (sel.id === "add") {
+          // Step 2: pick team from Linear
+          let teamItems: Array<{ id: string; label: string }> = [];
+          if (adapters.issueTracker?.authState === "ok") {
+            try {
+              const teams = await adapters.issueTracker.getTeams();
+              teamItems = teams.map((t) => ({ id: t.name, label: t.name }));
+            } catch {}
+          }
+          if (teamItems.length === 0) {
+            // Fallback: manual team name input
+            const teamModal = new InputModal({ header: "Team Name", subheader: "Enter the Linear team name", value: "" });
+            teamModal.open();
+            openModal(teamModal, (teamName) => {
+              pickRepoForTeam(teamName as string);
+            });
+            return;
+          }
+          const teamPicker = new ListModal({ items: teamItems, header: "Select Team" });
+          teamPicker.open();
+          openModal(teamPicker, (teamValue) => {
+            const teamSel = teamValue as ListItem;
+            pickRepoForTeam(teamSel.label);
+          });
+        } else if (sel.id.startsWith("edit:")) {
+          const teamName = sel.id.slice(5);
+          const editItems = [
+            { id: "change", label: "Change repository path" },
+            { id: "remove", label: "Remove mapping" },
+          ];
+          const editModal = new ListModal({ items: editItems, header: `${teamName} mapping` });
+          editModal.open();
+          openModal(editModal, async (editValue) => {
+            const editSel = editValue as ListItem;
+            if (editSel.id === "remove") {
+              await saveTeamRepoMap(teamName, null);
+            } else {
+              pickRepoForTeam(teamName);
+            }
+          });
+        }
+      });
+      return;
+    }
+    case "setting-session-template": {
+      const current = userConfig.issueWorkflow?.sessionNameTemplate ?? "{identifier}";
       const modal = new InputModal({
-        header: "Team → Repo Mappings",
-        subheader: `Current: ${display}\nFormat: Team=~/path, Team2=~/path2`,
-        value: entries.map(([t, r]) => `${t}=${r}`).join(", "),
+        header: "Session Name Template",
+        subheader: "Variables: {identifier}, {title}",
+        value: current,
       });
       modal.open();
       openModal(modal, async (value) => {
-        const cfgPath = resolve(homedir(), ".config", "jmux", "config.json");
-        try {
-          let config: Record<string, any> = {};
-          if (existsSync(cfgPath)) config = JSON.parse(readFileSync(cfgPath, "utf-8"));
-          if (!config.issueWorkflow) config.issueWorkflow = {};
-          const map: Record<string, string> = {};
-          for (const pair of (value as string).split(",")) {
-            const [team, repo] = pair.split("=").map((s) => s.trim());
-            if (team && repo) map[team] = repo;
-          }
-          config.issueWorkflow.teamRepoMap = map;
-          writeFileSync(cfgPath, JSON.stringify(config, null, 2) + "\n");
-        } catch {}
+        await saveWorkflowSetting("sessionNameTemplate", value as string);
       });
+      return;
+    }
+    case "setting-auto-worktree": {
+      const current = userConfig.issueWorkflow?.autoCreateWorktree !== false;
+      await saveWorkflowSetting("autoCreateWorktree", !current);
       return;
     }
     case "link-issue": {
