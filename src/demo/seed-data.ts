@@ -299,6 +299,17 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [],
     webUrl: issueUrl("ENG-1237"),
     updatedAt: Date.now() - 1000 * 60 * 60 * 48,
+    description:
+      "Our public API has no rate limiting. We've seen a few customers accidentally " +
+      "DDoS themselves with tight retry loops. Need per-key sliding window limits " +
+      "(100 req/min default) on all /v2/ endpoints, with a 429 response and Retry-After header.",
+    comments: [
+      {
+        author: "bob",
+        body: "Should we also add a global per-IP fallback for unauthenticated endpoints?",
+        createdAt: "2026-04-08T09:15:00Z",
+      },
+    ],
   },
   {
     id: "issue-1241",
@@ -312,6 +323,23 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [mrUrl("platform", 102)],
     webUrl: issueUrl("ENG-1241"),
     updatedAt: Date.now() - 1000 * 60 * 50,
+    description:
+      "Replace offset-based pagination with cursor-based on all list endpoints. " +
+      "Current offset pagination breaks when items are inserted/deleted between pages. " +
+      "Use the existing `id` column as cursor since it's monotonically increasing. " +
+      "The response shape changes from `{ items, total, page }` to `{ items, nextCursor, hasMore }`.",
+    comments: [
+      {
+        author: "bob",
+        body: "MR is up. I kept backward compat — offset params still work but emit a deprecation warning.",
+        createdAt: "2026-04-11T16:40:00Z",
+      },
+      {
+        author: "alice",
+        body: "Looks good. One thing: the cursor should be opaque (base64-encoded) so clients don't try to construct them.",
+        createdAt: "2026-04-12T09:05:00Z",
+      },
+    ],
   },
   {
     id: "issue-1245",
@@ -325,6 +353,11 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [],
     webUrl: issueUrl("ENG-1245"),
     updatedAt: Date.now() - 1000 * 60 * 60 * 72,
+    description:
+      "The v1 webhook payload uses flat keys (`event_type`, `user_id`) while v2 uses " +
+      "nested objects (`event.type`, `user.id`). ~30% of integrations still use v1. " +
+      "Plan: add deprecation header to v1 responses, email affected API key owners, " +
+      "sunset in 90 days.",
   },
   {
     id: "issue-1248",
@@ -343,6 +376,13 @@ export const DEMO_ISSUES: Issue[] = [
       "timeout before the login form responds. Root cause traced to a synchronous DNS " +
       "lookup in `auth/session.ts:initSession()`. Fix: make the lookup async and add " +
       "a configurable timeout with sensible default (30s).",
+    comments: [
+      {
+        author: "alice",
+        body: "Reproduced on staging with tc netem. The sync lookup blocks the event loop for 8-12 seconds on 600ms RTT.",
+        createdAt: "2026-04-12T14:00:00Z",
+      },
+    ],
   },
   {
     id: "issue-1252",
@@ -356,6 +396,23 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [mrUrl("platform", 104)],
     webUrl: issueUrl("ENG-1252"),
     updatedAt: Date.now() - 1000 * 60 * 95,
+    description:
+      "Users need to export their data in CSV and JSON formats. The export should be " +
+      "async (queued job) for datasets over 10k rows, with a download link emailed when " +
+      "complete. Smaller exports can stream directly. Need to respect field-level permissions " +
+      "so exports don't leak columns the user shouldn't see.",
+    comments: [
+      {
+        author: "carol",
+        body: "Can we use the existing job queue or do we need a dedicated export worker?",
+        createdAt: "2026-04-09T11:30:00Z",
+      },
+      {
+        author: "Jarred Kenny",
+        body: "Existing queue is fine — exports are IO-bound, not CPU-bound. I'll add a new job type.",
+        createdAt: "2026-04-09T13:15:00Z",
+      },
+    ],
   },
   {
     id: "issue-1255",
@@ -369,6 +426,10 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [],
     webUrl: issueUrl("ENG-1255"),
     updatedAt: Date.now() - 1000 * 60 * 60 * 36,
+    description:
+      "Compliance requires an immutable audit trail for all admin actions: user creation/deletion, " +
+      "role changes, API key management, billing changes. Log to a dedicated append-only table with " +
+      "actor, action, target, timestamp, and a JSON diff of the change. Retention: 2 years.",
   },
   {
     id: "issue-301",
@@ -382,6 +443,23 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [mrUrl("dashboard", 201)],
     webUrl: issueUrl("DASH-301"),
     updatedAt: Date.now() - 1000 * 60 * 35,
+    description:
+      "The settings page is a single scrollable form with 40+ fields. Redesign into " +
+      "tabbed sections: Profile, Notifications, Security, Integrations, Billing. " +
+      "Each tab loads independently. Add search to quickly find a setting. " +
+      "Mobile layout collapses tabs into an accordion.",
+    comments: [
+      {
+        author: "dave",
+        body: "Figma mockups are ready. I put the link in the issue attachments.",
+        createdAt: "2026-04-07T10:00:00Z",
+      },
+      {
+        author: "Jarred Kenny",
+        body: "These look great. Starting with Profile + Security tabs, then the rest in a follow-up.",
+        createdAt: "2026-04-07T14:20:00Z",
+      },
+    ],
   },
   {
     id: "issue-308",
@@ -395,6 +473,10 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [],
     webUrl: issueUrl("DASH-308"),
     updatedAt: Date.now() - 1000 * 60 * 60 * 24,
+    description:
+      "Define a semantic color token system (background-primary, text-muted, border-subtle, etc.) " +
+      "that maps to different palettes for light/dark mode. Currently we have ~200 raw hex values " +
+      "scattered across components. The token layer lets us swap themes without touching components.",
   },
   {
     id: "issue-315",
@@ -408,6 +490,18 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [mrUrl("dashboard", 202)],
     webUrl: issueUrl("DASH-315"),
     updatedAt: Date.now() - 1000 * 60 * 12,
+    description:
+      "The analytics charts drop to <15fps when rendering datasets with 10k+ data points. " +
+      "Profiling shows the bottleneck is in the SVG path recalculation on every frame. " +
+      "Fix: virtualize the visible viewport (only render points in the current zoom window) " +
+      "and use canvas for the minimap overview.",
+    comments: [
+      {
+        author: "bob",
+        body: "After switching to canvas for the minimap, the 50k-point dataset renders at 60fps. The SVG detail view still uses path simplification for zoom levels showing >2k points.",
+        createdAt: "2026-04-12T11:00:00Z",
+      },
+    ],
   },
   {
     id: "issue-320",
@@ -421,6 +515,18 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [mrUrl("dashboard", 203)],
     webUrl: issueUrl("DASH-320"),
     updatedAt: Date.now() - 1000 * 60 * 60 * 2,
+    description:
+      "New users drop off during the first 5 minutes. Build a 4-step onboarding wizard: " +
+      "1) workspace name, 2) invite teammates, 3) connect first integration, 4) create first project. " +
+      "Each step should be skippable. Progress persists across sessions. " +
+      "Show a completion checklist in the sidebar until all steps are done.",
+    comments: [
+      {
+        author: "Jarred Kenny",
+        body: "Draft MR is up with steps 1-2. The integration step needs the new OAuth flow from ENG-1234 to land first.",
+        createdAt: "2026-04-11T18:30:00Z",
+      },
+    ],
   },
   {
     id: "issue-325",
@@ -434,6 +540,10 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [],
     webUrl: issueUrl("DASH-325"),
     updatedAt: Date.now() - 1000 * 60 * 60 * 96,
+    description:
+      "External a11y audit found 23 issues. Top items: missing alt text on chart images, " +
+      "color contrast below 4.5:1 on secondary text, keyboard navigation broken in modal dialogs, " +
+      "data tables missing header associations. Full report linked in attachments.",
   },
   {
     id: "issue-330",
@@ -447,6 +557,10 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [],
     webUrl: issueUrl("DASH-330"),
     updatedAt: Date.now() - 1000 * 60 * 60 * 48,
+    description:
+      "Replace the spinner on initial dashboard load with skeleton screens that match the " +
+      "final layout. Each widget should have its own skeleton so they can fill in independently " +
+      "as data arrives. Reduces perceived load time and eliminates layout shift.",
   },
   {
     id: "issue-42",
@@ -460,6 +574,18 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [mrUrl("infra", 301)],
     webUrl: issueUrl("OPS-42"),
     updatedAt: Date.now() - 1000 * 60 * 60 * 6,
+    description:
+      "Our Terraform root module is 1200 lines with everything inlined. Split into reusable " +
+      "child modules: networking, compute, database, monitoring. Each module gets its own " +
+      "variables.tf/outputs.tf and can be versioned independently via git tags. " +
+      "Migrate one environment at a time — staging first, then production.",
+    comments: [
+      {
+        author: "eve",
+        body: "Staging is migrated and plan shows no diff. Ready for prod whenever you are.",
+        createdAt: "2026-04-12T08:45:00Z",
+      },
+    ],
   },
   {
     id: "issue-48",
@@ -473,6 +599,17 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [],
     webUrl: issueUrl("OPS-48"),
     updatedAt: Date.now() - 1000 * 60 * 60 * 30,
+    description:
+      "12 integration tests fail intermittently (~5% of runs) due to timing issues with " +
+      "the test database. Moved them to a quarantine suite that runs nightly instead of on " +
+      "every push. Filed individual tickets for each flaky test. CI pass rate went from 87% to 99%.",
+    comments: [
+      {
+        author: "alice",
+        body: "The quarantine is working well. 4 of the 12 are now fixed and moved back to the main suite.",
+        createdAt: "2026-04-10T16:00:00Z",
+      },
+    ],
   },
   {
     id: "issue-51",
@@ -486,6 +623,22 @@ export const DEMO_ISSUES: Issue[] = [
     linkedMrUrls: [mrUrl("infra", 302)],
     webUrl: issueUrl("OPS-51"),
     updatedAt: Date.now() - 1000 * 60 * 60 * 25,
+    description:
+      "CI takes 18 minutes end-to-end. Lint, unit tests, and integration tests run sequentially " +
+      "but have no dependencies on each other. Parallelize into 3 jobs. Also cache node_modules " +
+      "and the TypeScript build between runs. Target: under 7 minutes.",
+    comments: [
+      {
+        author: "Jarred Kenny",
+        body: "Parallelization landed and merged. Down to 8 minutes. The remaining gap is the Docker build step — investigating layer caching next.",
+        createdAt: "2026-04-11T20:15:00Z",
+      },
+      {
+        author: "eve",
+        body: "Nice. The Docker layer cache should shave another 2-3 minutes easily.",
+        createdAt: "2026-04-12T09:30:00Z",
+      },
+    ],
   },
 ];
 
