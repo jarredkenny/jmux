@@ -315,6 +315,12 @@
             <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
           </tr>
           <tr class="border-b border-border/50">
+            <td class="py-3 pr-4 text-[#a1a1aa]">Issue &amp; MR tracking</td>
+            <td class="py-3 px-4 text-center text-accent">&#10003;</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">Extension</td>
+            <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
+          </tr>
+          <tr class="border-b border-border/50">
             <td class="py-3 pr-4 text-[#a1a1aa]">Cache cost visibility</td>
             <td class="py-3 px-4 text-center text-accent">&#10003;</td>
             <td class="py-3 px-4 text-center text-[#52525b]">&#10007;</td>
@@ -372,12 +378,12 @@
       <h2 class="text-2xl md:text-3xl font-bold tracking-tight">Everything visible. Nothing in your way.</h2>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl mx-auto">
 
       <div class="bg-surface border border-border rounded-xl p-6 card-hover animate-in">
         <div class="icon-container"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="18" rx="1"/><line x1="14" y1="3" x2="14" y2="21"/><rect x="14" y="3" width="7" height="18" rx="1"/></svg></div>
         <h3 class="text-base font-semibold mb-2 text-white">Session Sidebar</h3>
-        <p class="text-sm text-[#a1a1aa] leading-relaxed">Every session at a glance — name, branch, status. Green dot for activity, orange flag when an agent needs review. Sessions auto-group by project.</p>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">Every session at a glance — name, branch, pipeline status, linked issues. Green dot for activity, orange flag when an agent needs review.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-6 card-hover animate-in">
@@ -390,6 +396,12 @@
         <div class="icon-container"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
         <h3 class="text-base font-semibold mb-2 text-white">Attention Flags</h3>
         <p class="text-sm text-[#a1a1aa] leading-relaxed">When Claude Code finishes a response, the orange <span class="text-amber-400">!</span> appears. Switch to it, review the work, move on. One command to install hooks for any agent.</p>
+      </div>
+
+      <div class="bg-surface border border-border rounded-xl p-6 card-hover animate-in">
+        <div class="icon-container"><svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg></div>
+        <h3 class="text-base font-semibold mb-2 text-white">Issue & MR Tracking</h3>
+        <p class="text-sm text-[#a1a1aa] leading-relaxed">See your <a href="https://linear.app" class="text-accent hover:underline">Linear</a> issues and <a href="https://about.gitlab.com" class="text-accent hover:underline">GitLab</a> MRs in a tabbed panel. Pipeline glyphs in the sidebar. Approve, undraft, or update status without opening a browser.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-6 card-hover animate-in">
@@ -426,28 +438,105 @@
     </div>
   </section>
 
-  <!-- Diff Panel -->
+  <!-- Info Panel — Diff -->
   <section>
     <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
     <div class="max-w-5xl mx-auto">
       <div class="flex flex-col md:flex-row-reverse gap-8 md:gap-12 items-center">
         <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
           <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">Code Review</p>
-          <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Integrated Diff Panel</h2>
+          <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Info Panel</h2>
           <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
             <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">Ctrl-a g</span> to toggle.
-            Powered by <a href="https://github.com/modem-dev/hunk" class="text-accent hover:underline">hunk</a> — a review-first terminal diff viewer with syntax highlighting, word-level diffs, and split/stack views. The diff panel docks to the right of your terminal so you can see exactly what each agent changed without leaving jmux.
+            A tabbed side panel with diffs, issues, MRs, and review queues. The Diff tab is powered by <a href="https://github.com/modem-dev/hunk" class="text-accent hover:underline">hunk</a> — syntax highlighting, word-level diffs, and split/stack views.
           </p>
           <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
-            Split mode for monitoring while agents work. Full-screen mode for thorough review. Switching sessions reloads the diff automatically.
+            Split mode for monitoring while agents work. Full-screen mode for thorough review. Use <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">[</span> and <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">]</span> to cycle between tabs.
           </p>
           <p class="text-sm text-[#a1a1aa] leading-relaxed">
-            Navigate with <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">Shift-Right</span> from your rightmost pane — the diff panel feels like another pane in your layout.
+            Navigate with <span class="font-mono text-white text-xs bg-surface border border-border rounded px-1.5 py-0.5">Shift-Right</span> from your rightmost pane — the panel feels like another pane in your layout.
           </p>
         </div>
         <div class="md:w-3/5 animate-in">
           <img src="assets/diff-panel-split.png" alt="jmux with integrated diff panel showing code changes alongside Claude Code in split mode" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50 mb-4">
           <img src="assets/diff-panel-full.png" alt="jmux diff panel in full-screen mode for thorough code review" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50">
+        </div>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <!-- Issue Tracking -->
+  <section class="border-t border-border bg-surface">
+    <div class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24">
+    <div class="max-w-5xl mx-auto">
+      <div class="flex flex-col md:flex-row gap-8 md:gap-12 items-center">
+        <div class="md:w-2/5 text-center md:text-left animate-in fade-up">
+          <p class="font-mono text-xs text-accent tracking-[0.2em] uppercase mb-2">Issue Tracking</p>
+          <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Linear &amp; GitLab<br><span class="text-[#71717a]">in the terminal.</span></h2>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
+            The info panel shows your issues, MRs, and pipeline status in tabbed views alongside the diff viewer. Sessions auto-link to their branch's MR and associated issues.
+          </p>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
+            Select an issue. Press <span class="font-mono text-white text-xs bg-[#171b26] border border-border rounded px-1.5 py-0.5">n</span>. jmux creates a worktree, opens a session, and launches your agent with the issue context — all in one step.
+          </p>
+          <p class="text-sm text-[#a1a1aa] leading-relaxed mb-4">
+            Press <span class="font-mono text-white text-xs bg-[#171b26] border border-border rounded px-1.5 py-0.5">o</span> to open in browser, <span class="font-mono text-white text-xs bg-[#171b26] border border-border rounded px-1.5 py-0.5">s</span> to update status, <span class="font-mono text-white text-xs bg-[#171b26] border border-border rounded px-1.5 py-0.5">a</span> to approve an MR. No browser tabs required.
+          </p>
+          <p class="text-xs text-[#52525b]">Currently supports Linear (issues) and GitLab (MRs). More adapters coming.</p>
+        </div>
+        <div class="md:w-3/5 animate-in">
+          <div class="bg-[#0d1017] border border-border rounded-xl overflow-hidden shadow-2xl shadow-black/50">
+            <div class="flex items-center gap-1.5 px-4 py-2.5 border-b border-border/50">
+              <div class="w-2.5 h-2.5 rounded-full bg-[#ff5f56]"></div>
+              <div class="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></div>
+              <div class="w-2.5 h-2.5 rounded-full bg-[#27c93f]"></div>
+              <span class="text-[10px] text-[#52525b] font-mono ml-2">info panel — Issues tab</span>
+            </div>
+            <div class="px-4 py-4 font-mono text-xs leading-relaxed">
+              <div class="text-[#71717a] mb-2"><!-- tab bar --></div>
+              <div class="flex gap-4 mb-3 text-[10px] border-b border-border/30 pb-2">
+                <span class="text-[#52525b]">Diff</span>
+                <span class="text-accent font-bold border-b border-accent pb-1">Issues</span>
+                <span class="text-[#52525b]">MRs</span>
+                <span class="text-[#52525b]">Review</span>
+              </div>
+              <div class="text-[#71717a] mb-1 text-[10px]">&#9662; Platform <span class="text-[#52525b]">(3)</span></div>
+              <div class="text-[#71717a] mb-1 text-[10px] pl-2">&#9662; In Progress <span class="text-[#52525b]">(2)</span></div>
+              <div class="bg-[#1e2a35] rounded px-2 py-1 mb-1 flex items-center gap-2">
+                <span class="text-accent text-[10px]">&#9679;</span>
+                <span class="text-amber-400 text-[10px]">P1</span>
+                <span class="text-white text-[10px]">ENG-1234</span>
+                <span class="text-[#a1a1aa] text-[10px]">Fix auth token refresh</span>
+              </div>
+              <div class="px-2 py-1 mb-1 flex items-center gap-2">
+                <span class="text-[#52525b] text-[10px]">&#9675;</span>
+                <span class="text-orange-400 text-[10px]">P2</span>
+                <span class="text-[#a1a1aa] text-[10px]">ENG-1235</span>
+                <span class="text-[#71717a] text-[10px]">Add rate limiting to API</span>
+              </div>
+              <div class="text-[#71717a] mb-1 text-[10px] pl-2">&#9662; Todo <span class="text-[#52525b]">(1)</span></div>
+              <div class="px-2 py-1 mb-1 flex items-center gap-2">
+                <span class="text-[#52525b] text-[10px]">&#9675;</span>
+                <span class="text-blue-400 text-[10px]">P3</span>
+                <span class="text-[#a1a1aa] text-[10px]">ENG-1240</span>
+                <span class="text-[#71717a] text-[10px]">Migrate user schema</span>
+              </div>
+              <div class="text-[#71717a] mt-2 mb-1 text-[10px]">&#9662; Frontend <span class="text-[#52525b]">(1)</span></div>
+              <div class="px-2 py-1 mb-2 flex items-center gap-2">
+                <span class="text-[#52525b] text-[10px]">&#9675;</span>
+                <span class="text-amber-400 text-[10px]">P1</span>
+                <span class="text-[#a1a1aa] text-[10px]">FE-892</span>
+                <span class="text-[#71717a] text-[10px]">Dashboard loading spinner</span>
+              </div>
+              <div class="border-t border-border/30 pt-2 mt-1 flex gap-3 text-[10px] text-[#52525b]">
+                <span>[o] Open</span>
+                <span>[n] Session</span>
+                <span>[l] Link</span>
+                <span>[s] Status</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -556,15 +645,21 @@
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover animate-in">
-        <div class="font-mono text-lg font-bold mb-1">lazygit</div>
-        <p class="text-xs text-[#71717a] mb-2">The best terminal Git UI</p>
-        <p class="text-xs text-[#a1a1aa] leading-relaxed">Run it in a jmux pane alongside your agent. Full Git workflow without leaving the terminal.</p>
+        <div class="font-mono text-lg font-bold mb-1"><a href="https://linear.app" target="_blank" rel="noopener" class="hover:text-accent transition-colors">Linear</a></div>
+        <p class="text-xs text-[#71717a] mb-2">Modern issue tracking</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">Your assigned issues in the info panel. Update statuses, create sessions from issues, auto-link branches. Set <span class="font-mono text-[#71717a]">$LINEAR_API_KEY</span> and go.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover animate-in">
-        <div class="font-mono text-lg font-bold mb-1">gh / glab</div>
-        <p class="text-xs text-[#71717a] mb-2">The standard GitHub &amp; GitLab CLIs</p>
-        <p class="text-xs text-[#a1a1aa] leading-relaxed">PRs, issues, reviews. Everything stays in the terminal where you're already working.</p>
+        <div class="font-mono text-lg font-bold mb-1"><a href="https://about.gitlab.com" target="_blank" rel="noopener" class="hover:text-accent transition-colors">GitLab</a></div>
+        <p class="text-xs text-[#71717a] mb-2">MRs, pipelines, approvals</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">Pipeline glyphs in the sidebar. Approve and undraft MRs from the panel. Self-hosted instances supported.</p>
+      </div>
+
+      <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover animate-in">
+        <div class="font-mono text-lg font-bold mb-1">lazygit</div>
+        <p class="text-xs text-[#71717a] mb-2">The best terminal Git UI</p>
+        <p class="text-xs text-[#a1a1aa] leading-relaxed">Run it in a jmux pane alongside your agent. Full Git workflow without leaving the terminal.</p>
       </div>
 
       <div class="bg-surface border border-border rounded-xl p-5 text-center card-hover animate-in">
