@@ -155,24 +155,37 @@
     .copy-btn:hover {
       color: #a1a1aa;
     }
-    @keyframes testimonial-in {
-      from {
-        opacity: 0;
-        transform: translateY(16px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+    @keyframes slide-in-left {
+      from { opacity: 0; transform: translateX(-40px); }
+      to { opacity: 1; transform: translateX(0); }
     }
-    .testimonial-card {
+    @keyframes slide-in-right {
+      from { opacity: 0; transform: translateX(40px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes float-1 {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+    @keyframes float-2 {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+    @keyframes float-3 {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+    .testimonial-left {
       opacity: 0;
-      animation: testimonial-in 0.6s ease-out 0.5s forwards;
+      animation: slide-in-left 0.6s ease-out forwards;
     }
-    @keyframes testimonial-cycle {
-      0%, 90% { opacity: 1; }
-      95%, 100% { opacity: 0; }
+    .testimonial-right {
+      opacity: 0;
+      animation: slide-in-right 0.6s ease-out forwards;
     }
+    .testimonial-float-1 { animation: float-1 4s ease-in-out infinite; }
+    .testimonial-float-2 { animation: float-2 5s ease-in-out 0.5s infinite; }
+    .testimonial-float-3 { animation: float-3 4.5s ease-in-out 1s infinite; }
   </style>
 </head>
 <body>
@@ -197,7 +210,7 @@
   </nav>
 
   <!-- Hero -->
-  <section>
+  <section class="overflow-x-clip">
     <div class="max-w-6xl mx-auto text-center px-6 md:px-12 pt-20 md:pt-28 pb-10">
     <p class="font-mono text-xs md:text-sm text-accent tracking-[0.2em] uppercase mb-4">Terminal Agent Orchestrator</p>
     <h1 class="text-3xl md:text-5xl font-extrabold leading-tight max-w-2xl mx-auto mb-6 tracking-tight">
@@ -221,12 +234,70 @@
     </div>
 
     </div>
-    <!-- Hero screenshot + floating testimonials -->
+    <!-- Hero screenshot + flanking testimonials -->
     <div class="max-w-6xl mx-auto px-6 md:px-12 pb-16 md:pb-24">
       <div class="relative max-w-4xl mx-auto">
         <img src="assets/hero.png" alt="jmux sidebar with grouped sessions alongside vim and Claude Code" class="w-full rounded-xl border border-border shadow-2xl shadow-black/50">
-        <div id="testimonials" class="absolute -bottom-6 -right-4 md:-right-8 lg:-right-16 w-72 md:w-80">
-          <a href="https://x.com/ravinwashere" target="_blank" rel="noopener" class="testimonial-card bg-[#111520]/90 backdrop-blur-md border border-border rounded-xl px-5 py-4 block hover:border-[#3b4252] transition-colors shadow-2xl shadow-black/60" data-testimonial>
+
+        <!-- Left testimonial (desktop) -->
+        <div class="hidden lg:block absolute top-[15%] right-full -mr-8 w-72 testimonial-left" style="animation-delay: 0.3s">
+          <div class="testimonial-float-1 bg-[#111520]/90 backdrop-blur-md border border-border rounded-xl px-5 py-4 shadow-2xl shadow-black/60">
+            <div class="flex items-start mb-3">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full bg-[#252b3a] flex items-center justify-center text-sm font-semibold text-accent">M</div>
+                <div>
+                  <p class="text-sm font-semibold text-white leading-tight">Mouad</p>
+                </div>
+              </div>
+            </div>
+            <p class="text-xs md:text-sm text-[#c4c9d4] leading-relaxed">"I have used tmux for 5 years — jmux makes me 5x more efficient."</p>
+          </div>
+        </div>
+
+        <!-- Right testimonials (desktop) -->
+        <div class="hidden lg:flex flex-col gap-4 absolute top-[8%] left-full -ml-8 w-72">
+          <div class="testimonial-right" style="animation-delay: 0.5s">
+            <a href="https://x.com/ravinwashere" target="_blank" rel="noopener" class="testimonial-float-2 bg-[#111520]/90 backdrop-blur-md border border-border rounded-xl px-5 py-4 block hover:border-[#3b4252] transition-colors shadow-2xl shadow-black/60">
+              <div class="flex items-start justify-between mb-3">
+                <div class="flex items-center gap-3">
+                  <img src="assets/testimonial-ravinwashere.jpg" alt="@ravinwashere" class="w-9 h-9 rounded-full">
+                  <div>
+                    <p class="text-sm font-semibold text-white leading-tight">Ravin</p>
+                    <p class="text-xs text-[#71717a]">@ravinwashere</p>
+                  </div>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#71717a"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+              </div>
+              <p class="text-xs md:text-sm text-[#c4c9d4] leading-relaxed">"The attention flags, clean sidebar, and quick session switching have genuinely made my workflow much smoother and less chaotic. Really solid and lightweight tool."</p>
+            </a>
+          </div>
+          <div class="testimonial-right" style="animation-delay: 0.7s">
+            <div class="testimonial-float-3 bg-[#111520]/90 backdrop-blur-md border border-border rounded-xl px-5 py-4 shadow-2xl shadow-black/60">
+              <div class="flex items-start mb-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-full bg-[#252b3a] flex items-center justify-center text-sm font-semibold text-accent">A</div>
+                  <div>
+                    <p class="text-sm font-semibold text-white leading-tight">Azzeddine</p>
+                  </div>
+                </div>
+              </div>
+              <p class="text-xs md:text-sm text-[#c4c9d4] leading-relaxed">"Wow"</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mobile: stacked below screenshot -->
+        <div class="flex flex-col gap-3 mt-6 lg:hidden">
+          <div class="bg-[#111520]/90 backdrop-blur-md border border-border rounded-xl px-5 py-4 shadow-2xl shadow-black/60">
+            <div class="flex items-start mb-3">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full bg-[#252b3a] flex items-center justify-center text-sm font-semibold text-accent">M</div>
+                <div><p class="text-sm font-semibold text-white leading-tight">Mouad</p></div>
+              </div>
+            </div>
+            <p class="text-xs text-[#c4c9d4] leading-relaxed">"I have used tmux for 5 years — jmux makes me 5x more efficient."</p>
+          </div>
+          <a href="https://x.com/ravinwashere" target="_blank" rel="noopener" class="bg-[#111520]/90 backdrop-blur-md border border-border rounded-xl px-5 py-4 block hover:border-[#3b4252] transition-colors shadow-2xl shadow-black/60">
             <div class="flex items-start justify-between mb-3">
               <div class="flex items-center gap-3">
                 <img src="assets/testimonial-ravinwashere.jpg" alt="@ravinwashere" class="w-9 h-9 rounded-full">
@@ -237,9 +308,19 @@
               </div>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="#71717a"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
             </div>
-            <p class="text-xs md:text-sm text-[#c4c9d4] leading-relaxed">"The attention flags, clean sidebar, and quick session switching have genuinely made my workflow much smoother and less chaotic. Really solid and lightweight tool."</p>
+            <p class="text-xs text-[#c4c9d4] leading-relaxed">"The attention flags, clean sidebar, and quick session switching have genuinely made my workflow much smoother and less chaotic. Really solid and lightweight tool."</p>
           </a>
+          <div class="bg-[#111520]/90 backdrop-blur-md border border-border rounded-xl px-5 py-4 shadow-2xl shadow-black/60">
+            <div class="flex items-start mb-3">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full bg-[#252b3a] flex items-center justify-center text-sm font-semibold text-accent">A</div>
+                <div><p class="text-sm font-semibold text-white leading-tight">Azzeddine</p></div>
+              </div>
+            </div>
+            <p class="text-xs text-[#c4c9d4] leading-relaxed">"Wow"</p>
+          </div>
         </div>
+
       </div>
     </div>
 
@@ -740,30 +821,6 @@
     requestAnimationFrame(function(now) { lastTime = now; tick(now); });
   })();
 
-  (function() {
-    var cards = document.querySelectorAll('[data-testimonial]');
-    if (cards.length > 1) {
-      var current = 0;
-      cards.forEach(function(c, i) { if (i > 0) c.style.display = 'none'; });
-      setInterval(function() {
-        var prev = cards[current];
-        current = (current + 1) % cards.length;
-        var next = cards[current];
-        prev.style.animation = 'none';
-        prev.style.opacity = '1';
-        prev.style.transition = 'opacity 0.4s ease';
-        prev.style.opacity = '0';
-        setTimeout(function() {
-          prev.style.display = 'none';
-          next.style.display = 'block';
-          next.style.opacity = '0';
-          next.style.animation = 'none';
-          next.style.transition = 'opacity 0.4s ease';
-          requestAnimationFrame(function() { next.style.opacity = '1'; });
-        }, 400);
-      }, 6000);
-    }
-  })();
 
   (function() {
     var observer = new IntersectionObserver(function(entries) {
