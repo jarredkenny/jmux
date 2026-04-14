@@ -99,10 +99,14 @@ The sidebar automatically detects worktrees and groups sessions by project. Each
 
 Connect [Linear](https://linear.app) and [GitLab](https://about.gitlab.com) to see your issues, merge requests, and pipeline status directly in jmux. The info panel docks to the right side of the terminal with tabbed views.
 
+![jmux info panel showing Linear issues grouped by team and status](docs/screenshots/linear-issues.png)
+
 **What you get:**
 - **My Issues** — issues assigned to you, grouped by team and status, sorted by priority
 - **My MRs** — merge requests you authored, with pipeline status and approval counts
 - **Review** — MRs awaiting your review
+
+![jmux info panel showing GitLab merge requests with pipeline status](docs/screenshots/gitlab-mrs.png)
 
 Each session automatically links to its branch's MR and associated issues. Select an issue and press `n` to spin up a new worktree session with the agent pre-loaded with the issue context. Press `o` to open anything in your browser, `s` to update an issue's status, `a` to approve an MR — all without leaving the terminal.
 
