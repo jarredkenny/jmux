@@ -4,9 +4,9 @@
 
 # jmux
 
-**From triage to deployment without leaving your terminal.**
+**The terminal workspace for running coding agents in parallel.**
 
-jmux integrates [Linear](https://linear.app) and [GitLab](https://about.gitlab.com) into a tmux-based workspace. Pick an issue, spin up a session with an agent, review the diff, approve the MR — all from one terminal.
+Run Claude Code, Codex, or any agent across isolated sessions — jmux shows you which are working, which finished, and which need your review. Optionally connect [Linear](https://linear.app) and [GitLab](https://about.gitlab.com) to go from triage to deployment without leaving your terminal.
 
 [![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
 [![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)
@@ -28,9 +28,9 @@ Try it without credentials: `jmux --demo` runs with mock data so you can explore
 
 ---
 
-## The Workflow
+## Linear & GitLab Integration
 
-Open the info panel (`Ctrl-a g`) and you're looking at your Linear issues grouped by team and status, your GitLab MRs with pipeline state, and your review queue — all in tabbed views alongside an integrated diff viewer.
+Connect Linear and GitLab to manage your workflow from the terminal. Open the info panel (`Ctrl-a g`) to see your issues grouped by team and status, MRs with pipeline state, and your review queue — all in tabbed views alongside an integrated diff viewer.
 
 ![jmux info panel showing Linear issues grouped by team and status](docs/screenshots/linear-issues.png)
 
