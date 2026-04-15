@@ -14,6 +14,7 @@ import {
   type NewSessionResult,
   type NewSessionProviders,
 } from "./new-session-modal";
+import { CreateIssueModal, type CreateIssueResult } from "./create-issue-modal";
 import type { CellAttrs } from "./cell-grid";
 import { createGrid } from "./cell-grid";
 import type { Modal } from "./modal";
@@ -394,8 +395,9 @@ const sessionState = new SessionState(sessionStatePath);
 const pollCoordinator = new PollCoordinator({
   codeHost: adapters.codeHost,
   issueTracker: adapters.issueTracker,
-  onUpdate: (_sessionName) => {
+  onUpdate: (sessionName) => {
     sidebar.setSessionContexts(pollCoordinator.getAllContexts());
+    if (sessionName === "__global__") refreshTeams();
     scheduleRender();
   },
   getSessionDir: (name) => {
@@ -408,10 +410,21 @@ const pollCoordinator = new PollCoordinator({
 initAdapters().then(() => {
   pollCoordinator.start();
   pollCoordinator.pollGlobal();
+  refreshTeams();
   scheduleRender();
 }).catch((e) => {
   logError("jmux", `adapter init failed, panel running without adapters: ${(e as Error).message}`);
 });
+
+let cachedTeams: Array<{ id: string; name: string }> = [];
+
+async function refreshTeams(): Promise<void> {
+  if (adapters.issueTracker?.authState === "ok") {
+    try {
+      cachedTeams = await adapters.issueTracker.getTeams();
+    } catch {}
+  }
+}
 
 function setDiffFocus(focused: boolean): void {
   diffPanelFocused = focused;
@@ -872,8 +885,40 @@ function clearSessionIndicators(): void {
   }
 }
 
-// Placeholder — wired in Task 6
-function openCreateIssueModal(): void {}
+function resolvePreselectedTeamId(): string | null {
+  const workflow = configStore.config.issueWorkflow;
+  if (!workflow?.teamRepoMap) return null;
+  const sessionDir = sessionDetailsCache.get(currentSessionId ?? "")?.directory ?? null;
+  if (!sessionDir) return null;
+
+  for (const [teamName, repoDir] of Object.entries(workflow.teamRepoMap)) {
+    const expandedDir = repoDir.replace("~", homedir());
+    if (sessionDir === expandedDir || sessionDir.startsWith(expandedDir + "/")) {
+      const team = cachedTeams.find((t) => t.name === teamName);
+      if (team) return team.id;
+    }
+  }
+  return null;
+}
+
+function openCreateIssueModal(): void {
+  if (!adapters.issueTracker || adapters.issueTracker.authState !== "ok") return;
+  if (cachedTeams.length === 0) return;
+
+  const preselectedTeamId = resolvePreselectedTeamId();
+  const modal = new CreateIssueModal({ teams: cachedTeams, preselectedTeamId });
+  modal.open();
+  openModal(modal, async (value) => {
+    const result = value as CreateIssueResult;
+    try {
+      const issue = await adapters.issueTracker!.createIssue(result.teamId, result.title, result.description);
+      pollCoordinator.addGlobalIssue(issue);
+      scheduleRender();
+    } catch (e) {
+      logError("jmux", `failed to create issue: ${(e as Error).message}`);
+    }
+  });
+}
 
 // --- Input Router ---
 
@@ -1636,6 +1681,13 @@ function buildPaletteCommands(): PaletteCommand[] {
     category: "setting",
   });
 
+  // Create issue
+  if (adapters.issueTracker?.authState === "ok" && cachedTeams.length > 0) {
+    commands.push(
+      { id: "new-issue", label: "New Issue", category: "issue" },
+    );
+  }
+
   // Link commands
   if (adapters.issueTracker?.authState === "ok") {
     commands.push(
@@ -2039,6 +2091,10 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
   if (!ptyClientName) return;
 
   switch (commandId) {
+    case "new-issue": {
+      openCreateIssueModal();
+      return;
+    }
     case "new-session": {
       // Open modal immediately with whatever is in the cache (could be empty
       // on a cold first start). Kick off a background rescan and update the
