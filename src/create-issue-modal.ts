@@ -72,7 +72,9 @@ export class CreateIssueModal {
 
   getGrid(width: number): CellGrid {
     if (this.currentInner instanceof TextAreaModal) {
-      return this.currentInner.getGrid(width, 14);
+      const termRows = process.stdout.rows || 24;
+      const maxHeight = Math.max(10, Math.round(termRows * 0.6));
+      return this.currentInner.getGrid(width, maxHeight);
     }
     return this.currentInner!.getGrid(width);
   }

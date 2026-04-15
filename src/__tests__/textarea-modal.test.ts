@@ -309,4 +309,38 @@ describe("TextAreaModal", () => {
     modal.handleInput("Y");
     expect(modal.getValue()).toBe("XabcY");
   });
+
+  test("pasting multi-character string inserts all characters", () => {
+    const modal = new TextAreaModal({ header: "Description" });
+    modal.open();
+
+    modal.handleInput("hello world");
+
+    expect(modal.getValue()).toBe("hello world");
+  });
+
+  test("pasting multi-line string inserts with line breaks", () => {
+    const modal = new TextAreaModal({ header: "Description" });
+    modal.open();
+
+    modal.handleInput("line one\nline two\nline three");
+
+    expect(modal.getValue()).toBe("line one\nline two\nline three");
+  });
+
+  test("pasting into existing content inserts at cursor position", () => {
+    const modal = new TextAreaModal({ header: "Description" });
+    modal.open();
+
+    modal.handleInput("ac");
+    modal.handleInput("\x1b[D"); // left once, cursor between a and c
+    modal.handleInput("b");
+
+    expect(modal.getValue()).toBe("abc");
+
+    modal.handleInput("\x01"); // Ctrl-A to start
+    modal.handleInput("PASTED ");
+
+    expect(modal.getValue()).toBe("PASTED abc");
+  });
 });

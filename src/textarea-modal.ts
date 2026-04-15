@@ -190,11 +190,21 @@ export class TextAreaModal {
       return { type: "consumed" };
     }
 
-    // Printable characters
-    if (data.length === 1 && data >= " " && data <= "~") {
-      const line = this.lines[this.cursorRow];
-      this.lines[this.cursorRow] = line.slice(0, this.cursorCol) + data + line.slice(this.cursorCol);
-      this.cursorCol++;
+    // Printable characters (single keystroke or pasted text)
+    if (data.length >= 1 && data[0] >= " " && data[0] <= "~") {
+      for (const ch of data) {
+        if (ch === "\n" || ch === "\r") {
+          const line = this.lines[this.cursorRow];
+          this.lines[this.cursorRow] = line.slice(0, this.cursorCol);
+          this.lines.splice(this.cursorRow + 1, 0, line.slice(this.cursorCol));
+          this.cursorRow++;
+          this.cursorCol = 0;
+        } else if (ch >= " " && ch <= "~") {
+          const line = this.lines[this.cursorRow];
+          this.lines[this.cursorRow] = line.slice(0, this.cursorCol) + ch + line.slice(this.cursorCol);
+          this.cursorCol++;
+        }
+      }
       return { type: "consumed" };
     }
 
