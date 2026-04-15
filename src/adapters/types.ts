@@ -14,6 +14,7 @@ export interface MergeRequest {
   webUrl: string;
   author?: string;
   reviewers?: string[];
+  createdAt?: number;  // epoch ms
   updatedAt?: number;  // epoch ms
 }
 

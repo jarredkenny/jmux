@@ -202,6 +202,7 @@ export class GitLabAdapter implements CodeHostAdapter {
       webUrl: raw.web_url ?? "",
       author: raw.author?.username ?? raw.author?.name ?? undefined,
       reviewers: Array.isArray(raw.reviewers) ? raw.reviewers.map((r: any) => r.username ?? r.name) : undefined,
+      createdAt: raw.created_at ? new Date(raw.created_at).getTime() : undefined,
       updatedAt: raw.updated_at ? new Date(raw.updated_at).getTime() : undefined,
     };
   }
