@@ -145,6 +145,22 @@ export class LinearAdapter implements IssueTrackerAdapter {
     await this.graphql(mutation, { id: issueId, stateId: targetState.id });
   }
 
+  async createIssue(teamId: string, title: string, description: string): Promise<Issue> {
+    const mutation = `
+      mutation($teamId: String!, $title: String!, $description: String!) {
+        issueCreate(input: { teamId: $teamId, title: $title, description: $description }) {
+          success
+          issue { ${ISSUE_FIELDS} }
+        }
+      }
+    `;
+    const resp = await this.graphql(mutation, { teamId, title, description });
+    if (!resp?.data?.issueCreate?.success || !resp?.data?.issueCreate?.issue) {
+      throw new Error("Failed to create issue");
+    }
+    return this.mapIssue(resp.data.issueCreate.issue);
+  }
+
   private mapIssue(raw: any): Issue {
     return {
       id: raw.id ?? "",

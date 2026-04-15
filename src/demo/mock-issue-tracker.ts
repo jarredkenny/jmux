@@ -75,6 +75,24 @@ export class DemoIssueTrackerAdapter implements IssueTrackerAdapter {
     // byBranch holds a reference to the same object, so it's already updated
   }
 
+  async createIssue(teamId: string, title: string, description: string): Promise<Issue> {
+    const id = `demo-${Date.now()}`;
+    const identifier = `DEMO-${this.issues.size + 1}`;
+    const issue: Issue = {
+      id,
+      identifier,
+      title,
+      description,
+      status: "Backlog",
+      assignee: null,
+      linkedMrUrls: [],
+      webUrl: "",
+      team: teamId,
+    };
+    this.issues.set(id, issue);
+    return { ...issue, linkedMrUrls: [] };
+  }
+
   async searchIssues(query: string): Promise<Issue[]> {
     const lower = query.toLowerCase();
     const results: Issue[] = [];

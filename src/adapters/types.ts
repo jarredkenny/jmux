@@ -87,6 +87,7 @@ export interface IssueTrackerAdapter {
   getAvailableStatuses(issueId: string): Promise<string[]>;
   openInBrowser(issueId: string): void;
   updateStatus(issueId: string, status: string): Promise<void>;
+  createIssue(teamId: string, title: string, description: string): Promise<Issue>;
   searchIssues(query: string): Promise<Issue[]>;
   getMyIssues(): Promise<Issue[]>;
   getTeams(): Promise<Array<{ id: string; name: string }>>;
