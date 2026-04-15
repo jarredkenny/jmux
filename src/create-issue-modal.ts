@@ -135,7 +135,7 @@ export class CreateIssueModal {
           header: "New Issue",
           subheader: this.breadcrumb(),
         });
-        (this.currentInner as TextAreaModal).open();
+        this.currentInner.open();
         return { type: "consumed" };
       }
 

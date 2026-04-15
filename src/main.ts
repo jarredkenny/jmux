@@ -417,12 +417,17 @@ initAdapters().then(() => {
 });
 
 let cachedTeams: Array<{ id: string; name: string }> = [];
+let lastTeamFetchMs = 0;
+const TEAM_REFRESH_INTERVAL_MS = 300_000; // 5 minutes
 
 async function refreshTeams(): Promise<void> {
-  if (adapters.issueTracker?.authState === "ok") {
-    try {
-      cachedTeams = await adapters.issueTracker.getTeams();
-    } catch {}
+  if (adapters.issueTracker?.authState !== "ok") return;
+  if (Date.now() - lastTeamFetchMs < TEAM_REFRESH_INTERVAL_MS && cachedTeams.length > 0) return;
+  try {
+    cachedTeams = await adapters.issueTracker.getTeams();
+    lastTeamFetchMs = Date.now();
+  } catch (e) {
+    logError("jmux", `team fetch failed: ${(e as Error).message}`);
   }
 }
 
