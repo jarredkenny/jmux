@@ -872,6 +872,9 @@ function clearSessionIndicators(): void {
   }
 }
 
+// Placeholder — wired in Task 6
+function openCreateIssueModal(): void {}
+
 // --- Input Router ---
 
 const inputRouter = new InputRouter(
@@ -1368,6 +1371,13 @@ const inputRouter = new InputRouter(
     onPanelAction: (key) => {
       const view = panelViews.find((v) => v.id === infoPanel.activeTab);
       if (!view) return;
+
+      // Create issue — doesn't require a selected item
+      if (key === "c" && view.source === "issues" && adapters.issueTracker?.authState === "ok") {
+        openCreateIssueModal();
+        return;
+      }
+
       const viewState = viewStates.get(view.id);
       if (!viewState) return;
       const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
@@ -1392,7 +1402,7 @@ const inputRouter = new InputRouter(
       if (selected.item.type === "issue" && adapters.issueTracker) {
         const issue = selected.item.raw as import("./adapters/types").Issue;
         if (key === "o") adapters.issueTracker.openInBrowser(issue.id);
-        if (key === "c") {
+        if (key === "y") {
           // Copy issue prompt to clipboard via OSC 52
           const prompt = `You are working on ${issue.identifier}: ${issue.title}\n\n${issue.description ?? ""}\n\nStart by understanding the relevant code, then propose an approach.`;
           const encoded = Buffer.from(prompt).toString("base64");

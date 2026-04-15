@@ -335,7 +335,7 @@ export class InputRouter {
         if (data === "n" && this.opts.onPanelCreateSession) { this.opts.onPanelCreateSession(); return; }
         if (data === "l" && this.opts.onPanelLinkToSession) { this.opts.onPanelLinkToSession(); return; }
       }
-      if (this.panelTabsActive && this.opts.onPanelAction && (data === "o" || data === "r" || data === "a" || data === "s" || data === "c")) {
+      if (this.panelTabsActive && this.opts.onPanelAction && (data === "o" || data === "r" || data === "a" || data === "s" || data === "y" || data === "c")) {
         this.opts.onPanelAction(data);
         return;
       }

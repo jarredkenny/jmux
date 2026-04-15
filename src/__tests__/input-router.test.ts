@@ -489,6 +489,23 @@ describe("InfoPanel tab switching", () => {
     expect(actionKey).toBe("o");
   });
 
+  test("action key 'y' triggers onPanelAction when panel focused and tabs active", () => {
+    let actionKey = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onPanelAction: (key) => { actionKey = key; },
+      },
+      true,
+    );
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    router.handleInput("y");
+    expect(actionKey).toBe("y");
+  });
+
   test("action key 's' triggers onPanelAction when panel focused and tabs active", () => {
     let actionKey = "";
     const router = new InputRouter(
