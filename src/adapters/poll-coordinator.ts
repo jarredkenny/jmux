@@ -56,6 +56,16 @@ export class PollCoordinator {
   getGlobalMrs(): MergeRequest[] { return this.globalMrs; }
   getGlobalReviewMrs(): MergeRequest[] { return this.globalReviewMrs; }
 
+  addGlobalIssue(issue: Issue): void {
+    const idx = this.globalIssues.findIndex((i) => i.id === issue.id);
+    if (idx >= 0) {
+      this.globalIssues[idx] = issue;
+    } else {
+      this.globalIssues.unshift(issue);
+    }
+    this.opts.onUpdate("__global__");
+  }
+
   constructor(opts: PollCoordinatorOptions) {
     this.opts = opts;
   }
