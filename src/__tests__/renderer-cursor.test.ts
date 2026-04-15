@@ -32,24 +32,25 @@ describe("Renderer cursor repositioning", () => {
     process.stdout.write = originalWrite;
   });
 
-  test("repositions cursor after non-ASCII width-1 characters to prevent drift", () => {
-    // Non-ASCII characters (including box-drawing) trigger repositioning
-    // to prevent accumulated drift from ambiguous-width characters.
-    // For box-drawing chars (universally width 1), the CUP is a no-op
-    // that adds no visual artifact but prevents drift if a preceding
-    // ambiguous char caused the terminal cursor to advance differently.
+  test("does NOT reposition cursor after width-1 non-ASCII characters", () => {
+    // Width-1 non-ASCII characters (box-drawing, bullets, arrows, Latin
+    // Extended) are emitted without CUP sequences so the terminal sees
+    // contiguous text runs.  This is critical for URL detection — terminal
+    // emulators match URLs across contiguous output, and CUPs after every
+    // non-ASCII char broke that matching.
     const grid = createGrid(5, 1);
     grid.cells[0][0] = makeCell("a");
-    grid.cells[0][1] = makeCell("│");  // U+2502, non-ASCII → reposition
+    grid.cells[0][1] = makeCell("│");  // U+2502, width 1 → no reposition
     grid.cells[0][2] = makeCell("b");
-    grid.cells[0][3] = makeCell("─");  // U+2500, non-ASCII → reposition
+    grid.cells[0][3] = makeCell("─");  // U+2500, width 1 → no reposition
     grid.cells[0][4] = makeCell("c");
 
     renderer.render(grid, { x: 0, y: 0 }, null);
 
-    // After "│" at col 2 → reposition to col 3; after "─" at col 4 → reposition to col 5
-    expect(captured).toContain("\x1b[1;3H");
-    expect(captured).toContain("\x1b[1;5H");
+    // No CUP sequences between characters — all emitted contiguously
+    expect(captured).not.toContain("\x1b[1;3H");
+    expect(captured).not.toContain("\x1b[1;5H");
+    expect(captured).toContain("a│b─c");
   });
 
   test("DOES reposition cursor after genuinely wide (width=2) characters", () => {
@@ -67,34 +68,33 @@ describe("Renderer cursor repositioning", () => {
     expect(captured).toContain("\x1b[1;3H");
   });
 
-  test("repositions after ambiguous-width symbols like U+2699", () => {
-    // Characters like ⚙ (U+2699) may be width-2 in some terminals
-    // but width-1 in xterm.js. Repositioning after them prevents
-    // drift that would corrupt tmux pane borders on the same line.
+  test("does NOT reposition after width-1 symbols like U+2699", () => {
+    // Characters like ⚙ (U+2699) are width 1 in xterm.js and most
+    // terminals.  While some terminals may render them wider, the
+    // cost of repositioning (breaking URL detection) outweighs the
+    // benefit of correcting rare width disagreements.
     const grid = createGrid(3, 1);
     grid.cells[0][0] = makeCell("a");
-    grid.cells[0][1] = makeCell("⚙");  // U+2699, non-ASCII → reposition
+    grid.cells[0][1] = makeCell("⚙");  // U+2699, width 1 → no reposition
     grid.cells[0][2] = makeCell("b");
 
     renderer.render(grid, { x: 0, y: 0 }, null);
 
-    // After "⚙" at col 2 → reposition to col 3
-    expect(captured).toContain("\x1b[1;3H");
+    expect(captured).not.toContain("\x1b[1;3H");
+    expect(captured).toContain("a⚙b");
   });
 
-  test("repositions after non-ASCII width-1 characters like é", () => {
-    // Even characters like é (U+00E9) that are universally width 1
-    // trigger repositioning because they're non-ASCII.  The CUP is
-    // a no-op for these (no drift to correct) but the overhead is
-    // negligible and keeps the rule simple: non-ASCII → reposition.
+  test("does NOT reposition after Latin Extended characters like é", () => {
+    // Characters like é (U+00E9) are universally width 1 in every
+    // terminal.  No repositioning needed.
     const grid = createGrid(3, 1);
     grid.cells[0][0] = makeCell("a");
-    grid.cells[0][1] = makeCell("é");  // U+00E9, non-ASCII → reposition
+    grid.cells[0][1] = makeCell("é");  // U+00E9, width 1 → no reposition
     grid.cells[0][2] = makeCell("b");
 
     renderer.render(grid, { x: 0, y: 0 }, null);
 
-    // After "é" at col 2 → reposition to col 3
-    expect(captured).toContain("\x1b[1;3H");
+    expect(captured).not.toContain("\x1b[1;3H");
+    expect(captured).toContain("aéb");
   });
 });

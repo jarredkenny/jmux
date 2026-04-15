@@ -446,17 +446,16 @@ export class Renderer {
         buf.push(cell.char);
         col += cell.width;
 
-        // Reposition cursor after non-ASCII characters to prevent
-        // drift from width disagreements between xterm.js and the
-        // real terminal.  ASCII (< 0x80) is always width 1 everywhere;
-        // non-ASCII chars (symbols, emoji, box-drawing) may differ
-        // between xterm.js and the terminal.  Repositioning forces
-        // alignment to xterm.js's model — this may cause a minor
-        // artifact at a specific ambiguous-width character (its
-        // second half overwritten) but prevents the accumulated
-        // drift that corrupts tmux pane borders and line layout.
-        const cp = cell.char.codePointAt(0) ?? 0;
-        if (col <= grid.cols && cp >= 0x80) {
+        // Reposition cursor after wide characters to prevent drift
+        // from width disagreements between xterm.js and the real
+        // terminal.  Only characters with display width >= 2 (CJK,
+        // emoji) can cause drift — width-1 non-ASCII (box-drawing,
+        // bullets, arrows, Latin Extended) are unambiguous and don't
+        // need correction.  Repositioning after every non-ASCII char
+        // (cp >= 0x80) injected hundreds of CUP sequences per frame,
+        // which broke URL detection in terminal emulators that track
+        // text segments separated by cursor movement.
+        if (col <= grid.cols && cell.width >= 2) {
           buf.push(`\x1b[${y + 1};${col}H`);
         }
       }
@@ -477,6 +476,12 @@ export class Renderer {
       );
       buf.push("\x1b[?25h");
     }
+
+    // Re-assert mouse tracking modes every frame.  Something is
+    // corrupting terminal state over time, causing URL detection
+    // (Cmd+Shift+Click) to stop working.  Re-sending these modes
+    // in every frame's atomic write prevents drift.
+    buf.push("\x1b[?1000h\x1b[?1003h\x1b[?1006h");
 
     process.stdout.write(buf.join(""));
   }
