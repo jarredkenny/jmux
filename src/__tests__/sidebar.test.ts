@@ -116,7 +116,7 @@ describe("Sidebar", () => {
     expect(detailRow).not.toContain("Code/work");
   });
 
-  test("ungrouped sessions show directory on detail line", () => {
+  test("ungrouped sessions show branch on detail line", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(
       makeSessions([
@@ -129,7 +129,6 @@ describe("Sidebar", () => {
       { length: SIDEBAR_WIDTH },
       (_, i) => grid.cells[3][i].char,
     ).join("");
-    expect(detailRow).toContain("~/mydir");
     expect(detailRow).toContain("dev");
   });
 
@@ -214,26 +213,6 @@ describe("Sidebar", () => {
     expect(sidebar.getSessionByRow(4)?.name).toBe("api");
     // Row 5: first session detail row → api
     expect(sidebar.getSessionByRow(5)?.name).toBe("api");
-  });
-
-  test("shows window count", () => {
-    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
-    const sessions = makeSessions([{ name: "main" }]);
-    sessions[0].windowCount = 5;
-    sidebar.updateSessions(sessions);
-    const grid = sidebar.getGrid();
-    let found = false;
-    for (let r = 2; r < 10; r++) {
-      const text = Array.from(
-        { length: SIDEBAR_WIDTH },
-        (_, i) => grid.cells[r][i].char,
-      ).join("");
-      if (text.includes("5w")) {
-        found = true;
-        break;
-      }
-    }
-    expect(found).toBe(true);
   });
 
   test("scrolls to show active session when it overflows", () => {
@@ -757,21 +736,24 @@ function makeContexts(
   const map = new Map<string, SessionContext>();
   for (const e of entries) {
     const mrs: Array<import("../adapters/types").MergeRequest & { source: import("../adapters/types").LinkSource }> = [];
+    const now = Date.now();
     if (e.pipelineState) {
       mrs.push({
-        id: "1", title: "Test", status: "open",
+        id: "proj:1", title: "Test", status: "open",
         sourceBranch: "main", targetBranch: "main",
         pipeline: { state: e.pipelineState, webUrl: "" },
         approvals: { required: 0, current: 0 },
         webUrl: "", source: "branch",
+        createdAt: now,
       });
     }
     for (let i = 0; i < (e.mrCount ?? 0); i++) {
       mrs.push({
-        id: `mr-${i}`, title: `MR ${i}`, status: "open",
+        id: `proj:mr-${i}`, title: `MR ${i}`, status: "open",
         sourceBranch: "feat", targetBranch: "main",
         pipeline: null, approvals: { required: 0, current: 0 },
         webUrl: "", source: "manual",
+        createdAt: now - (e.mrCount! - i) * 1000,
       });
     }
     map.set(e.name, {
@@ -838,70 +820,76 @@ describe("Sidebar pipeline glyphs", () => {
     expect(allChars).not.toContain("✗");
   });
 
-  test("worst-state glyph is failed when mixed failed and running", () => {
+  test("pipeline glyph shows state of latest MR", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "api" }]));
-    // Manually build a context with two MRs: one running, one failed
     const ctx = makeContexts([{ name: "api", pipelineState: "running" }]);
     const existing = ctx.get("api")!;
+    // Add an older MR with failed pipeline
     existing.mrs.push({
-      id: "2", title: "Second", status: "open",
+      id: "proj:2", title: "Second", status: "open",
       sourceBranch: "feat", targetBranch: "main",
       pipeline: { state: "failed", webUrl: "" },
       approvals: { required: 0, current: 0 },
       webUrl: "", source: "manual",
+      createdAt: Date.now() - 10000, // older
     });
     sidebar.setSessionContexts(ctx);
     const grid = sidebar.getGrid();
     const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
-    expect(allChars).toContain("✗"); // failed takes priority over running
-    expect(allChars).not.toContain("⟳");
+    // Latest MR (proj:1 with createdAt: now) has running pipeline
+    expect(allChars).toContain("⟳");
   });
 });
 
-describe("Sidebar three-line rows", () => {
-  test("renders issue identifiers on third line", () => {
+describe("Sidebar inline link data", () => {
+  test("renders linear ID on name row", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "api" }]));
     sidebar.setSessionContexts(makeContexts([{
-      name: "api", issueIds: ["ENG-1234", "ENG-1235"], mrCount: 2,
+      name: "api", issueIds: ["ENG-1234"],
     }]));
     const grid = sidebar.getGrid();
-    const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
-    expect(allChars).toContain("ENG-1234");
-    expect(allChars).toContain("2M");
+    const nameRow = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[2][i].char,
+    ).join("");
+    expect(nameRow).toContain("ENG-1234");
+    expect(nameRow).toContain("api");
   });
 
-  test("truncates issue identifiers with +N", () => {
+  test("renders MR ID on detail row", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
-    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    sidebar.updateSessions(makeSessions([{ name: "api", gitBranch: "feat/x" }]));
     sidebar.setSessionContexts(makeContexts([{
-      name: "api", issueIds: ["ENG-1234", "ENG-1235", "ENG-1236", "ENG-1237"],
+      name: "api", pipelineState: "passed",
     }]));
     const grid = sidebar.getGrid();
-    const allChars = grid.cells.flatMap((row) => row.map((c) => c.char)).join("");
-    expect(allChars).toContain("+");
+    const detailRow = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[3][i].char,
+    ).join("");
+    expect(detailRow).toContain("!1");
+    expect(detailRow).toContain("✓");
   });
 
-  test("no third line when no link data", () => {
+  test("sessions always take 2 rows regardless of link data", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "api" }, { name: "other" }]));
-    sidebar.setSessionContexts(makeContexts([]));
-    // With no contexts, sessions should be 2 lines. Verify by checking row count used.
+    sidebar.setSessionContexts(makeContexts([{
+      name: "api", issueIds: ["ENG-1234"], mrCount: 2,
+    }]));
     const grid = sidebar.getGrid();
-    // Row 0-1: header, Row 2: session "api" name, Row 3: api detail, Row 4: spacer, Row 5: "other" name, Row 6: other detail
-    // If 3-line, "other" would start at row 6 instead of row 5
+    // Row 2: api name, Row 3: api detail, Row 4: spacer, Row 5: other name
     const row5text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[5][i].char).join("");
     expect(row5text).toContain("other");
   });
 
-  test("third line is not rendered when sessions have no link data but context map is non-empty", () => {
+  test("no link data shows clean 2-row session", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "api" }, { name: "other" }]));
-    // "api" has no issues or mrs, "other" has no context at all
-    sidebar.setSessionContexts(makeContexts([{ name: "api" }]));
     const grid = sidebar.getGrid();
-    // "other" should still start at row 5 (no third line for either session)
+    // Row 2: api name, Row 3: api detail, Row 4: spacer, Row 5: other name
     const row5text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[5][i].char).join("");
     expect(row5text).toContain("other");
   });
