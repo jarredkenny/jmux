@@ -2,6 +2,7 @@ import type { CacheTimerState, CellGrid, SessionInfo } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { SessionContext } from "./adapters/types";
+import { buildSessionView } from "./session-view";
 
 const HEADER_ROWS = 2; // "jmux" header + separator
 
@@ -77,14 +78,6 @@ const PIPELINE_GLYPH_COLORS: Record<string, CellAttrs> = {
 
 // --- Cache timer helpers ---
 
-const CACHE_TIMER_TTL = 300; // seconds
-
-function formatTimer(remaining: number): string {
-  const minutes = Math.floor(remaining / 60);
-  const seconds = remaining % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
 function cacheTimerAttrs(
   remaining: number,
   isActive: boolean,
@@ -141,7 +134,7 @@ function getSubdirectory(dir: string, groupLabel: string): string | null {
 
 type RenderItem =
   | { type: "group-header"; label: string; collapsed: boolean; sessionCount: number }
-  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string; hasLinkData: boolean }
+  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string }
   | { type: "spacer" };
 
 const PINNED_GROUP_LABEL = "Pinned";
@@ -208,7 +201,7 @@ function buildRenderPlan(
     items.push({ type: "spacer" });
     if (!isCollapsed) {
       for (const idx of pinnedIndices) {
-        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: PINNED_GROUP_LABEL, hasLinkData: false });
+        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: PINNED_GROUP_LABEL });
         displayOrder.push(idx);
         items.push({ type: "spacer" });
       }
@@ -226,7 +219,7 @@ function buildRenderPlan(
     items.push({ type: "spacer" });
     if (!isCollapsed) {
       for (const idx of group.sessionIndices) {
-        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: group.label, hasLinkData: false });
+        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: group.label });
         displayOrder.push(idx);
         items.push({ type: "spacer" });
       }
@@ -234,7 +227,7 @@ function buildRenderPlan(
   }
 
   for (const idx of ungrouped) {
-    items.push({ type: "session", sessionIndex: idx, grouped: false, hasLinkData: false });
+    items.push({ type: "session", sessionIndex: idx, grouped: false });
     displayOrder.push(idx);
     items.push({ type: "spacer" });
   }
@@ -243,9 +236,8 @@ function buildRenderPlan(
 }
 
 function itemHeight(item: RenderItem): number {
-  if (item.type === "session") return item.hasLinkData ? 3 : 2;
-  if (item.type === "group-header") return 1;
-  return 1; // spacer
+  if (item.type === "session") return 2;
+  return 1; // group-header or spacer
 }
 
 // --- Sidebar class ---
@@ -280,22 +272,11 @@ export class Sidebar {
     this.height = height;
   }
 
-  private annotateLinkData(): void {
-    for (const item of this.items) {
-      if (item.type === "session") {
-        const name = this.sessions[item.sessionIndex]?.name;
-        const ctx = this.sessionContexts.get(name ?? "");
-        item.hasLinkData = !!(ctx && (ctx.issues.length > 0 || ctx.mrs.length > 0));
-      }
-    }
-  }
-
   updateSessions(sessions: SessionInfo[]): void {
     this.sessions = sessions;
     const { items, displayOrder } = buildRenderPlan(sessions, this.collapsedGroups, this.pinnedSessions);
     this.items = items;
     this.displayOrder = displayOrder;
-    this.annotateLinkData();
     this.clampScroll();
   }
 
@@ -312,7 +293,6 @@ export class Sidebar {
     const { items, displayOrder } = buildRenderPlan(this.sessions, this.collapsedGroups, this.pinnedSessions);
     this.items = items;
     this.displayOrder = displayOrder;
-    this.annotateLinkData();
     this.clampScroll();
   }
 
@@ -321,7 +301,6 @@ export class Sidebar {
     const { items, displayOrder } = buildRenderPlan(this.sessions, this.collapsedGroups, this.pinnedSessions);
     this.items = items;
     this.displayOrder = displayOrder;
-    this.annotateLinkData();
     this.clampScroll();
   }
 
@@ -347,7 +326,6 @@ export class Sidebar {
 
   setSessionContexts(contexts: Map<string, SessionContext>): void {
     this.sessionContexts = contexts;
-    this.annotateLinkData();
     this.clampScroll();
   }
 
@@ -559,60 +537,57 @@ export class Sidebar {
     if (!session) return;
 
     const detailRow = nameRow + 1;
-    const linkRow = nameRow + 2;
     const isActive = session.id === this.activeSessionId;
     const isHovered = !isActive && this.hoveredRow !== null &&
-      (this.hoveredRow === nameRow ||
-        this.hoveredRow === detailRow ||
-        (item.hasLinkData && this.hoveredRow === linkRow));
-    const hasActivity = this.activitySet.has(session.id);
+      (this.hoveredRow === nameRow || this.hoveredRow === detailRow);
+
+    // Build the view
+    const ctx = this.sessionContexts.get(session.name);
+    const timerState = this.cacheTimersEnabled ? this.cacheTimers.get(session.id) ?? undefined : undefined;
+    const view = buildSessionView(session, ctx, timerState, this.activitySet);
 
     // Map rows to session for click handling
     this.rowToSessionIndex.set(nameRow, sessionIdx);
     if (detailRow < this.height) {
       this.rowToSessionIndex.set(detailRow, sessionIdx);
     }
-    if (item.hasLinkData && linkRow < this.height) {
-      this.rowToSessionIndex.set(linkRow, sessionIdx);
-    }
 
-    // Paint background across all rows
+    // Paint background across both rows
     if (isActive || isHovered) {
       const bg = isActive ? ACTIVE_BG : HOVER_BG;
       const bgFill = " ".repeat(this.width);
       const bgAttrs: CellAttrs = { bg, bgMode: ColorMode.RGB };
       writeString(grid, nameRow, 0, bgFill, bgAttrs);
       if (detailRow < this.height) writeString(grid, detailRow, 0, bgFill, bgAttrs);
-      if (item.hasLinkData && linkRow < this.height) {
-        writeString(grid, linkRow, 0, bgFill, bgAttrs);
-      }
     }
 
-    // Active marker
+    // Active marker (left edge bar)
     if (isActive) {
       writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
       if (detailRow < this.height) writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
-      if (item.hasLinkData && linkRow < this.height) {
-        writeString(grid, linkRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
-      }
     }
 
-    // Indicator
-    if (session.attention) {
+    // Indicator (col 1)
+    if (view.hasAttention) {
       writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
-    } else if (hasActivity) {
+    } else if (view.hasActivity) {
       writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
     }
 
-    // Name row: name + window count
-    const windowCountStr = `${session.windowCount}w`;
-    const windowCountCol = this.width - windowCountStr.length - 1;
+    const bgAttrs: CellAttrs = isActive
+      ? { bg: ACTIVE_BG, bgMode: ColorMode.RGB }
+      : isHovered
+        ? { bg: HOVER_BG, bgMode: ColorMode.RGB }
+        : {};
+
+    // --- Row 1: session name (left) + linear ID (right) ---
     const nameStart = 3;
-    const hasPipelineGlyph = this.sessionContexts.size > 0;
-    const nameMaxLen = windowCountCol - 1 - nameStart - (hasPipelineGlyph ? 2 : 0);
-    let displayName = session.name;
+    const linearIdStr = view.linearId ?? "";
+    const linearIdCol = linearIdStr ? this.width - linearIdStr.length - 1 : this.width;
+    const nameMaxLen = (linearIdStr ? linearIdCol - 1 : this.width - 1) - nameStart;
+    let displayName = view.sessionName;
     if (displayName.length > nameMaxLen) {
-      displayName = displayName.slice(0, nameMaxLen - 1) + "\u2026";
+      displayName = displayName.slice(0, Math.max(0, nameMaxLen - 1)) + "\u2026";
     }
 
     const nameAttrs: CellAttrs = isActive
@@ -622,158 +597,64 @@ export class Sidebar {
         : { ...INACTIVE_NAME_ATTRS };
     writeString(grid, nameRow, nameStart, displayName, nameAttrs);
 
-    const bgAttrs: CellAttrs = isActive
-      ? { bg: ACTIVE_BG, bgMode: ColorMode.RGB }
-      : isHovered
-        ? { bg: HOVER_BG, bgMode: ColorMode.RGB }
-        : {};
-
-    // Pipeline glyph — worst state across all MRs
-    const ctx = this.sessionContexts.get(session.name);
-    const allPipelineStates = (ctx?.mrs ?? [])
-      .map((mr) => mr.pipeline?.state)
-      .filter((s): s is NonNullable<typeof s> => s != null);
-    const WORST_ORDER: Array<NonNullable<(typeof allPipelineStates)[number]>> = ["failed", "running", "pending", "passed", "canceled"];
-    let worstState: string | undefined;
-    for (const state of WORST_ORDER) {
-      if (allPipelineStates.includes(state)) { worstState = state; break; }
-    }
-    if (worstState) {
-      const glyph = PIPELINE_GLYPH_MAP[worstState];
-      const glyphAttrs = PIPELINE_GLYPH_COLORS[worstState];
-      if (glyph && glyphAttrs) {
-        const glyphCol = windowCountCol - 2;
-        if (glyphCol > nameStart) {
-          writeString(grid, nameRow, glyphCol, glyph, { ...glyphAttrs, ...bgAttrs });
-        }
-      }
+    if (linearIdStr) {
+      const linkAttrs: CellAttrs = { ...DIM_ATTRS, ...bgAttrs };
+      writeString(grid, nameRow, linearIdCol, linearIdStr, linkAttrs);
     }
 
-    const wcAttrs: CellAttrs = isActive
-      ? { ...DIM_ATTRS, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
-      : isHovered
-        ? { ...DIM_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
-        : DIM_ATTRS;
-    if (windowCountCol > nameStart) {
-      writeString(grid, nameRow, windowCountCol, windowCountStr, wcAttrs);
-    }
+    // --- Row 2: branch (left) + timer (center-right) + MR ID + pipeline glyph (right) ---
+    if (detailRow >= this.height) return;
 
-    // Detail line
     const detailAttrs: CellAttrs = isActive
       ? ACTIVE_DETAIL_ATTRS
       : isHovered
         ? HOVER_DETAIL_ATTRS
         : DIM_ATTRS;
 
-    // Compute timer text and width before laying out branch/directory
-    let timerText: string | null = null;
-    let timerRemaining = 0;
-    if (this.cacheTimersEnabled) {
-      const timerState = this.cacheTimers.get(session.id);
-      if (timerState) {
-        const elapsed = Math.floor((Date.now() - timerState.lastRequestTime) / 1000);
-        timerRemaining = Math.max(0, CACHE_TIMER_TTL - elapsed);
-        timerText = formatTimer(timerRemaining);
+    // Compute right-side content and its column positions (right to left)
+    let rightEdge = this.width - 1; // rightmost column available
+
+    // Pipeline glyph (rightmost)
+    let glyphStr: string | null = null;
+    let glyphAttrs: CellAttrs | null = null;
+    if (view.pipelineState) {
+      glyphStr = PIPELINE_GLYPH_MAP[view.pipelineState] ?? null;
+      glyphAttrs = PIPELINE_GLYPH_COLORS[view.pipelineState] ?? null;
+    }
+    if (glyphStr && glyphAttrs) {
+      writeString(grid, detailRow, rightEdge, glyphStr, { ...glyphAttrs, ...bgAttrs });
+      rightEdge -= 2; // glyph + 1 space before it
+    }
+
+    // MR ID (before glyph)
+    if (view.mrId) {
+      const mrCol = rightEdge - view.mrId.length + 1;
+      if (mrCol > nameStart) {
+        writeString(grid, detailRow, mrCol, view.mrId, { ...DIM_ATTRS, ...bgAttrs });
+        rightEdge = mrCol - 2; // 1 space gap before MR ID
       }
     }
 
-    const detailStart = 3;
+    // Timer (before MR ID)
+    if (view.timerText) {
+      const timerAttrs = cacheTimerAttrs(view.timerRemaining, isActive, isHovered);
+      const timerCol = rightEdge - view.timerText.length + 1;
+      if (timerCol > nameStart) {
+        writeString(grid, detailRow, timerCol, view.timerText, timerAttrs);
+        rightEdge = timerCol - 2;
+      }
+    }
 
-    if (item.grouped && item.groupLabel !== PINNED_GROUP_LABEL) {
-      if (timerText !== null) {
-        const timerAttrs = cacheTimerAttrs(timerRemaining, isActive, isHovered);
-        const timerCol = this.width - timerText.length - 1;
-        writeString(grid, detailRow, timerCol, timerText, timerAttrs);
-        if (session.gitBranch) {
-          const maxLen = timerCol - detailStart - 1;
-          let branch = session.gitBranch;
-          if (branch.length > maxLen) {
-            branch = branch.slice(0, maxLen - 1) + "\u2026";
-          }
-          if (maxLen > 0) {
-            writeString(grid, detailRow, detailStart, branch, detailAttrs);
-          }
-        }
-      } else if (session.gitBranch) {
-        const maxLen = this.width - detailStart - 1;
-        let branch = session.gitBranch;
+    // Branch (left, truncates to fit)
+    if (view.branch) {
+      const detailStart = 3;
+      const maxLen = rightEdge - detailStart + 1;
+      if (maxLen > 0) {
+        let branch = view.branch;
         if (branch.length > maxLen) {
-          branch = branch.slice(0, maxLen - 1) + "\u2026";
+          branch = branch.slice(0, Math.max(0, maxLen - 1)) + "\u2026";
         }
         writeString(grid, detailRow, detailStart, branch, detailAttrs);
-      }
-    } else {
-      if (timerText !== null) {
-        const timerAttrs = cacheTimerAttrs(timerRemaining, isActive, isHovered);
-        const timerCol = this.width - timerText.length - 1;
-        writeString(grid, detailRow, timerCol, timerText, timerAttrs);
-        // Drop branch when timer is present; show only directory
-        if (session.directory !== undefined) {
-          const dirMaxLen = timerCol - detailStart - 1;
-          let displayDir = session.directory;
-          if (displayDir.length > dirMaxLen) {
-            displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
-          }
-          if (dirMaxLen > 0) {
-            writeString(grid, detailRow, detailStart, displayDir, detailAttrs);
-          }
-        }
-      } else {
-        let branchCols = 0;
-        if (session.gitBranch) {
-          const branchCol = this.width - session.gitBranch.length - 1;
-          if (branchCol > detailStart + 1) {
-            writeString(grid, detailRow, branchCol, session.gitBranch, detailAttrs);
-            branchCols = session.gitBranch.length + 2;
-          }
-        }
-        if (session.directory !== undefined) {
-          const dirMaxLen = this.width - detailStart - branchCols - 1;
-          let displayDir = session.directory;
-          if (displayDir.length > dirMaxLen) {
-            displayDir = displayDir.slice(0, dirMaxLen - 1) + "\u2026";
-          }
-          writeString(grid, detailRow, detailStart, displayDir, detailAttrs);
-        }
-      }
-    }
-
-    // Link data line (line 3) — issue identifiers + MR count
-    if (item.hasLinkData && linkRow < this.height) {
-      this.rowToSessionIndex.set(linkRow, sessionIdx);
-      if (ctx) {
-        const identifiers = ctx.issues.map((i) => i.identifier);
-        const mrCountStr = ctx.mrs.length > 0 ? `${ctx.mrs.length}M` : "";
-        const mrCountCol = mrCountStr ? this.width - mrCountStr.length - 1 : this.width;
-        const maxIdentWidth = mrCountCol - 1 - detailStart;
-
-        let identStr = identifiers.join(" ");
-        if (identStr.length > maxIdentWidth && identifiers.length > 1) {
-          let shown = 0;
-          let len = 0;
-          for (const id of identifiers) {
-            const needed = len > 0 ? id.length + 1 : id.length;
-            const remaining = identifiers.length - shown - 1;
-            const suffixLen = remaining > 0 ? ` +${remaining}`.length : 0;
-            if (len + needed + suffixLen > maxIdentWidth) break;
-            len += needed;
-            shown++;
-          }
-          identStr = identifiers.slice(0, shown).join(" ");
-          if (shown < identifiers.length) {
-            identStr += ` +${identifiers.length - shown}`;
-          }
-        } else if (identStr.length > maxIdentWidth) {
-          identStr = identStr.slice(0, maxIdentWidth - 1) + "\u2026";
-        }
-
-        const linkAttrs: CellAttrs = isActive
-          ? { ...DIM_ATTRS, bg: ACTIVE_BG, bgMode: ColorMode.RGB }
-          : isHovered
-            ? { ...DIM_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
-            : DIM_ATTRS;
-        if (identStr) writeString(grid, linkRow, detailStart, identStr, linkAttrs);
-        if (mrCountStr) writeString(grid, linkRow, mrCountCol, mrCountStr, linkAttrs);
       }
     }
   }
