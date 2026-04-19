@@ -461,39 +461,39 @@ function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: n
   }
 }
 
+function writeAction(grid: CellGrid, row: number, col: number, key: string, label: string): number {
+  writeString(grid, row, col, key, DETAIL_KEY);
+  col += key.length;
+  writeString(grid, row, col, label, DETAIL_LABEL);
+  col += label.length;
+  return col;
+}
+
 function renderActionBar(grid: CellGrid, startRow: number, cols: number, item: RenderableItem | null): void {
   const pad = 2;
-  if (!item) return;
 
-  // Helper: write key+label pair, return updated column
-  function writeAction(row: number, col: number, key: string, label: string): number {
-    writeString(grid, row, col, key, DETAIL_KEY);
-    col += key.length;
-    writeString(grid, row, col, label, DETAIL_LABEL);
-    col += label.length;
-    return col;
-  }
+  // Row 2: utility actions (always shown, even when no item selected)
+  let utilCol = pad;
+  utilCol = writeAction(grid, startRow + 1, utilCol, "[/]", " Search  ");
+  utilCol = writeAction(grid, startRow + 1, utilCol, "[r]", " Refresh  ");
+
+  if (!item) return;
 
   if (item.type === "issue") {
     const nLabel = item.issueSessionState === "session" ? "Switch"
       : item.issueSessionState === "worktree" ? "Resume"
       : "Start";
     let col = pad;
-    col = writeAction(startRow, col, "[o]", " Open  ");
-    col = writeAction(startRow, col, "[n]", ` ${nLabel}  `);
-    col = writeAction(startRow, col, "[l]", " Link  ");
-    col = writeAction(startRow, col, "[s]", " Status  ");
-    col = writeAction(startRow, col, "[c]", " Copy  ");
-    col = writeAction(startRow, col, "[C]", " Create  ");
-    // Detail scroll hint
+    col = writeAction(grid, startRow, col, "[o]", " Open  ");
+    col = writeAction(grid, startRow, col, "[n]", ` ${nLabel}  `);
+    col = writeAction(grid, startRow, col, "[l]", " Link  ");
+    col = writeAction(grid, startRow, col, "[s]", " Status  ");
+    col = writeAction(grid, startRow, col, "[c]", " Copy  ");
+    col = writeAction(grid, startRow, col, "[C]", " Create  ");
   } else {
-    const mr = item.raw as MergeRequest;
     let col = pad;
-    col = writeAction(startRow, col, "[o]", " Open  ");
-    col = writeAction(startRow, col, "[l]", " Link  ");
-    col = writeAction(startRow, col, "[a]", " Approve  ");
-    if (mr.status === "draft") {
-      col = writeAction(startRow, col, "[r]", " Ready  ");
-    }
+    col = writeAction(grid, startRow, col, "[o]", " Open  ");
+    col = writeAction(grid, startRow, col, "[l]", " Link  ");
+    col = writeAction(grid, startRow, col, "[a]", " Approve  ");
   }
 }
