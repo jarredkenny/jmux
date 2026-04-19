@@ -214,32 +214,50 @@ export function renderView(
   const grid = createGrid(cols, rows);
   const showDetail = rows >= MIN_ROWS_FOR_DETAIL;
 
-  // Layout: list | separator | detail content | action bar
-  // Action bar is always pinned to the bottom 2 rows when detail is shown
+  // Filter bar: null = off, "" = bar visible but empty, "abc" = filtering
+  const filterBarActive = state.filterQuery !== null;
+  const filterBarRows = filterBarActive ? 1 : 0;
+
+  // Layout: [filter bar] | list | separator | detail content | action bar
   const actionBarStart = showDetail ? rows - ACTION_BAR_ROWS : rows;
-  // 50/50 split between list and detail (minus action bar + separator)
   const minDetailRows = 4;
-  const maxListRows = showDetail ? rows - minDetailRows - 1 - ACTION_BAR_ROWS : rows;
-  const listRows = showDetail ? Math.min(maxListRows, Math.max(3, Math.floor((rows - ACTION_BAR_ROWS - 1) * 0.5))) : rows;
-  const sepRow = showDetail ? listRows : rows;
+  const maxListRows = showDetail ? rows - minDetailRows - 1 - ACTION_BAR_ROWS - filterBarRows : rows - filterBarRows;
+  const listRows = showDetail ? Math.min(maxListRows, Math.max(3, Math.floor((rows - ACTION_BAR_ROWS - 1 - filterBarRows) * 0.5))) : rows - filterBarRows;
+  const listStartRow = filterBarRows;
+  const sepRow = showDetail ? listStartRow + listRows : rows;
   const detailStart = sepRow + 1;
   const detailRows = showDetail ? actionBarStart - detailStart : 0;
 
-  // Render list
-  let visibleIdx = 0;
-  for (let i = 0; i < nodes.length && visibleIdx < listRows + state.scrollOffset; i++) {
-    if (visibleIdx < state.scrollOffset) { visibleIdx++; continue; }
-    const row = visibleIdx - state.scrollOffset;
-    if (row >= listRows) break;
-    const node = nodes[i];
-    const isSelected = i === state.selectedIndex;
-
-    if (node.kind === "group") {
-      renderGroupHeader(grid, row, cols, node, isSelected);
-    } else {
-      renderItem(grid, row, cols, node.item, node.depth, isSelected);
+  // Render filter bar
+  if (filterBarActive) {
+    writeString(grid, 0, 1, "/", DETAIL_KEY);
+    if (state.filterQuery) {
+      writeString(grid, 0, 3, state.filterQuery.slice(0, cols - 4), TITLE_ATTRS);
     }
-    visibleIdx++;
+  }
+
+  // Render list
+  if (nodes.length === 0 && filterBarActive) {
+    // Empty state
+    const msg = "No matches";
+    const msgCol = Math.max(0, Math.floor((cols - msg.length) / 2));
+    writeString(grid, listStartRow + Math.floor(listRows / 2), msgCol, msg, DIM_ATTRS);
+  } else {
+    let visibleIdx = 0;
+    for (let i = 0; i < nodes.length && visibleIdx < listRows + state.scrollOffset; i++) {
+      if (visibleIdx < state.scrollOffset) { visibleIdx++; continue; }
+      const row = listStartRow + visibleIdx - state.scrollOffset;
+      if (row >= listStartRow + listRows) break;
+      const node = nodes[i];
+      const isSelected = i === state.selectedIndex;
+
+      if (node.kind === "group") {
+        renderGroupHeader(grid, row, cols, node, isSelected);
+      } else {
+        renderItem(grid, row, cols, node.item, node.depth, isSelected);
+      }
+      visibleIdx++;
+    }
   }
 
   // Render detail pane
