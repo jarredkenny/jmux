@@ -4,6 +4,7 @@ import { ColorMode } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { PanelView } from "./panel-view";
 import type { Issue, MergeRequest } from "./adapters/types";
+import { fuzzyMatch } from "./fuzzy";
 
 export type IssueSessionState = "none" | "worktree" | "session";
 
@@ -32,10 +33,11 @@ export interface ViewState {
   collapsedGroups: Set<string>;
   scrollOffset: number;
   detailScrollOffset: number;
+  filterQuery: string | null;  // null = filter off, "" = bar open but empty, "abc" = filtering
 }
 
 export function createViewState(): ViewState {
-  return { selectedIndex: 0, collapsedGroups: new Set(), scrollOffset: 0, detailScrollOffset: 0 };
+  return { selectedIndex: 0, collapsedGroups: new Set(), scrollOffset: 0, detailScrollOffset: 0, filterQuery: null };
 }
 
 // --- Data Pipeline ---
@@ -77,6 +79,18 @@ export function transformMrs(mrs: MergeRequest[], linkedIds: Set<string>): Rende
     updatedAt: mr.updatedAt ?? 0,
     raw: mr,
   }));
+}
+
+export function filterItems(items: RenderableItem[], query: string | null): RenderableItem[] {
+  if (!query) return items;
+  const scored: { item: RenderableItem; score: number }[] = [];
+  for (const item of items) {
+    const haystack = `${item.primary} ${item.title}`;
+    const result = fuzzyMatch(query, haystack);
+    if (result) scored.push({ item, score: result.score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((s) => s.item);
 }
 
 function getField(item: RenderableItem, field: string): string {
@@ -452,6 +466,7 @@ function renderActionBar(grid: CellGrid, startRow: number, cols: number, item: R
     col = writeAction(startRow, col, "[l]", " Link  ");
     col = writeAction(startRow, col, "[s]", " Status  ");
     col = writeAction(startRow, col, "[c]", " Copy  ");
+    col = writeAction(startRow, col, "[C]", " Create  ");
     // Detail scroll hint
   } else {
     const mr = item.raw as MergeRequest;
