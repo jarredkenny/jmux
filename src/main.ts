@@ -23,7 +23,7 @@ import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
 import { InfoPanel } from "./info-panel";
 import { parseViews, cycleGroupBy, cycleSortBy, toggleSortOrder, type PanelView } from "./panel-view";
-import { transformIssues, transformMrs, buildViewNodes, renderView, createViewState, type ViewState, type ViewNode, type IssueSessionState } from "./panel-view-renderer";
+import { transformIssues, transformMrs, buildViewNodes, renderView, createViewState, filterItems, type ViewState, type ViewNode, type IssueSessionState } from "./panel-view-renderer";
 import { createAdapters } from "./adapters/registry";
 import { PollCoordinator } from "./adapters/poll-coordinator";
 import { SessionState } from "./session-state";
@@ -192,6 +192,7 @@ const toolbarEnabled = true;
 let claudeCommand = configStore.config.claudeCommand || "claude";
 let cacheTimersEnabled = configStore.config.cacheTimers !== false;
 let pinnedSessions = new Set<string>(configStore.config.pinnedSessions ?? []);
+let infoPanelWidth: number | null = configStore.config.infoPanelWidth ?? null;
 let diffPanelSplitRatio = configStore.config.diffPanel?.splitRatio ?? 0.4;
 let hunkCommand = configStore.config.diffPanel?.hunkCommand ?? "hunk";
 
@@ -491,13 +492,20 @@ function switchByOffset(offset: number): void {
 
 // --- Diff panel lifecycle ---
 
+function calcSplitPanelCols(available: number): number {
+  if (infoPanelWidth !== null) {
+    return Math.max(20, Math.min(infoPanelWidth, available - 20));
+  }
+  return diffPanel.calcPanelCols(available, diffPanelSplitRatio);
+}
+
 function getDiffPanelCols(): number {
   if (!diffPanel.isActive()) return 0;
   const totalCols = process.stdout.columns || 80;
   const sidebarCols = sidebarShown ? sidebarTotal() : 0;
   const available = totalCols - sidebarCols;
   if (diffPanel.state === "full") return available;
-  return diffPanel.calcPanelCols(available, diffPanelSplitRatio);
+  return calcSplitPanelCols(available);
 }
 
 async function getSessionCwd(): Promise<string | null> {
@@ -579,7 +587,7 @@ async function toggleDiffPanel(): Promise<void> {
 
   if (!wasActive && diffPanel.state === "split") {
     // off → split: shrink tmux, spawn hunk, focus the panel
-    const panelCols = diffPanel.calcPanelCols(available, diffPanelSplitRatio);
+    const panelCols = calcSplitPanelCols(available);
     const newMainCols = available - panelCols - 1; // -1 for divider
     mainCols = newMainCols;
     pty.resize(newMainCols, ptyRowsNow);
@@ -623,7 +631,7 @@ async function zoomDiffPanel(): Promise<void> {
     }
   } else if (diffPanel.state === "split") {
     // full → split: shrink tmux back, resize hunk to panel width
-    const panelCols = diffPanel.calcPanelCols(available, diffPanelSplitRatio);
+    const panelCols = calcSplitPanelCols(available);
     mainCols = available - panelCols - 1;
     pty.resize(mainCols, ptyRowsNow);
     bridge.resize(mainCols, ptyRowsNow);
@@ -749,8 +757,7 @@ async function switchSession(sessionId: string): Promise<void> {
     sidebar.scrollToActive();
     const sessionName = currentSessions.find((s) => s.id === sessionId)?.name;
     if (sessionName) {
-      pollCoordinator.setActiveSession(sessionName);
-      // Auto-focus the session's linked issue in the panel
+      await pollCoordinator.setActiveSession(sessionName);
       focusPanelOnSessionIssue(sessionName);
     }
     fetchWindows();
@@ -837,7 +844,16 @@ function renderFrame(): void {
           rawItems = transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
         }
 
-        const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+        // Apply fuzzy filter when active
+        if (viewState.filterQuery) {
+          rawItems = filterItems(rawItems, viewState.filterQuery);
+        }
+
+        // When filtering, flatten groups so fuzzy-score order is preserved
+        const effectiveView = viewState.filterQuery
+          ? { ...view, groupBy: "none" as const }
+          : view;
+        const nodes = buildViewNodes(rawItems, effectiveView, viewState.collapsedGroups);
         contentGrid = renderView(nodes, dpCols, dpRows, viewState);
       } else {
         contentGrid = createGrid(dpCols, dpRows);
@@ -1076,11 +1092,15 @@ const inputRouter = new InputRouter(
       setDiffFocus(!diffPanelFocused);
     },
     onPanelPrevTab: () => {
+      const viewState = viewStates.get(infoPanel.activeTab);
+      if (viewState) viewState.filterQuery = null;
       infoPanel.prevTab();
       inputRouter.setPanelTabsActive(infoPanel.activeTab !== "diff");
       scheduleRender();
     },
     onPanelNextTab: () => {
+      const viewState = viewStates.get(infoPanel.activeTab);
+      if (viewState) viewState.filterQuery = null;
       infoPanel.nextTab();
       inputRouter.setPanelTabsActive(infoPanel.activeTab !== "diff");
       scheduleRender();
@@ -1114,7 +1134,9 @@ const inputRouter = new InputRouter(
       } else {
         rawItems = transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
       }
-      const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+      if (viewState.filterQuery) rawItems = filterItems(rawItems, viewState.filterQuery);
+      const effectiveView = viewState.filterQuery ? { ...view, groupBy: "none" as const } : view;
+      const nodes = buildViewNodes(rawItems, effectiveView, viewState.collapsedGroups);
       if (viewState.selectedIndex < nodes.length - 1) {
         viewState.selectedIndex++;
         viewState.detailScrollOffset = 0; // reset detail scroll on item change
@@ -1164,12 +1186,14 @@ const inputRouter = new InputRouter(
       const ctx = pollCoordinator.getContext(sessionName);
       const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
       const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
-      const rawItems = view.source === "issues"
+      let rawItems = view.source === "issues"
         ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates())
         : view.filter.scope === "reviewing"
           ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
           : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
-      const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+      if (viewState.filterQuery) rawItems = filterItems(rawItems, viewState.filterQuery);
+      const effectiveView = viewState.filterQuery ? { ...view, groupBy: "none" as const } : view;
+      const nodes = buildViewNodes(rawItems, effectiveView, viewState.collapsedGroups);
       const selected = nodes[viewState.selectedIndex];
       if (selected?.kind === "group") {
         const key = selected.key;
@@ -1183,8 +1207,10 @@ const inputRouter = new InputRouter(
       if (!view || view.source !== "issues") return;
       const viewState = viewStates.get(view.id);
       if (!viewState) return;
-      const rawItems = transformIssues(pollCoordinator.getGlobalIssues(), new Set<string>(), getIssueSessionStates());
-      const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+      let rawItems = transformIssues(pollCoordinator.getGlobalIssues(), new Set<string>(), getIssueSessionStates());
+      if (viewState.filterQuery) rawItems = filterItems(rawItems, viewState.filterQuery);
+      const effectiveView = viewState.filterQuery ? { ...view, groupBy: "none" as const } : view;
+      const nodes = buildViewNodes(rawItems, effectiveView, viewState.collapsedGroups);
       const selected = nodes[viewState.selectedIndex];
       if (selected?.kind !== "item" || selected.item.type !== "issue") return;
       const issue = selected.item.raw as import("./adapters/types").Issue;
@@ -1330,12 +1356,14 @@ const inputRouter = new InputRouter(
       const ctx = pollCoordinator.getContext(sessionName);
       const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
       const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
-      const rawItems = view.source === "issues"
+      let rawItems = view.source === "issues"
         ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates())
         : view.filter.scope === "reviewing"
           ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
           : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
-      const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+      if (viewState.filterQuery) rawItems = filterItems(rawItems, viewState.filterQuery);
+      const effectiveView = viewState.filterQuery ? { ...view, groupBy: "none" as const } : view;
+      const nodes = buildViewNodes(rawItems, effectiveView, viewState.collapsedGroups);
       const selected = nodes[viewState.selectedIndex];
       if (selected?.kind !== "item") return;
       if (!sessionName) return;
@@ -1345,6 +1373,47 @@ const inputRouter = new InputRouter(
         sessionState.addLink(sessionName, { type: "mr", id: selected.item.id });
       }
       pollCoordinator.setActiveSession(sessionName);
+      scheduleRender();
+    },
+    onPanelFilterStart: () => {
+      const viewState = viewStates.get(infoPanel.activeTab);
+      if (viewState) {
+        viewState.filterQuery = "";  // "" = bar open, no text yet
+        scheduleRender();
+      }
+    },
+    onPanelFilterInput: (char) => {
+      const viewState = viewStates.get(infoPanel.activeTab);
+      if (viewState) {
+        viewState.filterQuery = (viewState.filterQuery ?? "") + char;
+        viewState.selectedIndex = 0;
+        viewState.scrollOffset = 0;
+        viewState.detailScrollOffset = 0;
+        scheduleRender();
+      }
+    },
+    onPanelFilterBackspace: () => {
+      const viewState = viewStates.get(infoPanel.activeTab);
+      if (viewState && viewState.filterQuery && viewState.filterQuery.length > 0) {
+        viewState.filterQuery = viewState.filterQuery.slice(0, -1);
+        viewState.selectedIndex = 0;
+        viewState.scrollOffset = 0;
+        viewState.detailScrollOffset = 0;
+        scheduleRender();
+      }
+    },
+    onPanelFilterClear: () => {
+      const viewState = viewStates.get(infoPanel.activeTab);
+      if (viewState) {
+        viewState.filterQuery = null;
+        viewState.selectedIndex = 0;
+        viewState.scrollOffset = 0;
+        viewState.detailScrollOffset = 0;
+        scheduleRender();
+      }
+    },
+    onPanelRefresh: () => {
+      pollCoordinator.pollGlobal();
       scheduleRender();
     },
     onPanelScroll: (delta, row) => {
@@ -1395,12 +1464,14 @@ const inputRouter = new InputRouter(
         const ctx = pollCoordinator.getContext(sessionName);
         const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
         const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
-        const rawItems = view.source === "issues"
+        let rawItems = view.source === "issues"
           ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates())
           : view.filter.scope === "reviewing"
             ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
             : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
-        const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+        if (viewState.filterQuery) rawItems = filterItems(rawItems, viewState.filterQuery);
+        const effectiveView = viewState.filterQuery ? { ...view, groupBy: "none" as const } : view;
+        const nodes = buildViewNodes(rawItems, effectiveView, viewState.collapsedGroups);
         if (nodeIndex < nodes.length) {
           viewState.selectedIndex = nodeIndex;
           scheduleRender();
@@ -1422,8 +1493,8 @@ const inputRouter = new InputRouter(
       const view = panelViews.find((v) => v.id === infoPanel.activeTab);
       if (!view) return;
 
-      // Create issue — doesn't require a selected item
-      if (key === "c" && view.source === "issues" && adapters.issueTracker?.authState === "ok") {
+      // Create issue (Shift-C) — doesn't require a selected item
+      if (key === "C" && view.source === "issues" && adapters.issueTracker?.authState === "ok") {
         openCreateIssueModal();
         return;
       }
@@ -1434,25 +1505,26 @@ const inputRouter = new InputRouter(
       const ctx = pollCoordinator.getContext(sessionName);
       const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
       const linkedMrIds = new Set(ctx?.mrs.map((m) => m.id) ?? []);
-      const rawItems = view.source === "issues"
+      let rawItems = view.source === "issues"
         ? transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates())
         : view.filter.scope === "reviewing"
           ? transformMrs(pollCoordinator.getGlobalReviewMrs(), linkedMrIds)
           : transformMrs(pollCoordinator.getGlobalMrs(), linkedMrIds);
-      const nodes = buildViewNodes(rawItems, view, viewState.collapsedGroups);
+      if (viewState.filterQuery) rawItems = filterItems(rawItems, viewState.filterQuery);
+      const effectiveView = viewState.filterQuery ? { ...view, groupBy: "none" as const } : view;
+      const nodes = buildViewNodes(rawItems, effectiveView, viewState.collapsedGroups);
       const selected = nodes[viewState.selectedIndex];
       if (selected?.kind !== "item") return;
 
       if (selected.item.type === "mr" && adapters.codeHost) {
         const mr = selected.item.raw as import("./adapters/types").MergeRequest;
         if (key === "o") adapters.codeHost.openInBrowser(mr.id);
-        if (key === "r") adapters.codeHost.markReady(mr.id).then(() => { pollCoordinator.refreshGlobalItem("mr", mr.id); scheduleRender(); });
         if (key === "a") adapters.codeHost.approve(mr.id).then(() => { pollCoordinator.refreshGlobalItem("mr", mr.id); scheduleRender(); });
       }
       if (selected.item.type === "issue" && adapters.issueTracker) {
         const issue = selected.item.raw as import("./adapters/types").Issue;
         if (key === "o") adapters.issueTracker.openInBrowser(issue.id);
-        if (key === "y") {
+        if (key === "c") {
           // Copy issue prompt to clipboard via OSC 52
           const prompt = `You are working on ${issue.identifier}: ${issue.title}\n\n${issue.description ?? ""}\n\nStart by understanding the relevant code, then propose an approach.`;
           const encoded = Buffer.from(prompt).toString("base64");
@@ -1467,7 +1539,8 @@ const inputRouter = new InputRouter(
             openModal(listModal, (selected: unknown) => {
               const sel = selected as { id: string };
               if (sel?.id) {
-                adapters.issueTracker!.updateStatus(issue.id, sel.id).then(() => { pollCoordinator.refreshGlobalItem("issue", issue.id); scheduleRender(); });
+                pollCoordinator.optimisticIssueStatus(issue.id, sel.id);
+                adapters.issueTracker!.updateStatus(issue.id, sel.id).then(() => { pollCoordinator.refreshGlobalItem("issue", issue.id); });
               }
             });
           });
@@ -1621,6 +1694,11 @@ function buildPaletteCommands(): PaletteCommand[] {
     label: "Sidebar width",
     category: "setting",
   });
+  commands.push({
+    id: "setting-panel-width",
+    label: `Panel width${infoPanelWidth !== null ? `: ${infoPanelWidth}` : " (auto)"}`,
+    category: "setting",
+  });
 
   commands.push({
     id: "setting-wtm",
@@ -1725,6 +1803,20 @@ function buildSettingsCategories(): SettingsCategory[] {
           onTextCommit: (v) => {
             const n = parseInt(v, 10);
             if (!isNaN(n) && n >= 10 && n <= 60) configStore.set("sidebarWidth", n);
+          },
+        },
+        {
+          id: "panel-width", label: "Panel width", type: "text" as const,
+          getValue: () => infoPanelWidth !== null ? String(infoPanelWidth) : "auto",
+          onTextCommit: (v) => {
+            if (v === "auto" || v === "") {
+              configStore.set("infoPanelWidth", undefined as any);
+            } else {
+              const n = parseInt(v, 10);
+              if (!isNaN(n) && n >= 20 && n <= 120) {
+                configStore.set("infoPanelWidth", n);
+              }
+            }
           },
         },
         {
@@ -1899,7 +1991,19 @@ function focusPanelOnSessionIssue(sessionName: string): void {
   // Find the first issue linked to this session
   const ctx = pollCoordinator.getContext(sessionName);
   const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
-  if (linkedIssueIds.size === 0) return;
+  if (linkedIssueIds.size === 0) {
+    // No linked issues — clear selection in any issues view so the previous
+    // session's issue doesn't stay highlighted.
+    for (const view of panelViews) {
+      if (view.source !== "issues") continue;
+      const viewState = viewStates.get(view.id);
+      if (viewState) {
+        viewState.selectedIndex = -1;
+        viewState.detailScrollOffset = 0;
+      }
+    }
+    return;
+  }
 
   // Find the issues view and locate the linked issue in it
   for (const view of panelViews) {
@@ -2238,6 +2342,26 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
         const newWidth = parseInt(value as string, 10);
         if (!isNaN(newWidth) && newWidth >= 10 && newWidth <= 60) {
           configStore.set("sidebarWidth", newWidth);
+        }
+      });
+      return;
+    }
+    case "setting-panel-width": {
+      const modal = new InputModal({
+        header: "Panel Width",
+        subheader: `Current: ${infoPanelWidth ?? "auto"} (range: 20-120, or "auto")`,
+        value: infoPanelWidth !== null ? String(infoPanelWidth) : "auto",
+      });
+      modal.open();
+      openModal(modal, async (value) => {
+        const v = (value as string).trim();
+        if (v === "auto" || v === "") {
+          configStore.set("infoPanelWidth", undefined as any);
+        } else {
+          const n = parseInt(v, 10);
+          if (!isNaN(n) && n >= 20 && n <= 120) {
+            configStore.set("infoPanelWidth", n);
+          }
         }
       });
       return;
@@ -2628,7 +2752,7 @@ process.on("SIGWINCH", () => {
   sidebar.resize(sidebarWidth, newRows);
 
   if (diffPanel.state === "split") {
-    const panelCols = diffPanel.calcPanelCols(available, diffPanelSplitRatio);
+    const panelCols = calcSplitPanelCols(available);
     const newMainCols = available - panelCols - 1;
     mainCols = newMainCols;
     pty.resize(newMainCols, newPtyRows);
@@ -2710,8 +2834,29 @@ try {
     }
 
     // Hot-apply diff panel config changes
+    const prevPanelWidth = infoPanelWidth;
+    infoPanelWidth = updated.infoPanelWidth ?? null;
     diffPanelSplitRatio = updated.diffPanel?.splitRatio ?? 0.4;
     hunkCommand = updated.diffPanel?.hunkCommand ?? "hunk";
+
+    if (prevPanelWidth !== infoPanelWidth && diffPanel.state === "split") {
+      const cols = process.stdout.columns || 80;
+      const rows = process.stdout.rows || 24;
+      const sidebarCols = sidebarShown ? sidebarTotal() : 0;
+      const available = cols - sidebarCols;
+      const panelCols = calcSplitPanelCols(available);
+      const newPtyRows = toolbarEnabled ? rows - 1 : rows;
+      mainCols = available - panelCols - 1;
+      pty.resize(mainCols, newPtyRows);
+      bridge.resize(mainCols, newPtyRows);
+      inputRouter.setDiffPanel(panelCols, diffPanelFocused);
+      inputRouter.setMainCols(mainCols);
+      if (diffPty && diffBridge) {
+        diffPty.resize(panelCols, newPtyRows);
+        diffBridge.resize(panelCols, newPtyRows);
+      }
+      renderFrame();
+    }
   });
 } catch {
   // Config file may not exist yet — watcher will fail silently
@@ -2813,11 +2958,21 @@ control.onEvent((event: ControlEvent) => {
       break;
     case "session-renamed": {
       if (!startupComplete) return;
+      // tmux sends: %session-renamed $session_id new_name
       const parts = event.args.split(" ");
       if (parts.length >= 2) {
-        const oldName = parts[0];
-        const newName = parts[1];
-        sessionState.renameSession(oldName, newName);
+        const sessionId = parts[0];
+        const newName = parts.slice(1).join(" ");
+        const oldName = currentSessions.find((s) => s.id === sessionId)?.name;
+        if (oldName && oldName !== newName) {
+          sessionState.renameSession(oldName, newName);
+          if (pinnedSessions.has(oldName)) {
+            pinnedSessions.delete(oldName);
+            pinnedSessions.add(newName);
+            sidebar.setPinnedSessions(pinnedSessions);
+            configStore.set("pinnedSessions", [...pinnedSessions]);
+          }
+        }
       }
       fetchSessions();
       fetchWindows();
@@ -2839,6 +2994,12 @@ control.onEvent((event: ControlEvent) => {
             const dpCols = getDiffPanelCols();
             const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
             await spawnHunk(dpCols, dpRows);
+          }
+          // Sync issue panel to the new session's linked issue
+          const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name;
+          if (sessionName) {
+            await pollCoordinator.setActiveSession(sessionName);
+            focusPanelOnSessionIssue(sessionName);
           }
         }
         renderFrame();
@@ -3008,6 +3169,14 @@ async function start(): Promise<void> {
   await syncControlClient();
   await fetchWindows();
   startupComplete = true;
+
+  // Sync issue panel to the initial session
+  const initialSessionName = currentSessions.find((s) => s.id === currentSessionId)?.name;
+  if (initialSessionName) {
+    await pollCoordinator.setActiveSession(initialSessionName);
+    focusPanelOnSessionIssue(initialSessionName);
+  }
+
   renderFrame();
 
   // First-run welcome screen
