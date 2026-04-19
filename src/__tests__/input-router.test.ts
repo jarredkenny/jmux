@@ -799,4 +799,31 @@ describe("panel filter mode", () => {
     router.handleInput("r");
     expect(calls).toEqual(["refresh"]);
   });
+
+  test("Enter confirms filter — exits input mode but keeps filter", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("/");
+    router.handleInput("a");
+    calls.length = 0;
+    router.handleInput("\r"); // Enter — confirm filter
+    // Should NOT call filterClear
+    expect(calls).toEqual([]);
+    // After Enter, action keys should work normally (not captured as filter input)
+    router.handleInput("o");
+    expect(calls).toEqual(["action:o"]);
+  });
+
+  test("Esc clears a persisted filter after Enter confirmation", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("/");
+    router.handleInput("a");
+    router.handleInput("\r"); // confirm filter
+    calls.length = 0;
+    router.handleInput("\x1b"); // Esc — clear the persisted filter
+    expect(calls).toEqual(["filterClear"]);
+    // After clearing, action keys still work
+    calls.length = 0;
+    router.handleInput("o");
+    expect(calls).toEqual(["action:o"]);
+  });
 });

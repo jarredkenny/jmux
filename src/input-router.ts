@@ -334,6 +334,8 @@ export class InputRouter {
         // Arrow navigation still works during filter
         if (data === "\x1b[A" && this.opts.onPanelSelectPrev) { this.opts.onPanelSelectPrev(); return; }
         if (data === "\x1b[B" && this.opts.onPanelSelectNext) { this.opts.onPanelSelectNext(); return; }
+        // Enter confirms filter — exit input capture but keep filterQuery
+        if (data === "\r") { this.panelFilterActive = false; return; }
         // Esc clears filter and exits filter mode
         if (data === "\x1b") { this.panelFilterActive = false; this.opts.onPanelFilterClear?.(); return; }
         // Backspace removes last char
@@ -356,6 +358,8 @@ export class InputRouter {
         }
       }
       if (this.panelTabsActive) {
+        // Esc clears a persisted filter (when not in filter input mode)
+        if (data === "\x1b" && this.opts.onPanelFilterClear) { this.opts.onPanelFilterClear(); return; }
         if (data === "g" && this.opts.onPanelCycleGroupBy) { this.opts.onPanelCycleGroupBy(); return; }
         if (data === "G" && this.opts.onPanelCycleSubGroupBy) { this.opts.onPanelCycleSubGroupBy(); return; }
         if (data === "/" && this.opts.onPanelFilterStart) { this.panelFilterActive = true; this.opts.onPanelFilterStart(); return; }
