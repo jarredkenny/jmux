@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { translateMouse, parseSgrMouse, InputRouter } from "../input-router";
+import { translateMouse, parseSgrMouse, InputRouter, type InputRouterOptions } from "../input-router";
 
 describe("parseSgrMouse", () => {
   test("parses SGR mouse button press", () => {
@@ -617,6 +617,30 @@ describe("InfoPanel tab switching", () => {
     expect(called).toBe(true);
   });
 
+  test("S key triggers onPanelCycleSortBy when tabs active", () => {
+    let called = false;
+    const router = new InputRouter({
+      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPanelCycleSortBy: () => { called = true; },
+    }, true);
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    router.handleInput("S");
+    expect(called).toBe(true);
+  });
+
+  test("r key triggers onPanelRefresh when tabs active", () => {
+    let called = false;
+    const router = new InputRouter({
+      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPanelRefresh: () => { called = true; },
+    }, true);
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    router.handleInput("r");
+    expect(called).toBe(true);
+  });
+
   test("Enter triggers onPanelToggleCollapse when tabs active", () => {
     let called = false;
     const router = new InputRouter({
@@ -651,5 +675,128 @@ describe("InfoPanel tab switching", () => {
     router.setPanelTabsActive(true);
     router.handleInput("l");
     expect(called).toBe(true);
+  });
+});
+
+describe("panel filter mode", () => {
+  function makeFilterRouter(overrides: Partial<InputRouterOptions> = {}) {
+    const calls: string[] = [];
+    const opts: InputRouterOptions = {
+      sidebarCols: 24,
+      onPtyData: () => { calls.push("pty"); },
+      onSidebarClick: () => {},
+      onDiffPanelData: (d) => { calls.push(`diff:${d}`); },
+      onPanelFilterStart: () => { calls.push("filterStart"); },
+      onPanelFilterInput: (c) => { calls.push(`filterInput:${c}`); },
+      onPanelFilterBackspace: () => { calls.push("filterBackspace"); },
+      onPanelFilterClear: () => { calls.push("filterClear"); },
+      onPanelSelectPrev: () => { calls.push("selectPrev"); },
+      onPanelSelectNext: () => { calls.push("selectNext"); },
+      onPanelAction: (k) => { calls.push(`action:${k}`); },
+      onPanelRefresh: () => { calls.push("refresh"); },
+      onPanelCycleSortBy: () => { calls.push("cycleSortBy"); },
+      ...overrides,
+    };
+    const router = new InputRouter(opts, true);
+    router.setDiffPanel(40, true);
+    router.setPanelTabsActive(true);
+    return { router, calls };
+  }
+
+  test("printable chars append to filter when filter mode is active", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("/"); // enter filter mode
+    calls.length = 0;
+    router.handleInput("a");
+    router.handleInput("b");
+    router.handleInput("1");
+    expect(calls).toEqual(["filterInput:a", "filterInput:b", "filterInput:1"]);
+  });
+
+  test("action keys are captured as filter input, not dispatched as actions", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("/");
+    calls.length = 0;
+    router.handleInput("o"); // normally opens in browser
+    router.handleInput("s"); // normally changes status
+    router.handleInput("n"); // normally creates session
+    expect(calls).toEqual(["filterInput:o", "filterInput:s", "filterInput:n"]);
+  });
+
+  test("backspace calls onPanelFilterBackspace in filter mode", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("/");
+    calls.length = 0;
+    router.handleInput("\x7f");
+    expect(calls).toEqual(["filterBackspace"]);
+  });
+
+  test("bare Esc clears filter and exits filter mode", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("/");
+    calls.length = 0;
+    router.handleInput("\x1b");
+    expect(calls).toEqual(["filterClear"]);
+    // After Esc, normal keys should go to action handlers, not filter
+    calls.length = 0;
+    router.handleInput("o");
+    expect(calls).toEqual(["action:o"]);
+  });
+
+  test("escape sequences (arrow keys) are not treated as bare Esc", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("/");
+    calls.length = 0;
+    router.handleInput("\x1b[A"); // Up arrow — should navigate, not clear
+    router.handleInput("\x1b[B"); // Down arrow
+    expect(calls).toEqual(["selectPrev", "selectNext"]);
+  });
+
+  test("arrow keys navigate the filtered list", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("/");
+    router.handleInput("a"); // type something
+    calls.length = 0;
+    router.handleInput("\x1b[A");
+    router.handleInput("\x1b[B");
+    expect(calls).toEqual(["selectPrev", "selectNext"]);
+  });
+
+  test("tab switch clears filter mode", () => {
+    const prevTabCalls: string[] = [];
+    const { router, calls } = makeFilterRouter({
+      onPanelPrevTab: () => { prevTabCalls.push("prevTab"); },
+    });
+    router.handleInput("/");
+    calls.length = 0;
+    router.handleInput("[");
+    expect(calls).toContain("filterClear");
+    expect(prevTabCalls).toEqual(["prevTab"]);
+    // After tab switch, should be out of filter mode
+    calls.length = 0;
+    router.handleInput("o");
+    expect(calls).toEqual(["action:o"]);
+  });
+
+  test("unrecognized keys are consumed in filter mode, not forwarded", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("/");
+    calls.length = 0;
+    router.handleInput("\x1b[1;2C"); // Shift+Right — not handled in filter mode
+    expect(calls).toEqual([]); // consumed, not forwarded
+  });
+
+  test("r key is captured as filter input when filter active, not refresh", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("/");
+    calls.length = 0;
+    router.handleInput("r");
+    expect(calls).toEqual(["filterInput:r"]);
+  });
+
+  test("r key triggers refresh when filter is not active", () => {
+    const { router, calls } = makeFilterRouter();
+    router.handleInput("r");
+    expect(calls).toEqual(["refresh"]);
   });
 });
