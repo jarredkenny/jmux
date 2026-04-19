@@ -68,6 +68,11 @@ export interface InputRouterOptions {
   onPanelToggleCollapse?: () => void;
   onPanelCreateSession?: () => void;  // 'n' key
   onPanelLinkToSession?: () => void;  // 'l' key
+  onPanelFilterStart?: () => void;
+  onPanelFilterInput?: (char: string) => void;
+  onPanelFilterBackspace?: () => void;
+  onPanelFilterClear?: () => void;
+  onPanelRefresh?: () => void;
 }
 
 export class InputRouter {
@@ -80,6 +85,7 @@ export class InputRouter {
   private diffPanelFocused = false;
   private mainCols = 0;
   private panelTabsActive = false;
+  private panelFilterActive = false;
   constructor(opts: InputRouterOptions, sidebarVisible: boolean) {
     this.opts = opts;
     this.sidebarVisible = sidebarVisible;
@@ -100,6 +106,10 @@ export class InputRouter {
 
   setPanelTabsActive(active: boolean): void {
     this.panelTabsActive = active;
+  }
+
+  setPanelFilterActive(active: boolean): void {
+    this.panelFilterActive = active;
   }
 
   setMainCols(cols: number): void {
@@ -307,14 +317,33 @@ export class InputRouter {
     // When diff panel is focused, intercept tab-switching and action keys before
     // forwarding to the diff panel's underlying process
     if (this.diffPanelFocused && this.diffPanelCols > 0) {
+      // Tab switching — clear filter mode first
       if (data === "[" && this.opts.onPanelPrevTab) {
+        if (this.panelFilterActive) { this.panelFilterActive = false; this.opts.onPanelFilterClear?.(); }
         this.opts.onPanelPrevTab();
         return;
       }
       if (data === "]" && this.opts.onPanelNextTab) {
+        if (this.panelFilterActive) { this.panelFilterActive = false; this.opts.onPanelFilterClear?.(); }
         this.opts.onPanelNextTab();
         return;
       }
+
+      // Filter mode — captures all input when active
+      if (this.panelTabsActive && this.panelFilterActive) {
+        // Arrow navigation still works during filter
+        if (data === "\x1b[A" && this.opts.onPanelSelectPrev) { this.opts.onPanelSelectPrev(); return; }
+        if (data === "\x1b[B" && this.opts.onPanelSelectNext) { this.opts.onPanelSelectNext(); return; }
+        // Esc clears filter and exits filter mode
+        if (data === "\x1b") { this.panelFilterActive = false; this.opts.onPanelFilterClear?.(); return; }
+        // Backspace removes last char
+        if (data === "\x7f") { this.opts.onPanelFilterBackspace?.(); return; }
+        // Printable chars append to filter query
+        if (data.length === 1 && data.charCodeAt(0) >= 32) { this.opts.onPanelFilterInput?.(data); return; }
+        // Everything else consumed
+        return;
+      }
+
       // Up/Down arrow for item selection within a tab (only on MR/Issues tabs)
       if (this.panelTabsActive) {
         if (data === "\x1b[A" && this.opts.onPanelSelectPrev) {
@@ -329,13 +358,15 @@ export class InputRouter {
       if (this.panelTabsActive) {
         if (data === "g" && this.opts.onPanelCycleGroupBy) { this.opts.onPanelCycleGroupBy(); return; }
         if (data === "G" && this.opts.onPanelCycleSubGroupBy) { this.opts.onPanelCycleSubGroupBy(); return; }
-        if (data === "/" && this.opts.onPanelCycleSortBy) { this.opts.onPanelCycleSortBy(); return; }
+        if (data === "/" && this.opts.onPanelFilterStart) { this.panelFilterActive = true; this.opts.onPanelFilterStart(); return; }
+        if (data === "S" && this.opts.onPanelCycleSortBy) { this.opts.onPanelCycleSortBy(); return; }
         if (data === "?" && this.opts.onPanelToggleSortOrder) { this.opts.onPanelToggleSortOrder(); return; }
+        if (data === "r" && this.opts.onPanelRefresh) { this.opts.onPanelRefresh(); return; }
         if (data === "\r" && this.opts.onPanelToggleCollapse) { this.opts.onPanelToggleCollapse(); return; }
         if (data === "n" && this.opts.onPanelCreateSession) { this.opts.onPanelCreateSession(); return; }
         if (data === "l" && this.opts.onPanelLinkToSession) { this.opts.onPanelLinkToSession(); return; }
       }
-      if (this.panelTabsActive && this.opts.onPanelAction && (data === "o" || data === "r" || data === "a" || data === "s" || data === "y" || data === "c")) {
+      if (this.panelTabsActive && this.opts.onPanelAction && (data === "o" || data === "a" || data === "s" || data === "c" || data === "C")) {
         this.opts.onPanelAction(data);
         return;
       }

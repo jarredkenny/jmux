@@ -489,7 +489,7 @@ describe("InfoPanel tab switching", () => {
     expect(actionKey).toBe("o");
   });
 
-  test("action key 'y' triggers onPanelAction when panel focused and tabs active", () => {
+  test("action key 'C' triggers onPanelAction when panel focused and tabs active", () => {
     let actionKey = "";
     const router = new InputRouter(
       {
@@ -502,8 +502,8 @@ describe("InfoPanel tab switching", () => {
     );
     router.setDiffPanel(40, true);
     router.setPanelTabsActive(true);
-    router.handleInput("y");
-    expect(actionKey).toBe("y");
+    router.handleInput("C");
+    expect(actionKey).toBe("C");
   });
 
   test("action key 's' triggers onPanelAction when panel focused and tabs active", () => {
@@ -605,11 +605,11 @@ describe("InfoPanel tab switching", () => {
     expect(called).toBe(true);
   });
 
-  test("/ key triggers onPanelCycleSortBy when tabs active", () => {
+  test("/ key triggers onPanelFilterStart and activates filter mode when tabs active", () => {
     let called = false;
     const router = new InputRouter({
       sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
-      onPanelCycleSortBy: () => { called = true; },
+      onPanelFilterStart: () => { called = true; },
     }, true);
     router.setDiffPanel(40, true);
     router.setPanelTabsActive(true);
