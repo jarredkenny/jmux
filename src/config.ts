@@ -15,6 +15,7 @@ export interface IssueWorkflowConfig {
 
 export interface JmuxConfig {
   sidebarWidth?: number;
+  infoPanelWidth?: number;
   claudeCommand?: string;
   cacheTimers?: boolean;
   pinnedSessions?: string[];
