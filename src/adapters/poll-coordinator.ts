@@ -109,6 +109,18 @@ export class PollCoordinator {
     this.opts.onUpdate("__global__");
   }
 
+  optimisticIssueStatus(issueId: string, status: string): void {
+    for (const issue of this.globalIssues) {
+      if (issue.id === issueId) { issue.status = status; break; }
+    }
+    for (const [, ctx] of this.contexts) {
+      for (const issue of ctx.issues) {
+        if (issue.id === issueId) { issue.status = status; break; }
+      }
+    }
+    this.opts.onUpdate("__global__");
+  }
+
   async refreshGlobalItem(type: "mr" | "issue", id: string): Promise<void> {
     const { codeHost, issueTracker } = this.opts;
     if (type === "mr" && codeHost && codeHost.authState === "ok") {
