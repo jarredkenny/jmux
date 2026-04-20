@@ -391,6 +391,7 @@ export function compositeGrids(
   return grid;
 }
 
+// Compare only visual attributes (used for SGR dedup within a row)
 function cellsEqual(a: Cell, b: Cell): boolean {
   return (
     a.fg === b.fg &&
@@ -404,8 +405,28 @@ function cellsEqual(a: Cell, b: Cell): boolean {
   );
 }
 
+// Compare all cell fields including character content (used for frame diffing)
+function fullCellsEqual(a: Cell, b: Cell): boolean {
+  return (
+    a.char === b.char &&
+    a.width === b.width &&
+    a.fg === b.fg &&
+    a.bg === b.bg &&
+    a.fgMode === b.fgMode &&
+    a.bgMode === b.bgMode &&
+    a.bold === b.bold &&
+    a.dim === b.dim &&
+    a.italic === b.italic &&
+    a.underline === b.underline
+  );
+}
+
+const MOUSE_MODE_INTERVAL_MS = 2_000;
+
 export class Renderer {
   private prevAttrs: Cell | null = null;
+  private prevGrid: CellGrid | null = null;
+  private lastMouseModeTime = 0;
 
   render(
     main: CellGrid,
@@ -425,7 +446,29 @@ export class Renderer {
     const cursorOffset = sidebar ? sidebar.cols + 1 : 0;
     const buf: string[] = [];
 
+    // Row-level diffing: skip rows whose cells are identical to the
+    // previous frame.  This dramatically reduces stdout output when
+    // the screen is static, which prevents terminal emulators' URL
+    // detection from being disrupted by constant full-screen rewrites.
+    const canDiff =
+      this.prevGrid !== null &&
+      this.prevGrid.rows === grid.rows &&
+      this.prevGrid.cols === grid.cols;
+
     for (let y = 0; y < grid.rows; y++) {
+      if (canDiff) {
+        let rowChanged = false;
+        const prevRow = this.prevGrid!.cells[y];
+        const curRow = grid.cells[y];
+        for (let x = 0; x < grid.cols; x++) {
+          if (!fullCellsEqual(curRow[x], prevRow[x])) {
+            rowChanged = true;
+            break;
+          }
+        }
+        if (!rowChanged) continue;
+      }
+
       // Move to start of row (1-indexed)
       buf.push(`\x1b[${y + 1};1H`);
       this.prevAttrs = null;
@@ -461,6 +504,8 @@ export class Renderer {
       }
     }
 
+    this.prevGrid = grid;
+
     // Reset attributes, position cursor
     const cursorRowOffset = toolbar ? 1 : 0;
     buf.push("\x1b[0m");
@@ -477,11 +522,18 @@ export class Renderer {
       buf.push("\x1b[?25h");
     }
 
-    // Re-assert mouse tracking modes every frame.  Something is
-    // corrupting terminal state over time, causing URL detection
-    // (Cmd+Shift+Click) to stop working.  Re-sending these modes
-    // in every frame's atomic write prevents drift.
-    buf.push("\x1b[?1000h\x1b[?1003h\x1b[?1006h");
+    // Re-assert mouse tracking modes periodically rather than every
+    // frame.  Per-frame re-assertion sent ?1003h 60x/sec, which
+    // interfered with terminal URL detection — terminals that
+    // re-process the mode switch on each occurrence could briefly
+    // drop Cmd+click bypass during the transition.  2s interval
+    // still recovers from corruption but leaves the terminal's URL
+    // handler undisturbed during normal operation.
+    const now = Date.now();
+    if (now - this.lastMouseModeTime >= MOUSE_MODE_INTERVAL_MS) {
+      buf.push("\x1b[?1000h\x1b[?1003h\x1b[?1006h");
+      this.lastMouseModeTime = now;
+    }
 
     process.stdout.write(buf.join(""));
   }
