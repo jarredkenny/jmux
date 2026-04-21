@@ -1237,21 +1237,33 @@ const inputRouter = new InputRouter(
             return;
           }
 
-          // STATE 2: Worktree exists but no session → create session in existing worktree
+          // Seed the first user message for Claude by writing the issue prompt
+          // to a temp file — the main pane reads it via $(cat ...) and claude
+          // takes its content as a positional argument (the documented
+          // interactive-seed form). Without this the pane falls back to
+          // `exec $SHELL` so the session is usable even if the agent is off.
+          const shouldLaunchAgent = workflow?.autoLaunchAgent !== false && !!issue.description;
+          let promptTmp: string | null = null;
+          if (shouldLaunchAgent) {
+            const prompt = `You are working on ${issue.identifier}: ${issue.title}\n\n${issue.description}\n\nStart by understanding the relevant code, then propose an approach.`;
+            promptTmp = `/tmp/jmux-prompt-${Date.now()}.md`;
+            writeFileSync(promptTmp, prompt);
+          }
+          // `exec $SHELL` tail keeps the pane alive if claude exits so the user
+          // isn't ejected from the session. Use a double-quoted command sub so
+          // `cat` reads the prompt verbatim without word-splitting.
+          const claudeFragment = promptTmp
+            ? `${claudeCommand} "$(cat ${promptTmp})"; rm -f ${promptTmp}; exec $SHELL`
+            : `exec $SHELL`;
+
+          // STATE 2: Worktree exists but no session → launch claude directly
           if (issueState === "worktree") {
             const wtPath = `${expandedDir}/${session}`;
-            await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(wtPath)}`);
+            await control.sendCommand(
+              `new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(wtPath)} ${tq(claudeFragment)}`,
+            );
             await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(session)}`);
             sessionState.addLink(session, { type: "issue", id: issue.id });
-
-            // Auto-launch agent
-            if (workflow?.autoLaunchAgent !== false && issue.description) {
-              const prompt = `You are working on ${issue.identifier}: ${issue.title}\n\n${issue.description}\n\nStart by understanding the relevant code, then propose an approach.`;
-              const tmpFile = `/tmp/jmux-prompt-${Date.now()}.md`;
-              writeFileSync(tmpFile, prompt);
-              const agentCmd = `${claudeCommand} --message-file ${tmpFile}; rm -f ${tmpFile}`;
-              await control.sendCommand(`split-window -h -t ${tq(session)} -c ${tq(wtPath)} ${tq(agentCmd)}`);
-            }
             return;
           }
 
@@ -1274,27 +1286,34 @@ const inputRouter = new InputRouter(
 
           if (isBare) {
             const wtPath = `${expandedDir}/${session}`;
-            const cmd = `wtm create ${session} --from ${baseBranch} --no-shell; cd ${session}; exec $SHELL`;
-            await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(expandedDir)} ${tq(cmd)}`);
-            const waitCmd = `while [ ! -d ${tq(wtPath)} ]; do sleep 0.2; done; cd ${tq(wtPath)} && exec $SHELL`;
-            await control.sendCommand(`split-window -h -d -t ${tq(session)} -c ${tq(expandedDir)} ${tq(waitCmd)}`);
+            // Main (left) pane runs claude — but first it has to wait for the
+            // sibling setup pane to materialize the worktree directory. Tmux
+            // wants a cwd that exists at split time, so we open the pane in
+            // the bare repo root and have the shell cd into the worktree once
+            // wtm finishes.
+            const mainCmd = `while [ ! -d ${tq(wtPath)} ]; do sleep 0.2; done; cd ${tq(wtPath)}; ${claudeFragment}`;
+            await control.sendCommand(
+              `new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(expandedDir)} ${tq(mainCmd)}`,
+            );
+            // Setup (right) pane runs wtm and exits on success — no trailing
+            // `exec $SHELL` so the pane auto-closes. On failure we drop to a
+            // shell so the user can see the error (without this, the pane
+            // would vanish and the main pane would wait forever for a worktree
+            // that never gets created). `-d` keeps focus on claude; `-l 30%`
+            // makes setup narrow and leaves claude with ~70%.
+            const setupCmd = `wtm create ${session} --from ${baseBranch} --no-shell || exec $SHELL`;
+            await control.sendCommand(
+              `split-window -h -d -l 30% -t ${tq(session)} -c ${tq(expandedDir)} ${tq(setupCmd)}`,
+            );
           } else {
             Bun.spawnSync(["git", "checkout", "-b", branchName, baseBranch], { cwd: expandedDir, stdout: "ignore", stderr: "ignore" });
-            await control.sendCommand(`new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(expandedDir)}`);
+            await control.sendCommand(
+              `new-session -d -e ${tq(`OTEL_RESOURCE_ATTRIBUTES=tmux_session_name=${session}`)} -s ${tq(session)} -c ${tq(expandedDir)} ${tq(claudeFragment)}`,
+            );
           }
 
           await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(session)}`);
           sessionState.addLink(session, { type: "issue", id: issue.id });
-
-          // Auto-launch agent
-          if (workflow?.autoLaunchAgent !== false && issue.description) {
-            const prompt = `You are working on ${issue.identifier}: ${issue.title}\n\n${issue.description}\n\nStart by understanding the relevant code, then propose an approach.`;
-            const tmpFile = `/tmp/jmux-prompt-${Date.now()}.md`;
-            writeFileSync(tmpFile, prompt);
-            const wtPath = isBare ? `${expandedDir}/${session}` : expandedDir;
-            const agentCmd = `${claudeCommand} --message-file ${tmpFile}; rm -f ${tmpFile}`;
-            await control.sendCommand(`split-window -h -t ${tq(session)} -c ${tq(wtPath)} ${tq(agentCmd)}`);
-          }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           const lines: StyledLine[] = [
@@ -1988,9 +2007,10 @@ function getIssueSessionStates(): Map<string, IssueSessionState> {
 }
 
 function focusPanelOnSessionIssue(sessionName: string): void {
-  // Find the first issue linked to this session
-  const ctx = pollCoordinator.getContext(sessionName);
-  const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
+  // sessionState is authoritative for links and is synchronous, so it reflects
+  // freshly-added links from onPanelCreateSession even before pollCoordinator
+  // has had a chance to resolve a context for the new session.
+  const linkedIssueIds = new Set(sessionState.getLinkedIssueIds(sessionName));
   if (linkedIssueIds.size === 0) {
     // No linked issues — clear selection in any issues view so the previous
     // session's issue doesn't stay highlighted.
