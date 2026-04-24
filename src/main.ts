@@ -40,7 +40,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.13.0";
+const VERSION = "0.14.0";
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -1242,10 +1242,10 @@ const inputRouter = new InputRouter(
           // takes its content as a positional argument (the documented
           // interactive-seed form). Without this the pane falls back to
           // `exec $SHELL` so the session is usable even if the agent is off.
-          const shouldLaunchAgent = workflow?.autoLaunchAgent !== false && !!issue.description;
+          const shouldLaunchAgent = workflow?.autoLaunchAgent !== false && !!adapters.issueTracker;
           let promptTmp: string | null = null;
           if (shouldLaunchAgent) {
-            const prompt = `You are working on ${issue.identifier}: ${issue.title}\n\n${issue.description}\n\nStart by understanding the relevant code, then propose an approach.`;
+            const prompt = adapters.issueTracker!.buildPrompt(issue);
             promptTmp = `/tmp/jmux-prompt-${Date.now()}.md`;
             writeFileSync(promptTmp, prompt);
           }

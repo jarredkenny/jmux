@@ -32,7 +32,14 @@ export interface Issue {
   updatedAt?: number;  // epoch ms
   description?: string;
   branchName?: string;  // Linear's suggested branch name
-  comments?: Array<{ author: string; body: string; createdAt: string }>;
+  labels?: Array<{ name: string; group?: string }>;
+  comments?: Array<{
+    id?: string;
+    parentId?: string;
+    author: string;
+    body: string;
+    createdAt: string;
+  }>;
   links?: Array<{ type: string; title?: string; url: string }>;
 }
 
@@ -92,6 +99,7 @@ export interface IssueTrackerAdapter {
   searchIssues(query: string): Promise<Issue[]>;
   getMyIssues(): Promise<Issue[]>;
   getTeams(): Promise<Array<{ id: string; name: string }>>;
+  buildPrompt(issue: Issue): string;
 }
 
 export interface AdapterConfig {

@@ -1,11 +1,12 @@
 // src/adapters/linear.ts
 import { HttpError, type IssueTrackerAdapter, type AdapterAuthState, type Issue } from "./types";
+import { buildLinearPrompt } from "./linear-prompt";
 import { logError } from "../log";
 
 const LINEAR_API = "https://api.linear.app/graphql";
 
 // Shared GraphQL fields for issue queries
-const ISSUE_FIELDS = `id identifier title description branchName state { name } assignee { name } team { name } project { name } priority updatedAt attachments { nodes { title url sourceType } } comments(first: 20) { nodes { body user { name } createdAt } } url`;
+const ISSUE_FIELDS = `id identifier title description branchName state { name } assignee { name } team { name } project { name } priority updatedAt labels { nodes { name parent { name } } } attachments { nodes { title url sourceType } } comments(first: 20) { nodes { id parent { id } body user { name } createdAt } } url`;
 
 export function extractIssueIdFromBranch(branch: string): string | null {
   const match = branch.match(/(?:^|\/?)([a-zA-Z]+-\d+)/);
@@ -161,6 +162,10 @@ export class LinearAdapter implements IssueTrackerAdapter {
     return this.mapIssue(resp.data.issueCreate.issue);
   }
 
+  buildPrompt(issue: Issue): string {
+    return buildLinearPrompt(issue);
+  }
+
   private mapIssue(raw: any): Issue {
     return {
       id: raw.id ?? "",
@@ -178,7 +183,15 @@ export class LinearAdapter implements IssueTrackerAdapter {
       updatedAt: raw.updatedAt ? new Date(raw.updatedAt).getTime() : undefined,
       description: raw.description ?? undefined,
       branchName: raw.branchName ?? undefined,
+      labels: (raw.labels?.nodes ?? [])
+        .filter((l: any) => l?.name)
+        .map((l: any) => ({
+          name: l.name as string,
+          ...(l.parent?.name ? { group: l.parent.name as string } : {}),
+        })),
       comments: (raw.comments?.nodes ?? []).map((c: any) => ({
+        id: c.id ?? undefined,
+        parentId: c.parent?.id ?? undefined,
         author: c.user?.name ?? "Unknown",
         body: c.body ?? "",
         createdAt: c.createdAt ?? "",

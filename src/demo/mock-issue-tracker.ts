@@ -1,4 +1,5 @@
 import type { IssueTrackerAdapter, Issue, AdapterAuthState } from "../adapters/types";
+import { buildLinearPrompt } from "../adapters/linear-prompt";
 import { DEMO_ISSUES, DEMO_TEAMS } from "./seed-data";
 
 const AVAILABLE_STATUSES = ["Backlog", "Todo", "In Progress", "In Review", "Done"];
@@ -116,5 +117,9 @@ export class DemoIssueTrackerAdapter implements IssueTrackerAdapter {
 
   async getTeams(): Promise<Array<{ id: string; name: string }>> {
     return DEMO_TEAMS;
+  }
+
+  buildPrompt(issue: Issue): string {
+    return buildLinearPrompt(issue);
   }
 }
