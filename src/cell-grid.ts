@@ -12,6 +12,7 @@ export const DEFAULT_CELL: Readonly<Cell> = {
   italic: false,
   underline: false,
   dim: false,
+  link: undefined,
 };
 
 export function createGrid(cols: number, rows: number): CellGrid {
@@ -35,6 +36,24 @@ export interface CellAttrs {
   italic?: boolean;
   underline?: boolean;
   dim?: boolean;
+  link?: string;
+}
+
+export interface StyledSegment {
+  text: string;
+  attrs?: CellAttrs;
+}
+export type StyledLine = StyledSegment[];
+
+// Display width of a string in terminal columns, summing cellWidth across codepoints.
+// Use whenever you need to know how many columns a styled segment will consume so
+// the next segment lands at the correct column.
+export function textCols(text: string): number {
+  let w = 0;
+  for (const ch of text) {
+    w += cellWidth(ch.codePointAt(0) ?? 0);
+  }
+  return w;
 }
 
 // Display width of a Unicode codepoint for grid layout purposes.
@@ -90,6 +109,7 @@ export function writeString(
       if (attrs.italic !== undefined) cell.italic = attrs.italic;
       if (attrs.underline !== undefined) cell.underline = attrs.underline;
       if (attrs.dim !== undefined) cell.dim = attrs.dim;
+      if (attrs.link !== undefined) cell.link = attrs.link;
     }
     if (w === 2) {
       // Insert continuation cell

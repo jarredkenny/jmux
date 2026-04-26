@@ -22,7 +22,7 @@ bun install -g @jx0/jmux
 jmux
 ```
 
-Requires [Bun](https://bun.sh) 1.2+, [tmux](https://github.com/tmux/tmux) 3.2+. jmux will offer to install tmux on first run. New to tmux? See the **[Getting Started guide](docs/getting-started.md)**.
+Requires [Bun](https://bun.sh) 1.3.8+, [tmux](https://github.com/tmux/tmux) 3.2+. jmux will offer to install tmux on first run. New to tmux? See the **[Getting Started guide](docs/getting-started.md)**.
 
 Try it without credentials: `jmux --demo` runs with mock data so you can explore every feature.
 

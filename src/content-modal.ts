@@ -1,13 +1,11 @@
 import type { CellGrid } from "./types";
-import type { CellAttrs } from "./cell-grid";
+import type { CellAttrs, StyledLine, StyledSegment } from "./cell-grid";
 import { createGrid, writeString } from "./cell-grid";
 import { HEADER_ATTRS, DIM_ATTRS, BG_ATTRS, type ModalAction } from "./modal";
 
-export interface StyledSegment {
-  text: string;
-  attrs?: CellAttrs;
-}
-export type StyledLine = StyledSegment[];
+// Re-exported for backwards compatibility with consumers that import from
+// content-modal — the canonical home is now cell-grid.
+export type { StyledLine, StyledSegment };
 
 export interface ContentModalConfig {
   lines: StyledLine[];

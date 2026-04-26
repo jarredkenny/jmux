@@ -1,6 +1,6 @@
 import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
-import { createGrid, writeString, cellWidth, type CellAttrs } from "./cell-grid";
+import { createGrid, writeString, textCols, type CellAttrs } from "./cell-grid";
 
 export type InfoTab = "diff" | string; // "diff" is special, others are view IDs
 
@@ -29,14 +29,6 @@ const TAB_BG: CellAttrs = {
 export interface InfoPanelConfig {
   viewIds: string[];      // ordered list of view IDs to show as tabs
   viewLabels: Map<string, string>; // id → label for tab bar rendering
-}
-
-function textCols(text: string): number {
-  let w = 0;
-  for (const ch of text) {
-    w += cellWidth(ch.codePointAt(0) ?? 0);
-  }
-  return w;
 }
 
 export class InfoPanel {

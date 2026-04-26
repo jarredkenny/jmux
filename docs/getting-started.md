@@ -26,7 +26,7 @@ sudo dnf install tmux
 pacman -S tmux
 ```
 
-You'll also need [Bun](https://bun.sh) 1.2+ and optionally [git](https://git-scm.com/) for branch display in the sidebar.
+You'll also need [Bun](https://bun.sh) 1.3.8+ and optionally [git](https://git-scm.com/) for branch display in the sidebar.
 
 ---
 

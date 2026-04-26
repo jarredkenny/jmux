@@ -8,6 +8,7 @@ import { CommandPalette } from "./command-palette";
 import { InputModal } from "./input-modal";
 import { ListModal, type ListItem } from "./list-modal";
 import { ContentModal, type StyledLine } from "./content-modal";
+import { renderMarkdownToStyledLines } from "./markdown";
 import {
   NewSessionModal,
   tq,
@@ -40,7 +41,28 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.14.0";
+const VERSION = "0.15.0";
+const MIN_BUN_VERSION = "1.3.8";
+
+function checkBunVersion(): void {
+  // parseInt parses leading digits and stops at the first non-digit, so
+  // canary/prerelease suffixes like "1.3.8-pre.1" survive intact.
+  const parsePart = (s: string) => {
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const cur = Bun.version.split(".").map(parsePart);
+  const min = MIN_BUN_VERSION.split(".").map(parsePart);
+  for (let i = 0; i < min.length; i++) {
+    if ((cur[i] ?? 0) > min[i]) return;
+    if ((cur[i] ?? 0) < min[i]) {
+      process.stderr.write(
+        `jmux requires Bun ${MIN_BUN_VERSION}+ (you have ${Bun.version}). Run: bun upgrade\n`,
+      );
+      process.exit(1);
+    }
+  }
+}
 
 const HELP = `jmux — the terminal workspace for agentic development
 
@@ -162,6 +184,10 @@ function installAgentHooks(): void {
   console.log("When Claude Code finishes a response, your jmux sidebar");
   console.log("will show an orange ! on that session.");
 }
+
+// --- Bun version gate (TUI requires Bun.markdown.ansi) ---
+
+checkBunVersion();
 
 // --- Nesting guard (after CLI commands, before TUI) ---
 
@@ -2916,6 +2942,11 @@ async function showVersionInfo(): Promise<void> {
     const currentTag = `v${VERSION}`;
     const lines: StyledLine[] = [[]];
 
+    // Match ContentModal.preferredWidth() then subtract its 2-col padding each side.
+    const termCols = process.stdout.columns || 80;
+    const modalWidth = Math.min(Math.max(50, Math.round(termCols * 0.7)), 90);
+    const contentWidth = Math.max(20, modalWidth - 4);
+
     for (const r of releases) {
       const tag = r.tag_name;
       const date = (r.published_at || "").split("T")[0];
@@ -2935,15 +2966,11 @@ async function showVersionInfo(): Promise<void> {
 
       const body = (r.body || "").trim();
       if (body) {
-        for (const line of body.split("\n")) {
-          const formatted = line.replace(/^## (.*)/, "$1").replace(/^- /, "\u2022 ");
-          const isHeader = line.startsWith("## ");
-          lines.push([{
-            text: formatted,
-            attrs: isHeader
-              ? { bold: true, bg: MODAL_BG, bgMode: 2 }
-              : { bg: MODAL_BG, bgMode: 2 },
-          }]);
+        const rendered = renderMarkdownToStyledLines(body, contentWidth, {
+          baseAttrs: { bg: MODAL_BG, bgMode: 2 },
+        });
+        for (const line of rendered) {
+          lines.push(line);
         }
         lines.push([]);
       }

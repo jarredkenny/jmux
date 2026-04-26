@@ -15,6 +15,11 @@ export interface Cell {
   italic: boolean;
   underline: boolean;
   dim: boolean;
+  // OSC 8 hyperlink target. When set, the renderer wraps runs of cells
+  // sharing the same link in OSC 8 open/close escapes so the terminal
+  // treats the visible text as one clickable region — even across line
+  // wraps where regex-based URL detection would otherwise fail.
+  link?: string;
 }
 
 export interface CellGrid {

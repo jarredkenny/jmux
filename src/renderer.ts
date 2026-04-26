@@ -417,7 +417,8 @@ function fullCellsEqual(a: Cell, b: Cell): boolean {
     a.bold === b.bold &&
     a.dim === b.dim &&
     a.italic === b.italic &&
-    a.underline === b.underline
+    a.underline === b.underline &&
+    a.link === b.link
   );
 }
 
@@ -473,12 +474,23 @@ export class Renderer {
       buf.push(`\x1b[${y + 1};1H`);
       this.prevAttrs = null;
       let col = 1; // expected terminal column (1-indexed)
+      // OSC 8 link state — reset per row so the close emitted at the
+      // end of each row keeps state cleanly bounded.
+      let prevLink: string | undefined = undefined;
 
       for (let x = 0; x < grid.cols; x++) {
         const cell = grid.cells[y][x];
 
         // Skip continuation cells (second half of wide characters)
         if (cell.width === 0) continue;
+
+        // Emit OSC 8 transitions before SGR/text so the link "wraps"
+        // the styled glyphs the way Bun emits them.
+        if (cell.link !== prevLink) {
+          if (prevLink !== undefined) buf.push("\x1b]8;;\x1b\\");
+          if (cell.link !== undefined) buf.push(`\x1b]8;;${cell.link}\x1b\\`);
+          prevLink = cell.link;
+        }
 
         // Emit SGR only when attributes change
         if (!this.prevAttrs || !cellsEqual(this.prevAttrs, cell)) {
@@ -501,6 +513,12 @@ export class Renderer {
         if (col <= grid.cols && cell.width >= 2) {
           buf.push(`\x1b[${y + 1};${col}H`);
         }
+      }
+
+      // Close any open OSC 8 region at the end of the row so it
+      // doesn't leak into the next row's text or the trailing reset.
+      if (prevLink !== undefined) {
+        buf.push("\x1b]8;;\x1b\\");
       }
     }
 

@@ -1,10 +1,11 @@
 // src/panel-view-renderer.ts
 import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
-import { createGrid, writeString, type CellAttrs } from "./cell-grid";
+import { createGrid, writeString, textCols, type CellAttrs, type StyledLine } from "./cell-grid";
 import type { PanelView } from "./panel-view";
 import type { Issue, MergeRequest } from "./adapters/types";
 import { fuzzyMatch } from "./fuzzy";
+import { renderMarkdownToStyledLines } from "./markdown";
 
 export type IssueSessionState = "none" | "worktree" | "session";
 
@@ -332,7 +333,9 @@ function renderItem(grid: CellGrid, row: number, cols: number, item: RenderableI
   }
 }
 
-type DetailLine = { text: string; attrs: CellAttrs; indent?: number };
+type DetailLine =
+  | { text: string; attrs: CellAttrs; indent?: number }
+  | { segments: StyledLine; indent?: number };
 
 function buildIssueDetailLines(item: RenderableItem, cols: number): DetailLine[] {
   const issue = item.raw as Issue;
@@ -367,8 +370,8 @@ function buildIssueDetailLines(item: RenderableItem, cols: number): DetailLine[]
   if (issue.description) {
     lines.push({ text: "", attrs: DIM_ATTRS });
     lines.push({ text: "Description:", attrs: { ...DETAIL_LABEL, bold: true } });
-    for (const line of wrapText(issue.description, contentWidth)) {
-      lines.push({ text: line, attrs: DETAIL_VALUE });
+    for (const segLine of renderMarkdownToStyledLines(issue.description, contentWidth, { baseAttrs: DETAIL_VALUE })) {
+      lines.push({ segments: segLine });
     }
   }
 
@@ -380,8 +383,8 @@ function buildIssueDetailLines(item: RenderableItem, cols: number): DetailLine[]
       lines.push({ text: "", attrs: DIM_ATTRS });
       const date = comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : "";
       lines.push({ text: `${comment.author}  ${date}`, attrs: { ...DETAIL_LABEL, bold: true } });
-      for (const line of wrapText(comment.body, contentWidth)) {
-        lines.push({ text: line, attrs: DETAIL_VALUE });
+      for (const segLine of renderMarkdownToStyledLines(comment.body, contentWidth, { baseAttrs: DETAIL_VALUE })) {
+        lines.push({ segments: segLine });
       }
     }
   }
@@ -414,24 +417,6 @@ function buildMrDetailLines(item: RenderableItem, cols: number): DetailLine[] {
   return lines;
 }
 
-function wrapText(text: string, width: number): string[] {
-  const lines: string[] = [];
-  // Split on newlines first, then wrap each line
-  for (const paragraph of text.split("\n")) {
-    if (paragraph.trim() === "") { lines.push(""); continue; }
-    let remaining = paragraph;
-    while (remaining.length > width) {
-      // Find last space within width
-      let breakAt = remaining.lastIndexOf(" ", width);
-      if (breakAt <= 0) breakAt = width;
-      lines.push(remaining.slice(0, breakAt));
-      remaining = remaining.slice(breakAt).trimStart();
-    }
-    if (remaining) lines.push(remaining);
-  }
-  return lines;
-}
-
 function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: number, item: RenderableItem, scrollOffset: number): void {
   const pad = 2;
   const lines = item.type === "issue"
@@ -447,7 +432,20 @@ function renderDetail(grid: CellGrid, startRow: number, cols: number, maxRows: n
     if (lineIdx >= totalLines) break;
     const line = lines[lineIdx];
     const indent = (line.indent ?? 0) * 2;
-    writeString(grid, startRow + i, pad + indent, line.text.slice(0, cols - pad * 2 - indent), line.attrs);
+    const startCol = pad + indent;
+    const maxWidth = cols - pad * 2 - indent;
+    if ("segments" in line) {
+      let used = 0;
+      for (const seg of line.segments) {
+        if (used >= maxWidth) break;
+        // writeString clips at the grid edge, so we don't pre-truncate the slice;
+        // we just track display width so the next segment lands at the right column.
+        writeString(grid, startRow + i, startCol + used, seg.text, seg.attrs);
+        used += textCols(seg.text);
+      }
+    } else {
+      writeString(grid, startRow + i, startCol, line.text.slice(0, maxWidth), line.attrs);
+    }
   }
 
   // Scroll indicators
