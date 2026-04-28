@@ -878,6 +878,48 @@ describe("Sidebar", () => {
     expect(grid.cells[7][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
   });
 
+  test("expanded session shows cost / tool / idle on row 3", () => {
+    // Cost ($1.23) + Edit 1.2s + 3m idle = 25 chars + 2x2 gap minimum = ~25.
+    // Budget is width - 3 (we write at col 3), so use a 30-col sidebar so all
+    // three fields survive buildSessionRow3's drop-priority overflow logic.
+    const width = 30;
+    const sidebar = new Sidebar(width, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setActiveSession("$0");
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      costUsd: 1.23,
+      lastTool: { name: "Edit", durationMs: 1234, success: true, timestamp: Date.now() },
+      lastUserPromptTime: Date.now() - 3 * 60 * 1000,
+    });
+    const grid = sidebar.getGrid();
+
+    // Active session — name row 2, detail row 3, row 3 is row 4
+    const text = Array.from({ length: width }, (_, i) => grid.cells[4][i].char).join("");
+    expect(text).toContain("$1.23");
+    expect(text).toContain("Edit");
+    expect(text).toContain("3m idle");
+  });
+
+  test("non-expanded session has no row 3 content", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([
+      { name: "alpha" },
+      { name: "beta" },
+    ]));
+    sidebar.setActiveSession("$0");
+    sidebar.setSessionOtelState("$1", {
+      ...makeBlankOtelState(),
+      costUsd: 99.99,
+    });
+    const grid = sidebar.getGrid();
+
+    // Layout: alpha (expanded) at rows 2,3,4; spacer at 5; beta (h=2) at 6,7;
+    // spacer at 8. If beta were wrongly expanded, $99.99 would appear at row 8.
+    const row8Text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[8][i].char).join("");
+    expect(row8Text).not.toContain("$99.99");
+  });
+
   test("renders P badge in cyan when permissionMode is plan", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));

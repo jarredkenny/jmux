@@ -2,7 +2,7 @@ import type { SessionOtelState, CellGrid, SessionInfo } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { SessionContext } from "./adapters/types";
-import { buildSessionView } from "./session-view";
+import { buildSessionView, buildSessionRow3 } from "./session-view";
 
 const HEADER_ROWS = 2; // "jmux" header + separator
 
@@ -744,8 +744,7 @@ export class Sidebar {
       }
     }
 
-    // Row 3: empty for now \u2014 content lands in Task 16. Just paint the
-    // active/hover background and active marker bar so it visually extends.
+    // Row 3: cost / tool / idle from the OTEL state.
     if (item.expanded) {
       const row3 = nameRow + 2;
       if (row3 < this.height) {
@@ -757,6 +756,21 @@ export class Sidebar {
           writeString(grid, row3, 0, "\u258e", ACTIVE_MARKER_ATTRS);
         }
         this.rowToSessionIndex.set(row3, sessionIdx);
+
+        const otel = this.otelStates.get(session.id);
+        if (otel) {
+          // Pass the budget that buildSessionRow3 will treat as its full usable
+          // width. We start writing at col 3, so usable budget = this.width - 3.
+          const text = buildSessionRow3(otel, this.width - 3);
+          if (text.length > 0) {
+            const row3Attrs: CellAttrs = isActive
+              ? ACTIVE_DETAIL_ATTRS
+              : isHovered
+                ? HOVER_DETAIL_ATTRS
+                : DIM_ATTRS;
+            writeString(grid, row3, 3, text, row3Attrs);
+          }
+        }
       }
     }
   }
