@@ -10,13 +10,27 @@ function makeOtlpPayload(opts: {
   eventName?: string;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  costUsd?: number;
+  attributes?: Array<{ key: string; value: any }>;
 }): object {
   const {
     sessionName = "main",
     eventName = "api_request",
     cacheReadTokens = 100,
     cacheCreationTokens = 0,
+    costUsd,
+    attributes,
   } = opts;
+
+  const baseAttrs: any[] = [
+    { key: "event.name", value: { stringValue: eventName } },
+    { key: "cache_read_tokens", value: { stringValue: String(cacheReadTokens) } },
+    { key: "cache_creation_tokens", value: { stringValue: String(cacheCreationTokens) } },
+  ];
+  if (costUsd !== undefined) {
+    baseAttrs.push({ key: "cost_usd", value: { doubleValue: costUsd } });
+  }
+  if (attributes) baseAttrs.push(...attributes);
 
   return {
     resourceLogs: [
@@ -32,11 +46,7 @@ function makeOtlpPayload(opts: {
               {
                 timeUnixNano: String(Date.now() * 1_000_000),
                 body: { stringValue: `claude_code.${eventName}` },
-                attributes: [
-                  { key: "event.name", value: { stringValue: eventName } },
-                  { key: "cache_read_tokens", value: { stringValue: String(cacheReadTokens) } },
-                  { key: "cache_creation_tokens", value: { stringValue: String(cacheCreationTokens) } },
-                ],
+                attributes: baseAttrs,
               },
             ],
           },
@@ -236,5 +246,41 @@ describe("OtelReceiver", () => {
     });
 
     expect(updates).toEqual(["$7"]);
+  });
+
+  test("accumulates cost across api_request events", async () => {
+    const port = await receiver.start();
+
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$c", costUsd: 0.42 })),
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$c", costUsd: 1.08 })),
+    });
+
+    const state = receiver.getSessionState("$c");
+    expect(state).not.toBeNull();
+    expect(state!.costUsd).toBeCloseTo(1.50, 5);
+  });
+
+  test("api_request without cost_usd leaves cost unchanged", async () => {
+    const port = await receiver.start();
+
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$d", costUsd: 0.5 })),
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$d" })),
+    });
+
+    expect(receiver.getSessionState("$d")!.costUsd).toBeCloseTo(0.5, 5);
   });
 });

@@ -80,17 +80,21 @@ export class OtelReceiver {
     if (!Array.isArray(attrs)) return;
 
     const eventName = this.findAttrString(attrs, "event.name");
-    if (eventName !== "api_request") return;
+    if (!eventName) return;
 
-    const cacheReadTokens = this.findAttrNumber(attrs, "cache_read_tokens");
-    const cacheWasHit = cacheReadTokens > 0;
+    if (eventName === "api_request") {
+      const cacheReadTokens = this.findAttrNumber(attrs, "cache_read_tokens");
+      const cost = this.findAttrDouble(attrs, "cost_usd");
 
-    const existing = this.state.get(sessionName) ?? makeSessionOtelState();
-    existing.lastRequestTime = Date.now();
-    existing.cacheWasHit = cacheWasHit;
-    this.state.set(sessionName, existing);
+      const existing = this.state.get(sessionName) ?? makeSessionOtelState();
+      existing.lastRequestTime = Date.now();
+      existing.cacheWasHit = cacheReadTokens > 0;
+      if (cost !== null) existing.costUsd += cost;
+      this.state.set(sessionName, existing);
 
-    this.onUpdate?.(sessionName);
+      this.onUpdate?.(sessionName);
+      return;
+    }
   }
 
   private extractResourceAttr(resource: any, key: string): string | null {
@@ -122,5 +126,26 @@ export class OtelReceiver {
       }
     }
     return 0;
+  }
+
+  private findAttrDouble(attrs: any[], key: string): number | null {
+    for (const attr of attrs) {
+      if (attr?.key === key) {
+        const v = attr?.value;
+        if (!v) return null;
+        if (v.doubleValue !== undefined) {
+          return typeof v.doubleValue === "number" ? v.doubleValue : parseFloat(v.doubleValue);
+        }
+        if (v.intValue !== undefined) {
+          return typeof v.intValue === "number" ? v.intValue : parseFloat(v.intValue);
+        }
+        if (v.stringValue !== undefined) {
+          const parsed = parseFloat(v.stringValue);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+      }
+    }
+    return null;
   }
 }
