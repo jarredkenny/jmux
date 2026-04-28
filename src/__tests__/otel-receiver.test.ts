@@ -83,7 +83,7 @@ describe("OtelReceiver", () => {
     });
     expect(resp.status).toBe(200);
 
-    const state = receiver.getTimerState("$1");
+    const state = receiver.getSessionState("$1");
     expect(state).not.toBeNull();
     expect(state!.cacheWasHit).toBe(true);
     expect(state!.lastRequestTime).toBeGreaterThan(0);
@@ -99,7 +99,7 @@ describe("OtelReceiver", () => {
       body: JSON.stringify(payload),
     });
 
-    const state = receiver.getTimerState("$2");
+    const state = receiver.getSessionState("$2");
     expect(state).not.toBeNull();
     expect(state!.cacheWasHit).toBe(false);
   });
@@ -114,7 +114,7 @@ describe("OtelReceiver", () => {
       body: JSON.stringify(payload),
     });
 
-    expect(receiver.getTimerState("$3")).toBeNull();
+    expect(receiver.getSessionState("$3")).toBeNull();
   });
 
   test("ignores payloads without tmux_session_name", async () => {
@@ -179,7 +179,7 @@ describe("OtelReceiver", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(makeOtlpPayload({ sessionName: "$0", cacheReadTokens: 0 })),
     });
-    const first = receiver.getTimerState("$0");
+    const first = receiver.getSessionState("$0");
     expect(first!.cacheWasHit).toBe(false);
     const firstTime = first!.lastRequestTime;
 
@@ -192,7 +192,7 @@ describe("OtelReceiver", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(makeOtlpPayload({ sessionName: "$0", cacheReadTokens: 200 })),
     });
-    const second = receiver.getTimerState("$0");
+    const second = receiver.getSessionState("$0");
     expect(second!.cacheWasHit).toBe(true);
     expect(second!.lastRequestTime).toBeGreaterThanOrEqual(firstTime);
   });
@@ -230,8 +230,8 @@ describe("OtelReceiver", () => {
     });
 
     receiver.pruneExcept(["$0"]);
-    expect(receiver.getTimerState("$0")).not.toBeNull();
-    expect(receiver.getTimerState("$5")).toBeNull();
+    expect(receiver.getSessionState("$0")).not.toBeNull();
+    expect(receiver.getSessionState("$5")).toBeNull();
   });
 
   test("fires onUpdate callback when state changes", async () => {

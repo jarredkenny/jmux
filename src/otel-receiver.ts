@@ -24,11 +24,6 @@ export class OtelReceiver {
     return this.state.get(key) ?? null;
   }
 
-  /** @deprecated alias kept for one task — removed in Task 9 */
-  getTimerState(key: string): SessionOtelState | null {
-    return this.getSessionState(key);
-  }
-
   getActiveSessionIds(): string[] {
     return [...this.state.keys()];
   }

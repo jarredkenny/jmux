@@ -501,7 +501,7 @@ otelReceiver.onUpdate = (sessionName) => {
   // Map session name → session ID for the sidebar
   const session = currentSessions.find((s) => s.name === sessionName);
   if (!session) return;
-  const state = otelReceiver.getTimerState(sessionName);
+  const state = otelReceiver.getSessionState(sessionName);
   sidebar.setCacheTimer(session.id, state);
   startCacheTimerTick();
   scheduleRender();
