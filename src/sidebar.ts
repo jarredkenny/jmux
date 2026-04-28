@@ -47,6 +47,7 @@ const MODE_ACCEPT_EDITS_ATTRS: CellAttrs = {
   fg: 3,
   fgMode: ColorMode.Palette,
 };
+const MODE_COMPACTION_ATTRS: CellAttrs = { dim: true };
 const ACTIVE_NAME_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
@@ -667,10 +668,19 @@ export class Sidebar {
     writeString(grid, nameRow, nameStart, displayName, nameAttrs);
 
     if (hasBadge && badgeCol >= 0) {
-      const badgeAttrs = view.modeBadge === "P"
-        ? MODE_PLAN_ATTRS
-        : MODE_ACCEPT_EDITS_ATTRS;
-      writeString(grid, nameRow, badgeCol, view.modeBadge!, { ...badgeAttrs, ...bgAttrs });
+      let glyph: string;
+      let badgeAttrs: CellAttrs;
+      if (view.modeBadge === "P") {
+        glyph = "P";
+        badgeAttrs = MODE_PLAN_ATTRS;
+      } else if (view.modeBadge === "A") {
+        glyph = "A";
+        badgeAttrs = MODE_ACCEPT_EDITS_ATTRS;
+      } else {
+        glyph = "⊕";
+        badgeAttrs = MODE_COMPACTION_ATTRS;
+      }
+      writeString(grid, nameRow, badgeCol, glyph, { ...badgeAttrs, ...bgAttrs });
     }
 
     if (linearIdStr) {

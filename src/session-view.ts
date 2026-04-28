@@ -2,10 +2,11 @@ import type { SessionInfo, SessionOtelState } from "./types";
 import type { SessionContext } from "./adapters/types";
 
 const CACHE_TIMER_TTL = 300; // seconds
+const COMPACTION_FLASH_MS = 30_000;
 
 export type IndicatorKind = "error" | "mcp-down" | "attention" | "activity" | null;
 
-export type ModeBadge = "P" | "A" | null;
+export type ModeBadge = "P" | "A" | "compaction" | null;
 
 export interface SessionView {
   sessionId: string;
@@ -86,10 +87,21 @@ export function buildSessionView(
   else if (session.attention) indicatorKind = "attention";
   else if (activitySet.has(session.id)) indicatorKind = "activity";
 
-  // Mode badge: P for plan, A for accept-edits, none for default.
-  const modeBadge: ModeBadge =
-    timerState?.permissionMode === "plan" ? "P" :
-    timerState?.permissionMode === "accept-edits" ? "A" : null;
+  // Mode badge: P for plan, A for accept-edits. Compaction marker (⊕) shows
+  // for COMPACTION_FLASH_MS after a compaction event, but only when no
+  // permission-mode badge is already taking the slot.
+  let modeBadge: ModeBadge = null;
+  if (timerState?.permissionMode === "plan") {
+    modeBadge = "P";
+  } else if (timerState?.permissionMode === "accept-edits") {
+    modeBadge = "A";
+  } else if (
+    timerState?.lastCompactionTime !== null &&
+    timerState?.lastCompactionTime !== undefined &&
+    Date.now() - timerState.lastCompactionTime < COMPACTION_FLASH_MS
+  ) {
+    modeBadge = "compaction";
+  }
 
   return {
     sessionId: session.id,

@@ -937,6 +937,44 @@ describe("Sidebar", () => {
     expect(row[ellipsisCol].char).toBe("…");
   });
 
+  test("renders compaction marker for 30s when no mode badge", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      lastCompactionTime: Date.now() - 5_000,
+    });
+    const grid = sidebar.getGrid();
+
+    expect(grid.cells[2][SIDEBAR_WIDTH - 2].char).toBe("⊕");
+    expect(grid.cells[2][SIDEBAR_WIDTH - 2].dim).toBe(true);
+  });
+
+  test("compaction marker disappears after 30s", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      lastCompactionTime: Date.now() - 31_000,
+    });
+    const grid = sidebar.getGrid();
+
+    expect(grid.cells[2][SIDEBAR_WIDTH - 2].char).toBe(" ");
+  });
+
+  test("plan mode wins over compaction marker", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      permissionMode: "plan",
+      lastCompactionTime: Date.now() - 5_000,
+    });
+    const grid = sidebar.getGrid();
+
+    expect(grid.cells[2][SIDEBAR_WIDTH - 2].char).toBe("P");
+  });
+
   test("hovering a group header does not trigger expansion", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([
