@@ -6,7 +6,7 @@ import type { SessionContext, PipelineStatus } from "../adapters/types";
 const SIDEBAR_WIDTH = 24;
 
 function makeSessions(
-  entries: Array<{ name: string; directory?: string; gitBranch?: string }>,
+  entries: Array<{ name: string; directory?: string; gitBranch?: string; project?: string }>,
 ): SessionInfo[] {
   return entries.map((e, i) => ({
     id: `$${i}`,
@@ -17,6 +17,7 @@ function makeSessions(
     windowCount: 1,
     directory: e.directory,
     gitBranch: e.gitBranch,
+    project: e.project,
   }));
 }
 
@@ -727,6 +728,102 @@ describe("Sidebar", () => {
       (_, i) => grid.cells[3][i].char,
     ).join("");
     expect(detailText).not.toMatch(/\d:\d\d/);
+  });
+
+  // Row layout reminder for ungrouped sessions:
+  // row 0: jmux header
+  // row 1: separator
+  // row 2: first session name (item starts here; spacer follows each session)
+  //
+  // So two ungrouped sessions α, β with α expanded (h=3):
+  //   α: rows 2,3,4
+  //   spacer: row 5
+  //   β: rows 6,7
+  // With α not expanded (h=2):
+  //   α: rows 2,3
+  //   spacer: row 4
+  //   β: rows 5,6
+
+  test("active session expands to 3 rows", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([
+      { name: "alpha" },
+      { name: "beta" },
+    ]));
+    sidebar.setActiveSession("$0");
+    const grid = sidebar.getGrid();
+
+    // alpha at rows 2,3,4 (expanded); spacer at 5; beta at rows 6,7
+    const row6Text = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[6][i].char,
+    ).join("");
+    expect(row6Text).toContain("beta");
+  });
+
+  test("inactive sessions stay at 2 rows", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([
+      { name: "alpha" },
+      { name: "beta" },
+      { name: "gamma" },
+    ]));
+    sidebar.setActiveSession("$0");
+    const grid = sidebar.getGrid();
+
+    // alpha (rows 2,3,4) — expanded
+    // spacer at 5
+    // beta (rows 6,7) — not expanded
+    // spacer at 8
+    // gamma name at row 9
+    const row9Text = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[9][i].char,
+    ).join("");
+    expect(row9Text).toContain("gamma");
+  });
+
+  test("hover overrides active for expansion", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([
+      { name: "alpha" },
+      { name: "beta" },
+    ]));
+    sidebar.setActiveSession("$0");
+    // First render: alpha expanded at 2,3,4; spacer 5; beta name at row 6.
+    sidebar.getGrid(); // populate rowToSessionIndex
+    sidebar.setHoveredRow(6); // hover beta's name row
+    const grid = sidebar.getGrid();
+
+    // Now beta is the expanded session: alpha collapses to 2 rows (2,3),
+    // spacer at 4, beta expanded at 5,6,7.
+    const row5Text = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[5][i].char,
+    ).join("");
+    expect(row5Text).toContain("beta");
+  });
+
+  test("hovering a group header does not trigger expansion", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([
+      { name: "a", project: "proj1" },
+      { name: "b", project: "proj1" },
+    ]));
+    sidebar.setActiveSession("$0");
+    // Layout with group + active 'a' (expanded):
+    //   row 2: group header
+    //   row 3: spacer
+    //   rows 4,5,6: 'a' (expanded)
+    //   row 7: spacer
+    //   rows 8,9: 'b'
+    sidebar.getGrid(); // populate rowToSessionIndex with group header at 2
+    sidebar.setHoveredRow(2); // hovering group header — should be a no-op for expansion
+    const grid = sidebar.getGrid();
+
+    // 'a' should remain expanded. 'b' name still at row 8.
+    const row8 = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[8][i].char).join("");
+    expect(row8).toContain("b");
   });
 });
 

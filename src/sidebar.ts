@@ -134,7 +134,7 @@ function getSubdirectory(dir: string, groupLabel: string): string | null {
 
 type RenderItem =
   | { type: "group-header"; label: string; collapsed: boolean; sessionCount: number }
-  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string }
+  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string; expanded: boolean }
   | { type: "spacer" };
 
 const PINNED_GROUP_LABEL = "Pinned";
@@ -143,6 +143,7 @@ function buildRenderPlan(
   sessions: SessionInfo[],
   collapsedGroups: Set<string>,
   pinnedNames: Set<string>,
+  expandedSessionId: string | null,
 ): {
   items: RenderItem[];
   displayOrder: number[];
@@ -201,7 +202,13 @@ function buildRenderPlan(
     items.push({ type: "spacer" });
     if (!isCollapsed) {
       for (const idx of pinnedIndices) {
-        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: PINNED_GROUP_LABEL });
+        items.push({
+          type: "session",
+          sessionIndex: idx,
+          grouped: true,
+          groupLabel: PINNED_GROUP_LABEL,
+          expanded: sessions[idx].id === expandedSessionId,
+        });
         displayOrder.push(idx);
         items.push({ type: "spacer" });
       }
@@ -219,7 +226,13 @@ function buildRenderPlan(
     items.push({ type: "spacer" });
     if (!isCollapsed) {
       for (const idx of group.sessionIndices) {
-        items.push({ type: "session", sessionIndex: idx, grouped: true, groupLabel: group.label });
+        items.push({
+          type: "session",
+          sessionIndex: idx,
+          grouped: true,
+          groupLabel: group.label,
+          expanded: sessions[idx].id === expandedSessionId,
+        });
         displayOrder.push(idx);
         items.push({ type: "spacer" });
       }
@@ -227,7 +240,12 @@ function buildRenderPlan(
   }
 
   for (const idx of ungrouped) {
-    items.push({ type: "session", sessionIndex: idx, grouped: false });
+    items.push({
+      type: "session",
+      sessionIndex: idx,
+      grouped: false,
+      expanded: sessions[idx].id === expandedSessionId,
+    });
     displayOrder.push(idx);
     items.push({ type: "spacer" });
   }
@@ -236,7 +254,7 @@ function buildRenderPlan(
 }
 
 function itemHeight(item: RenderItem): number {
-  if (item.type === "session") return 2;
+  if (item.type === "session") return item.expanded ? 3 : 2;
   return 1; // group-header or spacer
 }
 
@@ -274,14 +292,13 @@ export class Sidebar {
 
   updateSessions(sessions: SessionInfo[]): void {
     this.sessions = sessions;
-    const { items, displayOrder } = buildRenderPlan(sessions, this.collapsedGroups, this.pinnedSessions);
-    this.items = items;
-    this.displayOrder = displayOrder;
-    this.clampScroll();
+    this.rebuildPlan();
   }
 
   setActiveSession(id: string): void {
+    if (this.activeSessionId === id) return;
     this.activeSessionId = id;
+    this.rebuildPlan();
   }
 
   toggleGroup(label: string): void {
@@ -290,18 +307,32 @@ export class Sidebar {
     } else {
       this.collapsedGroups.add(label);
     }
-    const { items, displayOrder } = buildRenderPlan(this.sessions, this.collapsedGroups, this.pinnedSessions);
+    this.rebuildPlan();
+  }
+
+  setPinnedSessions(names: Set<string>): void {
+    this.pinnedSessions = new Set(names);
+    this.rebuildPlan();
+  }
+
+  private rebuildPlan(): void {
+    const { items, displayOrder } = buildRenderPlan(
+      this.sessions,
+      this.collapsedGroups,
+      this.pinnedSessions,
+      this.computeExpandedSessionId(),
+    );
     this.items = items;
     this.displayOrder = displayOrder;
     this.clampScroll();
   }
 
-  setPinnedSessions(names: Set<string>): void {
-    this.pinnedSessions = new Set(names);
-    const { items, displayOrder } = buildRenderPlan(this.sessions, this.collapsedGroups, this.pinnedSessions);
-    this.items = items;
-    this.displayOrder = displayOrder;
-    this.clampScroll();
+  private computeExpandedSessionId(): string | null {
+    // Hover wins, but only when it resolves to a session row.
+    const hoveredId = this.hoveredRow !== null
+      ? this.sessions[this.rowToSessionIndex.get(this.hoveredRow) ?? -1]?.id ?? null
+      : null;
+    return hoveredId ?? this.activeSessionId;
   }
 
   isPinned(sessionName: string): boolean {
@@ -386,7 +417,11 @@ export class Sidebar {
   }
 
   setHoveredRow(row: number | null): void {
+    if (this.hoveredRow === row) return;
+    const prev = this.computeExpandedSessionId();
     this.hoveredRow = row;
+    const next = this.computeExpandedSessionId();
+    if (prev !== next) this.rebuildPlan();
   }
 
   getHoveredRow(): number | null {
@@ -661,6 +696,22 @@ export class Sidebar {
           branch = branch.slice(0, Math.max(0, maxLen - 1)) + "\u2026";
         }
         writeString(grid, detailRow, detailStart, branch, detailAttrs);
+      }
+    }
+
+    // Row 3: empty for now \u2014 content lands in Task 16. Just paint the
+    // active/hover background and active marker bar so it visually extends.
+    if (item.expanded) {
+      const row3 = nameRow + 2;
+      if (row3 < this.height) {
+        if (isActive || isHovered) {
+          const bg = isActive ? ACTIVE_BG : HOVER_BG;
+          writeString(grid, row3, 0, " ".repeat(this.width), { bg, bgMode: ColorMode.RGB });
+        }
+        if (isActive) {
+          writeString(grid, row3, 0, "\u258e", ACTIVE_MARKER_ATTRS);
+        }
+        this.rowToSessionIndex.set(row3, sessionIdx);
       }
     }
   }
