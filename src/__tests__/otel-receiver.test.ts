@@ -283,4 +283,48 @@ describe("OtelReceiver", () => {
 
     expect(receiver.getSessionState("$d")!.costUsd).toBeCloseTo(0.5, 5);
   });
+
+  test("api_error sets lastError", async () => {
+    const port = await receiver.start();
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$e", eventName: "api_error" })),
+    });
+
+    const state = receiver.getSessionState("$e");
+    expect(state).not.toBeNull();
+    expect(state!.lastError).not.toBeNull();
+    expect(state!.lastError!.type).toBe("api_error");
+    expect(state!.lastError!.timestamp).toBeGreaterThan(0);
+  });
+
+  test("api_retries_exhausted sets lastError with that type", async () => {
+    const port = await receiver.start();
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$r", eventName: "api_retries_exhausted" })),
+    });
+
+    expect(receiver.getSessionState("$r")!.lastError!.type).toBe("api_retries_exhausted");
+  });
+
+  test("successful api_request clears lastError", async () => {
+    const port = await receiver.start();
+
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$x", eventName: "api_error" })),
+    });
+    expect(receiver.getSessionState("$x")!.lastError).not.toBeNull();
+
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$x", eventName: "api_request" })),
+    });
+    expect(receiver.getSessionState("$x")!.lastError).toBeNull();
+  });
 });

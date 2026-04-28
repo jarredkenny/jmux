@@ -89,9 +89,21 @@ export class OtelReceiver {
       const existing = this.state.get(sessionName) ?? makeSessionOtelState();
       existing.lastRequestTime = Date.now();
       existing.cacheWasHit = cacheReadTokens > 0;
+      existing.lastError = null;
       if (cost !== null) existing.costUsd += cost;
       this.state.set(sessionName, existing);
 
+      this.onUpdate?.(sessionName);
+      return;
+    }
+
+    if (eventName === "api_error" || eventName === "api_retries_exhausted") {
+      const existing = this.state.get(sessionName) ?? makeSessionOtelState();
+      existing.lastError = {
+        type: eventName,
+        timestamp: Date.now(),
+      };
+      this.state.set(sessionName, existing);
       this.onUpdate?.(sessionName);
       return;
     }
