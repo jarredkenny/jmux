@@ -502,7 +502,7 @@ otelReceiver.onUpdate = (sessionName) => {
   const session = currentSessions.find((s) => s.name === sessionName);
   if (!session) return;
   const state = otelReceiver.getSessionState(sessionName);
-  sidebar.setCacheTimer(session.id, state);
+  sidebar.setSessionOtelState(session.id, state);
   startCacheTimerTick();
   scheduleRender();
 };

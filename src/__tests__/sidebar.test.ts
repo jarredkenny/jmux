@@ -1,19 +1,21 @@
 import { describe, test, expect } from "bun:test";
 import { Sidebar } from "../sidebar";
 import type { SessionInfo } from "../types";
+import { makeSessionOtelState } from "../types";
 import type { SessionContext, PipelineStatus } from "../adapters/types";
 
 const SIDEBAR_WIDTH = 24;
+const makeBlankOtelState = makeSessionOtelState;
 
 function makeSessions(
-  entries: Array<{ name: string; directory?: string; gitBranch?: string; project?: string }>,
+  entries: Array<{ name: string; directory?: string; gitBranch?: string; project?: string; attention?: boolean }>,
 ): SessionInfo[] {
   return entries.map((e, i) => ({
     id: `$${i}`,
     name: e.name,
     attached: i === 0,
     activity: 0,
-    attention: false,
+    attention: e.attention ?? false,
     windowCount: 1,
     directory: e.directory,
     gitBranch: e.gitBranch,
@@ -180,6 +182,21 @@ describe("Sidebar", () => {
       }
     }
     expect(foundBang).toBe(true);
+  });
+
+  test("renders red error glyph when lastError is set, overriding attention/activity", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main", attention: true }]));
+    sidebar.setActivity("$0", true);
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      lastError: { type: "api_error", timestamp: Date.now() },
+    });
+    const grid = sidebar.getGrid();
+
+    expect(grid.cells[2][1].char).toBe("⨯"); // ⨯
+    expect(grid.cells[2][1].fg).toBe(1); // palette red
+    expect(grid.cells[2][1].bold).toBe(true);
   });
 
   test("getDisplayOrderIds returns sessions in grouped display order", () => {
@@ -465,7 +482,8 @@ describe("Sidebar", () => {
     sidebar.updateSessions(
       makeSessions([{ name: "main", directory: "~/mydir", gitBranch: "dev" }]),
     );
-    sidebar.setCacheTimer("$0", {
+    sidebar.setSessionOtelState("$0", {
+      ...makeSessionOtelState(),
       lastRequestTime: Date.now() - 60_000,
       cacheWasHit: true,
     });
@@ -480,7 +498,8 @@ describe("Sidebar", () => {
   test("timer shows 0:00 when cache expired", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
-    sidebar.setCacheTimer("$0", {
+    sidebar.setSessionOtelState("$0", {
+      ...makeSessionOtelState(),
       lastRequestTime: Date.now() - 360_000,
       cacheWasHit: true,
     });
@@ -508,7 +527,8 @@ describe("Sidebar", () => {
   test("timer uses green color when > 180s remaining", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
-    sidebar.setCacheTimer("$0", {
+    sidebar.setSessionOtelState("$0", {
+      ...makeSessionOtelState(),
       lastRequestTime: Date.now() - 30_000,
       cacheWasHit: true,
     });
@@ -528,7 +548,8 @@ describe("Sidebar", () => {
   test("timer uses yellow color when 30-180s remaining", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
-    sidebar.setCacheTimer("$0", {
+    sidebar.setSessionOtelState("$0", {
+      ...makeSessionOtelState(),
       lastRequestTime: Date.now() - 200_000,
       cacheWasHit: true,
     });
@@ -548,7 +569,8 @@ describe("Sidebar", () => {
   test("timer uses red color when < 30s remaining", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
-    sidebar.setCacheTimer("$0", {
+    sidebar.setSessionOtelState("$0", {
+      ...makeSessionOtelState(),
       lastRequestTime: Date.now() - 280_000,
       cacheWasHit: true,
     });
@@ -568,7 +590,8 @@ describe("Sidebar", () => {
   test("timer uses dim when expired at 0:00", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
-    sidebar.setCacheTimer("$0", {
+    sidebar.setSessionOtelState("$0", {
+      ...makeSessionOtelState(),
       lastRequestTime: Date.now() - 400_000,
       cacheWasHit: true,
     });
@@ -593,7 +616,8 @@ describe("Sidebar", () => {
         { name: "web", directory: "~/Code/work/web", gitBranch: "main" },
       ]),
     );
-    sidebar.setCacheTimer("$0", {
+    sidebar.setSessionOtelState("$0", {
+      ...makeSessionOtelState(),
       lastRequestTime: Date.now() - 60_000,
       cacheWasHit: true,
     });
@@ -717,7 +741,8 @@ describe("Sidebar", () => {
   test("cacheTimersEnabled false suppresses timer rendering", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
-    sidebar.setCacheTimer("$0", {
+    sidebar.setSessionOtelState("$0", {
+      ...makeSessionOtelState(),
       lastRequestTime: Date.now() - 60_000,
       cacheWasHit: true,
     });

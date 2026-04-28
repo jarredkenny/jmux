@@ -1,5 +1,5 @@
 import type { SessionOtelState, CellGrid, SessionInfo } from "./types";
-import { ColorMode, makeSessionOtelState } from "./types";
+import { ColorMode } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { SessionContext } from "./adapters/types";
 import { buildSessionView } from "./session-view";
@@ -26,6 +26,11 @@ const ACTIVITY_ATTRS: CellAttrs = {
 };
 const ATTENTION_ATTRS: CellAttrs = {
   fg: 3,
+  fgMode: ColorMode.Palette,
+  bold: true,
+};
+const ERROR_ATTRS: CellAttrs = {
+  fg: 1,
   fgMode: ColorMode.Palette,
   bold: true,
 };
@@ -347,18 +352,12 @@ export class Sidebar {
     }
   }
 
-  setCacheTimer(
-    sessionId: string,
-    state: { lastRequestTime: number; cacheWasHit: boolean } | null,
-  ): void {
+  setSessionOtelState(sessionId: string, state: SessionOtelState | null): void {
     if (state === null) {
       this.otelStates.delete(sessionId);
-      return;
+    } else {
+      this.otelStates.set(sessionId, state);
     }
-    const existing = this.otelStates.get(sessionId) ?? makeSessionOtelState();
-    existing.lastRequestTime = state.lastRequestTime;
-    existing.cacheWasHit = state.cacheWasHit;
-    this.otelStates.set(sessionId, existing);
   }
 
   setSessionContexts(contexts: Map<string, SessionContext>): void {
@@ -610,10 +609,16 @@ export class Sidebar {
     }
 
     // Indicator (col 1)
-    if (view.hasAttention) {
-      writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
-    } else if (view.hasActivity) {
-      writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
+    switch (view.alertKind) {
+      case "error":
+        writeString(grid, nameRow, 1, "\u2A2F", ERROR_ATTRS);
+        break;
+      case "attention":
+        writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
+        break;
+      case "activity":
+        writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
+        break;
     }
 
     const bgAttrs: CellAttrs = isActive
