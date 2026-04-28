@@ -609,7 +609,7 @@ export class Sidebar {
     }
 
     // Indicator (col 1)
-    switch (view.alertKind) {
+    switch (view.indicatorKind) {
       case "error":
         writeString(grid, nameRow, 1, "\u2A2F", ERROR_ATTRS);
         break;

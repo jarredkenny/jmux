@@ -3,7 +3,7 @@ import type { SessionContext } from "./adapters/types";
 
 const CACHE_TIMER_TTL = 300; // seconds
 
-export type AlertKind = "error" | "mcp-down" | "attention" | "activity" | null;
+export type IndicatorKind = "error" | "mcp-down" | "attention" | "activity" | null;
 
 export interface SessionView {
   sessionId: string;
@@ -11,7 +11,7 @@ export interface SessionView {
 
   hasActivity: boolean;
   hasAttention: boolean;
-  alertKind: AlertKind;
+  indicatorKind: IndicatorKind;
 
   // Row 1, right-aligned
   linearId: string | null;
@@ -74,18 +74,18 @@ export function buildSessionView(
     timerText = formatTimer(timerRemaining);
   }
 
-  // Col-1 alert priority: error > attention > activity. (mcp-down lands in Task 12.)
-  let alertKind: AlertKind = null;
-  if (timerState?.lastError) alertKind = "error";
-  else if (session.attention) alertKind = "attention";
-  else if (activitySet.has(session.id)) alertKind = "activity";
+  // Col-1 indicator priority: error > attention > activity. (mcp-down lands in Task 12.)
+  let indicatorKind: IndicatorKind = null;
+  if (timerState?.lastError) indicatorKind = "error";
+  else if (session.attention) indicatorKind = "attention";
+  else if (activitySet.has(session.id)) indicatorKind = "activity";
 
   return {
     sessionId: session.id,
     sessionName: session.name,
     hasActivity: activitySet.has(session.id),
     hasAttention: session.attention,
-    alertKind,
+    indicatorKind,
     linearId,
     branch: session.gitBranch ?? null,
     timerText,
