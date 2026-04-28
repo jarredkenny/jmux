@@ -1,4 +1,4 @@
-import type { SessionOtelState } from "./types";
+import type { SessionOtelState, PermissionMode } from "./types";
 import { makeSessionOtelState } from "./types";
 
 export class OtelReceiver {
@@ -119,6 +119,19 @@ export class OtelReceiver {
     if (eventName === "compaction") {
       const existing = this.state.get(sessionName) ?? makeSessionOtelState();
       existing.lastCompactionTime = Date.now();
+      this.state.set(sessionName, existing);
+      this.onUpdate?.(sessionName);
+      return;
+    }
+
+    if (eventName === "permission_mode_changed") {
+      const mode = this.findAttrString(attrs, "mode");
+      if (mode === null) return;
+      const normalized: PermissionMode =
+        mode === "plan" || mode === "accept-edits" ? mode : "default";
+
+      const existing = this.state.get(sessionName) ?? makeSessionOtelState();
+      existing.permissionMode = normalized;
       this.state.set(sessionName, existing);
       this.onUpdate?.(sessionName);
       return;

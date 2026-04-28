@@ -395,4 +395,52 @@ describe("OtelReceiver", () => {
     // State entry not created when there's nothing to record
     expect(receiver.getSessionState("$tn")).toBeNull();
   });
+
+  test("permission_mode_changed sets permissionMode", async () => {
+    const port = await receiver.start();
+    const payload = makeOtlpPayload({
+      sessionName: "$pm",
+      eventName: "permission_mode_changed",
+      attributes: [{ key: "mode", value: { stringValue: "plan" } }],
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    expect(receiver.getSessionState("$pm")!.permissionMode).toBe("plan");
+  });
+
+  test("permission_mode_changed coerces unknown modes to default", async () => {
+    const port = await receiver.start();
+    const payload = makeOtlpPayload({
+      sessionName: "$pmu",
+      eventName: "permission_mode_changed",
+      attributes: [{ key: "mode", value: { stringValue: "future-mode" } }],
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    expect(receiver.getSessionState("$pmu")!.permissionMode).toBe("default");
+  });
+
+  test("permission_mode_changed without mode is ignored", async () => {
+    const port = await receiver.start();
+    const payload = makeOtlpPayload({
+      sessionName: "$pmn",
+      eventName: "permission_mode_changed",
+      attributes: [],
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    expect(receiver.getSessionState("$pmn")).toBeNull();
+  });
 });
