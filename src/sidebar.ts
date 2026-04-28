@@ -579,8 +579,9 @@ export class Sidebar {
 
     const detailRow = nameRow + 1;
     const isActive = session.id === this.activeSessionId;
+    const expandedRow = item.expanded ? nameRow + 2 : -1;
     const isHovered = !isActive && this.hoveredRow !== null &&
-      (this.hoveredRow === nameRow || this.hoveredRow === detailRow);
+      (this.hoveredRow === nameRow || this.hoveredRow === detailRow || this.hoveredRow === expandedRow);
 
     // Build the view
     const ctx = this.sessionContexts.get(session.name);

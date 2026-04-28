@@ -804,6 +804,28 @@ describe("Sidebar", () => {
     expect(row5Text).toContain("beta");
   });
 
+  test("hovering row 3 of an expanded session keeps hover styling", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([
+      { name: "alpha" },
+      { name: "beta" },
+    ]));
+    sidebar.setActiveSession("$0");
+    // First render: alpha expanded at rows 2-4; spacer 5; beta name row 6.
+    sidebar.getGrid();
+    // Hover beta's name row first to expand it.
+    sidebar.setHoveredRow(6);
+    sidebar.getGrid();
+    // Now hover beta's row 3 (now at row 7 since beta expanded at rows 5,6,7).
+    sidebar.setHoveredRow(7);
+    const grid = sidebar.getGrid();
+
+    // Beta's name (row 5) should still have hover bg painted.
+    expect(grid.cells[5][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
+    // Row 7 (the third row) should also have hover bg.
+    expect(grid.cells[7][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
+  });
+
   test("hovering a group header does not trigger expansion", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([
