@@ -116,6 +116,14 @@ export class OtelReceiver {
       return;
     }
 
+    if (eventName === "compaction") {
+      const existing = this.state.get(sessionName) ?? makeSessionOtelState();
+      existing.lastCompactionTime = Date.now();
+      this.state.set(sessionName, existing);
+      this.onUpdate?.(sessionName);
+      return;
+    }
+
     if (eventName === "tool_result") {
       const toolName = this.findAttrString(attrs, "tool_name");
       if (!toolName) return;

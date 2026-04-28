@@ -366,6 +366,17 @@ describe("OtelReceiver", () => {
     expect(state!.lastUserPromptTime!).toBeGreaterThan(0);
   });
 
+  test("compaction sets lastCompactionTime", async () => {
+    const port = await receiver.start();
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$cp", eventName: "compaction" })),
+    });
+
+    expect(receiver.getSessionState("$cp")!.lastCompactionTime).not.toBeNull();
+  });
+
   test("tool_result without tool_name is ignored", async () => {
     const port = await receiver.start();
     const payload = makeOtlpPayload({
