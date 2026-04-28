@@ -353,6 +353,19 @@ describe("OtelReceiver", () => {
     expect(state!.lastTool!.timestamp).toBeGreaterThan(0);
   });
 
+  test("user_prompt sets lastUserPromptTime", async () => {
+    const port = await receiver.start();
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$u", eventName: "user_prompt" })),
+    });
+
+    const state = receiver.getSessionState("$u");
+    expect(state!.lastUserPromptTime).not.toBeNull();
+    expect(state!.lastUserPromptTime!).toBeGreaterThan(0);
+  });
+
   test("tool_result without tool_name is ignored", async () => {
     const port = await receiver.start();
     const payload = makeOtlpPayload({
