@@ -1,4 +1,4 @@
-import type { SessionInfo, CacheTimerState } from "./types";
+import type { SessionInfo, SessionOtelState } from "./types";
 import type { SessionContext } from "./adapters/types";
 
 const CACHE_TIMER_TTL = 300; // seconds
@@ -40,7 +40,7 @@ function extractMrIid(compoundId: string): string {
 export function buildSessionView(
   session: SessionInfo,
   ctx: SessionContext | undefined,
-  timerState: CacheTimerState | undefined,
+  timerState: SessionOtelState | undefined,
   activitySet: Set<string>,
 ): SessionView {
   // Linear ID: first issue identifier

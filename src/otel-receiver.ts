@@ -1,8 +1,9 @@
-import type { CacheTimerState } from "./types";
+import type { SessionOtelState } from "./types";
+import { makeSessionOtelState } from "./types";
 
 export class OtelReceiver {
   private server: ReturnType<typeof Bun.serve> | null = null;
-  private state = new Map<string, CacheTimerState>();
+  private state = new Map<string, SessionOtelState>();
   onUpdate: ((sessionName: string) => void) | null = null;
 
   async start(): Promise<number> {
@@ -19,8 +20,13 @@ export class OtelReceiver {
     this.server = null;
   }
 
-  getTimerState(key: string): CacheTimerState | null {
+  getSessionState(key: string): SessionOtelState | null {
     return this.state.get(key) ?? null;
+  }
+
+  /** @deprecated alias kept for one task — removed in Task 9 */
+  getTimerState(key: string): SessionOtelState | null {
+    return this.getSessionState(key);
   }
 
   getActiveSessionIds(): string[] {
@@ -79,10 +85,10 @@ export class OtelReceiver {
     const cacheReadTokens = this.findAttrNumber(attrs, "cache_read_tokens");
     const cacheWasHit = cacheReadTokens > 0;
 
-    this.state.set(sessionName, {
-      lastRequestTime: Date.now(),
-      cacheWasHit,
-    });
+    const existing = this.state.get(sessionName) ?? makeSessionOtelState();
+    existing.lastRequestTime = Date.now();
+    existing.cacheWasHit = cacheWasHit;
+    this.state.set(sessionName, existing);
 
     this.onUpdate?.(sessionName);
   }

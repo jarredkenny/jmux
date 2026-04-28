@@ -1,5 +1,5 @@
-import type { CacheTimerState, CellGrid, SessionInfo } from "./types";
-import { ColorMode } from "./types";
+import type { SessionOtelState, CellGrid, SessionInfo } from "./types";
+import { ColorMode, makeSessionOtelState } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { SessionContext } from "./adapters/types";
 import { buildSessionView } from "./session-view";
@@ -263,7 +263,7 @@ export class Sidebar {
   private pinnedSessions = new Set<string>();
   private currentVersion: string = "";
   private latestVersion: string | null = null;
-  private cacheTimers = new Map<string, CacheTimerState>();
+  private otelStates = new Map<string, SessionOtelState>();
   cacheTimersEnabled: boolean = true;
   private sessionContexts = new Map<string, SessionContext>();
 
@@ -316,12 +316,18 @@ export class Sidebar {
     }
   }
 
-  setCacheTimer(sessionId: string, state: CacheTimerState | null): void {
+  setCacheTimer(
+    sessionId: string,
+    state: { lastRequestTime: number; cacheWasHit: boolean } | null,
+  ): void {
     if (state === null) {
-      this.cacheTimers.delete(sessionId);
-    } else {
-      this.cacheTimers.set(sessionId, state);
+      this.otelStates.delete(sessionId);
+      return;
     }
+    const existing = this.otelStates.get(sessionId) ?? makeSessionOtelState();
+    existing.lastRequestTime = state.lastRequestTime;
+    existing.cacheWasHit = state.cacheWasHit;
+    this.otelStates.set(sessionId, existing);
   }
 
   setSessionContexts(contexts: Map<string, SessionContext>): void {
@@ -543,7 +549,7 @@ export class Sidebar {
 
     // Build the view
     const ctx = this.sessionContexts.get(session.name);
-    const timerState = this.cacheTimersEnabled ? this.cacheTimers.get(session.id) ?? undefined : undefined;
+    const timerState = this.cacheTimersEnabled ? this.otelStates.get(session.id) ?? undefined : undefined;
     const view = buildSessionView(session, ctx, timerState, this.activitySet);
 
     // Map rows to session for click handling

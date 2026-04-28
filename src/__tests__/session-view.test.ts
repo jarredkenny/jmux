@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { buildSessionView } from "../session-view";
-import type { SessionInfo, CacheTimerState } from "../types";
+import type { SessionInfo, SessionOtelState } from "../types";
+import { makeSessionOtelState } from "../types";
 import type { SessionContext, MergeRequest, LinkSource } from "../adapters/types";
 
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
@@ -115,14 +116,14 @@ describe("buildSessionView", () => {
 
   test("computes timer text and remaining", () => {
     const now = Date.now();
-    const timer: CacheTimerState = { lastRequestTime: now - 60_000, cacheWasHit: true };
+    const timer: SessionOtelState = { ...makeSessionOtelState(), lastRequestTime: now - 60_000, cacheWasHit: true };
     const view = buildSessionView(makeSession(), undefined, timer, new Set());
     expect(view.timerText).toBe("4:00");
     expect(view.timerRemaining).toBe(240);
   });
 
   test("timer shows 0:00 when expired", () => {
-    const timer: CacheTimerState = { lastRequestTime: Date.now() - 400_000, cacheWasHit: true };
+    const timer: SessionOtelState = { ...makeSessionOtelState(), lastRequestTime: Date.now() - 400_000, cacheWasHit: true };
     const view = buildSessionView(makeSession(), undefined, timer, new Set());
     expect(view.timerText).toBe("0:00");
     expect(view.timerRemaining).toBe(0);

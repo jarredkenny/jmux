@@ -54,9 +54,47 @@ export interface SessionInfo {
   project?: string; // wtm project name (bare repo basename)
 }
 
-export interface CacheTimerState {
-  lastRequestTime: number;  // Date.now() when the api_request event was received
-  cacheWasHit: boolean;     // cache_read_tokens > 0 on the last request
+export type ErrorState = {
+  type: "api_error" | "api_retries_exhausted";
+  timestamp: number;
+};
+
+export type PermissionMode = "default" | "plan" | "accept-edits";
+
+export interface LastTool {
+  name: string;
+  durationMs: number;
+  success: boolean;
+  timestamp: number;
+}
+
+export interface SessionOtelState {
+  // Cache-timer fields (existing)
+  lastRequestTime: number;
+  cacheWasHit: boolean;
+
+  // New
+  costUsd: number;
+  lastError: ErrorState | null;
+  failedMcpServers: Set<string>;
+  permissionMode: PermissionMode;
+  lastCompactionTime: number | null;
+  lastTool: LastTool | null;
+  lastUserPromptTime: number | null;
+}
+
+export function makeSessionOtelState(): SessionOtelState {
+  return {
+    lastRequestTime: 0,
+    cacheWasHit: false,
+    costUsd: 0,
+    lastError: null,
+    failedMcpServers: new Set(),
+    permissionMode: "default",
+    lastCompactionTime: null,
+    lastTool: null,
+    lastUserPromptTime: null,
+  };
 }
 
 export interface PaletteCommand {
