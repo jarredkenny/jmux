@@ -581,6 +581,22 @@ export class Sidebar {
     return grid;
   }
 
+  private paintRowChrome(
+    grid: CellGrid,
+    row: number,
+    isActive: boolean,
+    isHovered: boolean,
+  ): void {
+    if (row >= this.height) return;
+    if (isActive || isHovered) {
+      const bg = isActive ? ACTIVE_BG : HOVER_BG;
+      writeString(grid, row, 0, " ".repeat(this.width), { bg, bgMode: ColorMode.RGB });
+    }
+    if (isActive) {
+      writeString(grid, row, 0, "▎", ACTIVE_MARKER_ATTRS);
+    }
+  }
+
   private renderSession(
     grid: CellGrid,
     nameRow: number,
@@ -607,20 +623,9 @@ export class Sidebar {
       this.rowToSessionIndex.set(detailRow, sessionIdx);
     }
 
-    // Paint background across both rows
-    if (isActive || isHovered) {
-      const bg = isActive ? ACTIVE_BG : HOVER_BG;
-      const bgFill = " ".repeat(this.width);
-      const bgAttrs: CellAttrs = { bg, bgMode: ColorMode.RGB };
-      writeString(grid, nameRow, 0, bgFill, bgAttrs);
-      if (detailRow < this.height) writeString(grid, detailRow, 0, bgFill, bgAttrs);
-    }
-
-    // Active marker (left edge bar)
-    if (isActive) {
-      writeString(grid, nameRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
-      if (detailRow < this.height) writeString(grid, detailRow, 0, "\u258e", ACTIVE_MARKER_ATTRS);
-    }
+    // Paint background + active marker bar across name + detail rows
+    this.paintRowChrome(grid, nameRow, isActive, isHovered);
+    this.paintRowChrome(grid, detailRow, isActive, isHovered);
 
     // Indicator (col 1)
     switch (view.indicatorKind) {
@@ -748,13 +753,7 @@ export class Sidebar {
     if (item.expanded) {
       const row3 = nameRow + 2;
       if (row3 < this.height) {
-        if (isActive || isHovered) {
-          const bg = isActive ? ACTIVE_BG : HOVER_BG;
-          writeString(grid, row3, 0, " ".repeat(this.width), { bg, bgMode: ColorMode.RGB });
-        }
-        if (isActive) {
-          writeString(grid, row3, 0, "\u258e", ACTIVE_MARKER_ATTRS);
-        }
+        this.paintRowChrome(grid, row3, isActive, isHovered);
         this.rowToSessionIndex.set(row3, sessionIdx);
 
         const otel = this.otelStates.get(session.id);
