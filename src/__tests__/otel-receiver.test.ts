@@ -327,4 +327,48 @@ describe("OtelReceiver", () => {
     });
     expect(receiver.getSessionState("$x")!.lastError).toBeNull();
   });
+
+  test("tool_result sets lastTool", async () => {
+    const port = await receiver.start();
+    const payload = makeOtlpPayload({
+      sessionName: "$t",
+      eventName: "tool_result",
+      attributes: [
+        { key: "tool_name", value: { stringValue: "Edit" } },
+        { key: "duration_ms", value: { intValue: "1234" } },
+        { key: "success", value: { boolValue: true } },
+      ],
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const state = receiver.getSessionState("$t");
+    expect(state!.lastTool).not.toBeNull();
+    expect(state!.lastTool!.name).toBe("Edit");
+    expect(state!.lastTool!.durationMs).toBe(1234);
+    expect(state!.lastTool!.success).toBe(true);
+    expect(state!.lastTool!.timestamp).toBeGreaterThan(0);
+  });
+
+  test("tool_result without tool_name is ignored", async () => {
+    const port = await receiver.start();
+    const payload = makeOtlpPayload({
+      sessionName: "$tn",
+      eventName: "tool_result",
+      attributes: [
+        { key: "duration_ms", value: { intValue: "100" } },
+      ],
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    // State entry not created when there's nothing to record
+    expect(receiver.getSessionState("$tn")).toBeNull();
+  });
 });

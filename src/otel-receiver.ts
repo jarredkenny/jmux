@@ -107,6 +107,24 @@ export class OtelReceiver {
       this.onUpdate?.(sessionName);
       return;
     }
+
+    if (eventName === "tool_result") {
+      const toolName = this.findAttrString(attrs, "tool_name");
+      if (!toolName) return;
+      const durationMs = this.findAttrNumber(attrs, "duration_ms");
+      const success = this.findAttrBool(attrs, "success");
+
+      const existing = this.state.get(sessionName) ?? makeSessionOtelState();
+      existing.lastTool = {
+        name: toolName,
+        durationMs,
+        success: success !== false,
+        timestamp: Date.now(),
+      };
+      this.state.set(sessionName, existing);
+      this.onUpdate?.(sessionName);
+      return;
+    }
   }
 
   private extractResourceAttr(resource: any, key: string): string | null {
@@ -138,6 +156,19 @@ export class OtelReceiver {
       }
     }
     return 0;
+  }
+
+  private findAttrBool(attrs: any[], key: string): boolean | null {
+    for (const attr of attrs) {
+      if (attr?.key === key) {
+        const v = attr?.value;
+        if (!v) return null;
+        if (v.boolValue !== undefined) return Boolean(v.boolValue);
+        if (v.stringValue !== undefined) return v.stringValue === "true";
+        return null;
+      }
+    }
+    return null;
   }
 
   private findAttrDouble(attrs: any[], key: string): number | null {
