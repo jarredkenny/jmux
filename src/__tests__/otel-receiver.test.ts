@@ -443,4 +443,81 @@ describe("OtelReceiver", () => {
 
     expect(receiver.getSessionState("$pmn")).toBeNull();
   });
+
+  test("mcp_server_connection failed adds server to failedMcpServers", async () => {
+    const port = await receiver.start();
+    const payload = makeOtlpPayload({
+      sessionName: "$m",
+      eventName: "mcp_server_connection",
+      attributes: [
+        { key: "server_name", value: { stringValue: "linear" } },
+        { key: "state", value: { stringValue: "failed" } },
+      ],
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    expect(receiver.getSessionState("$m")!.failedMcpServers.has("linear")).toBe(true);
+  });
+
+  test("mcp_server_connection connected removes server from failed set", async () => {
+    const port = await receiver.start();
+    for (const state of ["failed", "connected"]) {
+      const payload = makeOtlpPayload({
+        sessionName: "$m2",
+        eventName: "mcp_server_connection",
+        attributes: [
+          { key: "server_name", value: { stringValue: "linear" } },
+          { key: "state", value: { stringValue: state } },
+        ],
+      });
+      await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    expect(receiver.getSessionState("$m2")!.failedMcpServers.size).toBe(0);
+  });
+
+  test("mcp_server_connection is idempotent across duplicate events", async () => {
+    const port = await receiver.start();
+    for (let i = 0; i < 3; i++) {
+      const payload = makeOtlpPayload({
+        sessionName: "$m3",
+        eventName: "mcp_server_connection",
+        attributes: [
+          { key: "server_name", value: { stringValue: "linear" } },
+          { key: "state", value: { stringValue: "failed" } },
+        ],
+      });
+      await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    expect(receiver.getSessionState("$m3")!.failedMcpServers.size).toBe(1);
+  });
+
+  test("mcp_server_connection without server_name is ignored", async () => {
+    const port = await receiver.start();
+    const payload = makeOtlpPayload({
+      sessionName: "$m4",
+      eventName: "mcp_server_connection",
+      attributes: [{ key: "state", value: { stringValue: "failed" } }],
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    expect(receiver.getSessionState("$m4")).toBeNull();
+  });
 });

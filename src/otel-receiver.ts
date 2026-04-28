@@ -137,6 +137,24 @@ export class OtelReceiver {
       return;
     }
 
+    if (eventName === "mcp_server_connection") {
+      const serverName = this.findAttrString(attrs, "server_name");
+      if (!serverName) return;
+      const connState = this.findAttrString(attrs, "state");
+
+      const existing = this.state.get(sessionName) ?? makeSessionOtelState();
+      if (connState === "connected") {
+        existing.failedMcpServers.delete(serverName);
+      } else if (connState === "failed" || connState === "disconnected") {
+        existing.failedMcpServers.add(serverName);
+      } else {
+        return;
+      }
+      this.state.set(sessionName, existing);
+      this.onUpdate?.(sessionName);
+      return;
+    }
+
     if (eventName === "tool_result") {
       const toolName = this.findAttrString(attrs, "tool_name");
       if (!toolName) return;
