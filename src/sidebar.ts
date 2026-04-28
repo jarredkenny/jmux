@@ -34,6 +34,11 @@ const ERROR_ATTRS: CellAttrs = {
   fgMode: ColorMode.Palette,
   bold: true,
 };
+const MCP_DOWN_ATTRS: CellAttrs = {
+  fg: 1,
+  fgMode: ColorMode.Palette,
+  dim: true,
+};
 const ACTIVE_NAME_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
@@ -612,6 +617,9 @@ export class Sidebar {
     switch (view.indicatorKind) {
       case "error":
         writeString(grid, nameRow, 1, "\u2A2F", ERROR_ATTRS);
+        break;
+      case "mcp-down":
+        writeString(grid, nameRow, 1, "\u2298", MCP_DOWN_ATTRS);
         break;
       case "attention":
         writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);

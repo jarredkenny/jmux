@@ -199,6 +199,33 @@ describe("Sidebar", () => {
     expect(grid.cells[2][1].bold).toBe(true);
   });
 
+  test("renders MCP-down glyph when failedMcpServers is non-empty", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main", attention: true }]));
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      failedMcpServers: new Set(["linear"]),
+    });
+    const grid = sidebar.getGrid();
+
+    expect(grid.cells[2][1].char).toBe("⊘"); // ⊘
+    expect(grid.cells[2][1].fg).toBe(1);
+    expect(grid.cells[2][1].dim).toBe(true);
+  });
+
+  test("error glyph wins over MCP-down", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      lastError: { type: "api_error", timestamp: Date.now() },
+      failedMcpServers: new Set(["linear"]),
+    });
+    const grid = sidebar.getGrid();
+
+    expect(grid.cells[2][1].char).toBe("⨯"); // ⨯
+  });
+
   test("getDisplayOrderIds returns sessions in grouped display order", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(

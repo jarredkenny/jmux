@@ -74,9 +74,10 @@ export function buildSessionView(
     timerText = formatTimer(timerRemaining);
   }
 
-  // Col-1 indicator priority: error > attention > activity. (mcp-down lands in Task 12.)
+  // Col-1 indicator priority: error > mcp-down > attention > activity.
   let indicatorKind: IndicatorKind = null;
   if (timerState?.lastError) indicatorKind = "error";
+  else if ((timerState?.failedMcpServers.size ?? 0) > 0) indicatorKind = "mcp-down";
   else if (session.attention) indicatorKind = "attention";
   else if (activitySet.has(session.id)) indicatorKind = "activity";
 
