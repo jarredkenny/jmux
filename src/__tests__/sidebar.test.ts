@@ -765,6 +765,28 @@ describe("Sidebar", () => {
     expect(allText).not.toContain("Pinned");
   });
 
+  test("updateSessions prunes otelStates for sessions that no longer exist", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "alpha" }, { name: "beta" }]));
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      costUsd: 1.0,
+    });
+    sidebar.setSessionOtelState("$1", {
+      ...makeBlankOtelState(),
+      costUsd: 2.0,
+    });
+    expect(sidebar._otelStateCount()).toBe(2);
+    // Now drop beta. Its state should be evicted.
+    sidebar.updateSessions(makeSessions([{ name: "alpha" }]));
+    expect(sidebar._otelStateCount()).toBe(1);
+    // Sanity check: alpha's render shouldn't surface beta's cost.
+    sidebar.setActiveSession("$0");
+    const grid = sidebar.getGrid();
+    const text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[4][i].char).join("");
+    expect(text).not.toContain("$2.00");
+  });
+
   test("cacheTimersEnabled false suppresses timer rendering", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));

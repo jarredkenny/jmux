@@ -311,6 +311,11 @@ export class Sidebar {
 
   updateSessions(sessions: SessionInfo[]): void {
     this.sessions = sessions;
+    // Prune otelStates for sessions that no longer exist
+    const activeIds = new Set(sessions.map((s) => s.id));
+    for (const id of this.otelStates.keys()) {
+      if (!activeIds.has(id)) this.otelStates.delete(id);
+    }
     this.rebuildPlan();
   }
 
@@ -372,6 +377,11 @@ export class Sidebar {
     } else {
       this.otelStates.set(sessionId, state);
     }
+  }
+
+  /** Test-only: number of otelStates entries currently held. */
+  _otelStateCount(): number {
+    return this.otelStates.size;
   }
 
   setSessionContexts(contexts: Map<string, SessionContext>): void {

@@ -134,6 +134,17 @@ describe("buildSessionView", () => {
     expect(view.timerText).toBeNull();
   });
 
+  test("timer is null when state exists but lastRequestTime is 0", () => {
+    const session = makeSession({ id: "$0", name: "main" });
+    const state: SessionOtelState = {
+      ...makeSessionOtelState(),
+      permissionMode: "plan", // any non-api_request event would produce this state
+    };
+    const view = buildSessionView(session, undefined, state, new Set());
+    expect(view.timerText).toBeNull();
+    expect(view.timerRemaining).toBe(0);
+  });
+
   test("sets hasActivity from activitySet", () => {
     const view = buildSessionView(makeSession(), undefined, undefined, new Set(["$0"]));
     expect(view.hasActivity).toBe(true);

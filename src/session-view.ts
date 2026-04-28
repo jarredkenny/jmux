@@ -74,7 +74,7 @@ export function buildSessionView(
   // Timer
   let timerText: string | null = null;
   let timerRemaining = 0;
-  if (timerState) {
+  if (timerState && timerState.lastRequestTime > 0) {
     const elapsed = Math.floor((Date.now() - timerState.lastRequestTime) / 1000);
     timerRemaining = Math.max(0, CACHE_TIMER_TTL - elapsed);
     timerText = formatTimer(timerRemaining);
