@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { buildSessionView } from "../session-view";
+import { buildSessionView, buildSessionRow3 } from "../session-view";
 import type { SessionInfo, SessionOtelState } from "../types";
 import { makeSessionOtelState } from "../types";
 import type { SessionContext, MergeRequest, LinkSource } from "../adapters/types";
@@ -150,5 +150,86 @@ describe("buildSessionView", () => {
     });
     const view = buildSessionView(makeSession(), ctx, undefined, new Set());
     expect(view.mrId).toBe("!42");
+  });
+});
+
+describe("buildSessionRow3", () => {
+  const baseState = () => makeSessionOtelState();
+
+  test("formats cost as $1.23", () => {
+    const state = baseState();
+    state.costUsd = 1.234;
+    const out = buildSessionRow3(state, 26);
+    expect(out).toContain("$1.23");
+  });
+
+  test("formats tool with seconds duration", () => {
+    const state = baseState();
+    state.lastTool = { name: "Edit", durationMs: 1234, success: true, timestamp: Date.now() };
+    const out = buildSessionRow3(state, 26);
+    expect(out).toContain("Edit 1.2s");
+  });
+
+  test("formats tool with minute+second duration", () => {
+    const state = baseState();
+    state.lastTool = { name: "Bash", durationMs: 80_000, success: true, timestamp: Date.now() };
+    const out = buildSessionRow3(state, 26);
+    expect(out).toContain("Bash 1m20s");
+  });
+
+  test("formats idle as 3m idle", () => {
+    const state = baseState();
+    state.lastUserPromptTime = Date.now() - 3 * 60 * 1000;
+    const out = buildSessionRow3(state, 26);
+    expect(out).toContain("3m idle");
+  });
+
+  test("omits cost when zero", () => {
+    const state = baseState();
+    state.lastTool = { name: "Edit", durationMs: 100, success: true, timestamp: Date.now() };
+    const out = buildSessionRow3(state, 26);
+    expect(out).not.toContain("$");
+  });
+
+  test("omits last tool when null", () => {
+    const state = baseState();
+    state.costUsd = 1.0;
+    const out = buildSessionRow3(state, 26);
+    expect(out).not.toContain("Edit");
+    expect(out).not.toContain("Bash");
+  });
+
+  test("omits idle when no user_prompt seen", () => {
+    const state = baseState();
+    state.costUsd = 1.0;
+    const out = buildSessionRow3(state, 26);
+    expect(out).not.toContain("idle");
+  });
+
+  test("on overflow drops idle first", () => {
+    // Width 16 — too tight for cost + tool + idle, plenty for cost + tool
+    const state = baseState();
+    state.costUsd = 1.0;
+    state.lastTool = { name: "Edit", durationMs: 1000, success: true, timestamp: Date.now() };
+    state.lastUserPromptTime = Date.now() - 60_000;
+    const out = buildSessionRow3(state, 16);
+    expect(out).toContain("$1.00");
+    expect(out).toContain("Edit");
+    expect(out).not.toContain("idle");
+  });
+
+  test("on tighter overflow drops tool next, keeps cost", () => {
+    const state = baseState();
+    state.costUsd = 1.0;
+    state.lastTool = { name: "Edit", durationMs: 1000, success: true, timestamp: Date.now() };
+    state.lastUserPromptTime = Date.now() - 60_000;
+    const out = buildSessionRow3(state, 8);
+    expect(out).toContain("$1.00");
+    expect(out).not.toContain("Edit");
+    expect(out).not.toContain("idle");
+  });
+
+  test("returns empty string when no fields apply", () => {
+    expect(buildSessionRow3(baseState(), 26)).toBe("");
   });
 });

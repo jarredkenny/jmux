@@ -118,3 +118,95 @@ export function buildSessionView(
     pipelineState,
   };
 }
+
+function formatToolDuration(ms: number): string {
+  if (ms < 60_000) {
+    const s = (ms / 1000).toFixed(1);
+    return `${s}s`;
+  }
+  const totalSeconds = Math.floor(ms / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}m${s}s`;
+}
+
+function formatIdle(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}s idle`;
+  const m = Math.floor(totalSeconds / 60);
+  if (m < 60) return `${m}m idle`;
+  const h = Math.floor(m / 60);
+  return `${h}h idle`;
+}
+
+const ROW3_GAP = "  ";
+
+export function buildSessionRow3(state: SessionOtelState, width: number): string {
+  const costText = state.costUsd > 0 ? `$${state.costUsd.toFixed(2)}` : null;
+  const toolText = state.lastTool
+    ? `${state.lastTool.name} ${formatToolDuration(state.lastTool.durationMs)}`
+    : null;
+  const idleText = state.lastUserPromptTime !== null
+    ? formatIdle(Date.now() - state.lastUserPromptTime)
+    : null;
+
+  const usable = Math.max(0, width);
+
+  // Drop priority: try (cost+tool+idle), then (cost+tool), then (cost+idle), then (tool+idle), then singles.
+  const candidates: Array<Array<{ text: string; align: "left" | "right" }>> = [];
+  if (costText && toolText && idleText) {
+    candidates.push([
+      { text: costText, align: "left" },
+      { text: toolText, align: "left" },
+      { text: idleText, align: "right" },
+    ]);
+  }
+  if (costText && toolText) {
+    candidates.push([
+      { text: costText, align: "left" },
+      { text: toolText, align: "left" },
+    ]);
+  }
+  if (costText && idleText) {
+    candidates.push([
+      { text: costText, align: "left" },
+      { text: idleText, align: "right" },
+    ]);
+  }
+  if (toolText && idleText) {
+    candidates.push([
+      { text: toolText, align: "left" },
+      { text: idleText, align: "right" },
+    ]);
+  }
+  if (costText) candidates.push([{ text: costText, align: "left" }]);
+  if (toolText) candidates.push([{ text: toolText, align: "left" }]);
+  if (idleText) candidates.push([{ text: idleText, align: "right" }]);
+
+  for (const fields of candidates) {
+    const totalLen = fields.reduce((s, f) => s + f.text.length, 0)
+      + Math.max(0, fields.length - 1) * ROW3_GAP.length;
+    if (totalLen <= usable) {
+      return layoutRow3(fields, usable);
+    }
+  }
+
+  // Last resort: cost truncated
+  if (costText) return costText.slice(0, usable);
+  return "";
+}
+
+function layoutRow3(
+  fields: Array<{ text: string; align: "left" | "right" }>,
+  usable: number,
+): string {
+  if (fields.length === 0) return "";
+  const lefts = fields.filter((f) => f.align === "left").map((f) => f.text);
+  const rights = fields.filter((f) => f.align === "right").map((f) => f.text);
+  const leftPart = lefts.join(ROW3_GAP);
+  const rightPart = rights.join(ROW3_GAP);
+  if (rightPart === "") return leftPart;
+  if (leftPart === "") return " ".repeat(Math.max(0, usable - rightPart.length)) + rightPart;
+  const padLen = Math.max(2, usable - leftPart.length - rightPart.length);
+  return leftPart + " ".repeat(padLen) + rightPart;
+}
