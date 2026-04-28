@@ -878,6 +878,65 @@ describe("Sidebar", () => {
     expect(grid.cells[7][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
   });
 
+  test("renders P badge in cyan when permissionMode is plan", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      permissionMode: "plan",
+    });
+    const grid = sidebar.getGrid();
+
+    // No Linear ID, badge anchors at width - 2
+    const badgeCell = grid.cells[2][SIDEBAR_WIDTH - 2];
+    expect(badgeCell.char).toBe("P");
+    expect(badgeCell.fg).toBe(6); // palette cyan
+  });
+
+  test("renders A badge in yellow when permissionMode is accept-edits", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      permissionMode: "accept-edits",
+    });
+    const grid = sidebar.getGrid();
+
+    const badgeCell = grid.cells[2][SIDEBAR_WIDTH - 2];
+    expect(badgeCell.char).toBe("A");
+    expect(badgeCell.fg).toBe(3);
+  });
+
+  test("default mode renders no badge", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setSessionOtelState("$0", makeBlankOtelState());
+    const grid = sidebar.getGrid();
+
+    expect(grid.cells[2][SIDEBAR_WIDTH - 2].char).toBe(" ");
+  });
+
+  test("session name truncates 2 columns earlier when a mode badge is present", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    // 26-col sidebar, col 3 starts the name. With no badge, name has 22 cols.
+    // With badge, name has 20 cols.
+    const longName = "a".repeat(40);
+    sidebar.updateSessions(makeSessions([{ name: longName }]));
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      permissionMode: "plan",
+    });
+    const grid = sidebar.getGrid();
+
+    const row = grid.cells[2];
+    // Find last 'a' col
+    let lastA = -1;
+    for (let c = 0; c < SIDEBAR_WIDTH; c++) if (row[c].char === "a") lastA = c;
+    // Last char before the badge gap should be the ellipsis
+    const ellipsisCol = lastA + 1;
+    expect(row[ellipsisCol].char).toBe("…");
+  });
+
   test("hovering a group header does not trigger expansion", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([

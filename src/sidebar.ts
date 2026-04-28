@@ -39,6 +39,14 @@ const MCP_DOWN_ATTRS: CellAttrs = {
   fgMode: ColorMode.Palette,
   dim: true,
 };
+const MODE_PLAN_ATTRS: CellAttrs = {
+  fg: 6,
+  fgMode: ColorMode.Palette,
+};
+const MODE_ACCEPT_EDITS_ATTRS: CellAttrs = {
+  fg: 3,
+  fgMode: ColorMode.Palette,
+};
 const ACTIVE_NAME_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
@@ -635,11 +643,17 @@ export class Sidebar {
         ? { bg: HOVER_BG, bgMode: ColorMode.RGB }
         : {};
 
-    // --- Row 1: session name (left) + linear ID (right) ---
+    // --- Row 1: session name (left) + mode badge + linear ID (right) ---
     const nameStart = 3;
     const linearIdStr = view.linearId ?? "";
     const linearIdCol = linearIdStr ? this.width - linearIdStr.length - 1 : this.width;
-    const nameMaxLen = (linearIdStr ? linearIdCol - 1 : this.width - 1) - nameStart;
+    const hasBadge = view.modeBadge !== null;
+    const badgeCol = hasBadge
+      ? (linearIdStr ? linearIdCol - 2 : this.width - 2)
+      : -1;
+    const reserveRight = (linearIdStr ? linearIdCol - 1 : this.width - 1)
+      - (hasBadge ? 2 : 0);
+    const nameMaxLen = reserveRight - nameStart;
     let displayName = view.sessionName;
     if (displayName.length > nameMaxLen) {
       displayName = displayName.slice(0, Math.max(0, nameMaxLen - 1)) + "\u2026";
@@ -651,6 +665,13 @@ export class Sidebar {
         ? { ...HOVER_NAME_ATTRS }
         : { ...INACTIVE_NAME_ATTRS };
     writeString(grid, nameRow, nameStart, displayName, nameAttrs);
+
+    if (hasBadge && badgeCol >= 0) {
+      const badgeAttrs = view.modeBadge === "P"
+        ? MODE_PLAN_ATTRS
+        : MODE_ACCEPT_EDITS_ATTRS;
+      writeString(grid, nameRow, badgeCol, view.modeBadge!, { ...badgeAttrs, ...bgAttrs });
+    }
 
     if (linearIdStr) {
       const linkAttrs: CellAttrs = { ...DIM_ATTRS, ...bgAttrs };

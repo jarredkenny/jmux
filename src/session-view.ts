@@ -5,6 +5,8 @@ const CACHE_TIMER_TTL = 300; // seconds
 
 export type IndicatorKind = "error" | "mcp-down" | "attention" | "activity" | null;
 
+export type ModeBadge = "P" | "A" | null;
+
 export interface SessionView {
   sessionId: string;
   sessionName: string;
@@ -12,6 +14,9 @@ export interface SessionView {
   hasActivity: boolean;
   hasAttention: boolean;
   indicatorKind: IndicatorKind;
+
+  // Row 1, between name and Linear ID
+  modeBadge: ModeBadge;
 
   // Row 1, right-aligned
   linearId: string | null;
@@ -81,12 +86,18 @@ export function buildSessionView(
   else if (session.attention) indicatorKind = "attention";
   else if (activitySet.has(session.id)) indicatorKind = "activity";
 
+  // Mode badge: P for plan, A for accept-edits, none for default.
+  const modeBadge: ModeBadge =
+    timerState?.permissionMode === "plan" ? "P" :
+    timerState?.permissionMode === "accept-edits" ? "A" : null;
+
   return {
     sessionId: session.id,
     sessionName: session.name,
     hasActivity: activitySet.has(session.id),
     hasAttention: session.attention,
     indicatorKind,
+    modeBadge,
     linearId,
     branch: session.gitBranch ?? null,
     timerText,
