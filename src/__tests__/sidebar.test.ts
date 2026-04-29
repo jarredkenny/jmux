@@ -809,16 +809,14 @@ describe("Sidebar", () => {
   // row 1: separator
   // row 2: first session name (item starts here; spacer follows each session)
   //
-  // So two ungrouped sessions α, β with α expanded (h=3):
+  // Every session is now uniformly 3 rows tall:
   //   α: rows 2,3,4
   //   spacer: row 5
-  //   β: rows 6,7
-  // With α not expanded (h=2):
-  //   α: rows 2,3
-  //   spacer: row 4
-  //   β: rows 5,6
+  //   β: rows 6,7,8
+  //   spacer: row 9
+  //   γ: rows 10,11,12
 
-  test("active session expands to 3 rows", () => {
+  test("every session is 3 rows tall", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([
       { name: "alpha" },
@@ -827,7 +825,7 @@ describe("Sidebar", () => {
     sidebar.setActiveSession("$0");
     const grid = sidebar.getGrid();
 
-    // alpha at rows 2,3,4 (expanded); spacer at 5; beta at rows 6,7
+    // alpha at rows 2,3,4; spacer at 5; beta at rows 6,7,8
     const row6Text = Array.from(
       { length: SIDEBAR_WIDTH },
       (_, i) => grid.cells[6][i].char,
@@ -835,72 +833,25 @@ describe("Sidebar", () => {
     expect(row6Text).toContain("beta");
   });
 
-  test("inactive sessions stay at 2 rows", () => {
-    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
-    sidebar.updateSessions(makeSessions([
-      { name: "alpha" },
-      { name: "beta" },
-      { name: "gamma" },
-    ]));
-    sidebar.setActiveSession("$0");
-    const grid = sidebar.getGrid();
-
-    // alpha (rows 2,3,4) — expanded
-    // spacer at 5
-    // beta (rows 6,7) — not expanded
-    // spacer at 8
-    // gamma name at row 9
-    const row9Text = Array.from(
-      { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[9][i].char,
-    ).join("");
-    expect(row9Text).toContain("gamma");
-  });
-
-  test("hover overrides active for expansion", () => {
+  test("hovering row 3 keeps hover styling", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([
       { name: "alpha" },
       { name: "beta" },
     ]));
     sidebar.setActiveSession("$0");
-    // First render: alpha expanded at 2,3,4; spacer 5; beta name at row 6.
-    sidebar.getGrid(); // populate rowToSessionIndex
-    sidebar.setHoveredRow(6); // hover beta's name row
+    // Layout: alpha at 2,3,4; spacer 5; beta at 6,7,8.
+    // Hover beta's row 3 (row 8).
+    sidebar.setHoveredRow(8);
     const grid = sidebar.getGrid();
 
-    // Now beta is the expanded session: alpha collapses to 2 rows (2,3),
-    // spacer at 4, beta expanded at 5,6,7.
-    const row5Text = Array.from(
-      { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[5][i].char,
-    ).join("");
-    expect(row5Text).toContain("beta");
+    // Beta's name row (row 6) should have hover bg painted.
+    expect(grid.cells[6][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
+    // Row 8 (the third row) should also have hover bg.
+    expect(grid.cells[8][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
   });
 
-  test("hovering row 3 of an expanded session keeps hover styling", () => {
-    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
-    sidebar.updateSessions(makeSessions([
-      { name: "alpha" },
-      { name: "beta" },
-    ]));
-    sidebar.setActiveSession("$0");
-    // First render: alpha expanded at rows 2-4; spacer 5; beta name row 6.
-    sidebar.getGrid();
-    // Hover beta's name row first to expand it.
-    sidebar.setHoveredRow(6);
-    sidebar.getGrid();
-    // Now hover beta's row 3 (now at row 7 since beta expanded at rows 5,6,7).
-    sidebar.setHoveredRow(7);
-    const grid = sidebar.getGrid();
-
-    // Beta's name (row 5) should still have hover bg painted.
-    expect(grid.cells[5][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
-    // Row 7 (the third row) should also have hover bg.
-    expect(grid.cells[7][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
-  });
-
-  test("expanded session shows cost / tool / idle on row 3", () => {
+  test("session shows cost / tool / idle on row 3", () => {
     // Cost ($1.23) + Edit 1.2s + 3m idle = 25 chars + 2x2 gap minimum = ~25.
     // Budget is width - 3 (we write at col 3), so use a 30-col sidebar so all
     // three fields survive buildSessionRow3's drop-priority overflow logic.
@@ -916,30 +867,31 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
 
-    // Active session — name row 2, detail row 3, row 3 is row 4
+    // Name row 2, detail row 3, row 3 is row 4
     const text = Array.from({ length: width }, (_, i) => grid.cells[4][i].char).join("");
     expect(text).toContain("$1.23");
     expect(text).toContain("Edit");
     expect(text).toContain("3m idle");
   });
 
-  test("non-expanded session has no row 3 content", () => {
+  test("switching active session does not shift layout", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([
       { name: "alpha" },
       { name: "beta" },
+      { name: "gamma" },
     ]));
     sidebar.setActiveSession("$0");
-    sidebar.setSessionOtelState("$1", {
-      ...makeBlankOtelState(),
-      costUsd: 99.99,
-    });
-    const grid = sidebar.getGrid();
+    const grid1 = sidebar.getGrid();
+    const before = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid1.cells[10][i].char).join("");
 
-    // Layout: alpha (expanded) at rows 2,3,4; spacer at 5; beta (h=2) at 6,7;
-    // spacer at 8. If beta were wrongly expanded, $99.99 would appear at row 8.
-    const row8Text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[8][i].char).join("");
-    expect(row8Text).not.toContain("$99.99");
+    sidebar.setActiveSession("$1");
+    const grid2 = sidebar.getGrid();
+    const after = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid2.cells[10][i].char).join("");
+
+    // Same row should still contain whatever was there before (gamma).
+    expect(after).toBe(before);
+    expect(before).toContain("gamma");
   });
 
   test("renders P badge in cyan when permissionMode is plan", () => {
@@ -1039,27 +991,6 @@ describe("Sidebar", () => {
     expect(grid.cells[2][SIDEBAR_WIDTH - 2].char).toBe("P");
   });
 
-  test("hovering a group header does not trigger expansion", () => {
-    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
-    sidebar.updateSessions(makeSessions([
-      { name: "a", project: "proj1" },
-      { name: "b", project: "proj1" },
-    ]));
-    sidebar.setActiveSession("$0");
-    // Layout with group + active 'a' (expanded):
-    //   row 2: group header
-    //   row 3: spacer
-    //   rows 4,5,6: 'a' (expanded)
-    //   row 7: spacer
-    //   rows 8,9: 'b'
-    sidebar.getGrid(); // populate rowToSessionIndex with group header at 2
-    sidebar.setHoveredRow(2); // hovering group header — should be a no-op for expansion
-    const grid = sidebar.getGrid();
-
-    // 'a' should remain expanded. 'b' name still at row 8.
-    const row8 = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[8][i].char).join("");
-    expect(row8).toContain("b");
-  });
 });
 
 function makeContexts(
@@ -1205,24 +1136,24 @@ describe("Sidebar inline link data", () => {
     expect(detailRow).toContain("✓");
   });
 
-  test("sessions always take 2 rows regardless of link data", () => {
+  test("sessions always take 3 rows", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "api" }, { name: "other" }]));
     sidebar.setSessionContexts(makeContexts([{
       name: "api", issueIds: ["ENG-1234"], mrCount: 2,
     }]));
     const grid = sidebar.getGrid();
-    // Row 2: api name, Row 3: api detail, Row 4: spacer, Row 5: other name
-    const row5text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[5][i].char).join("");
-    expect(row5text).toContain("other");
+    // Row 2: api name, Row 3: api detail, Row 4: api row3, Row 5: spacer, Row 6: other name
+    const row6text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[6][i].char).join("");
+    expect(row6text).toContain("other");
   });
 
-  test("no link data shows clean 2-row session", () => {
+  test("no link data shows clean 3-row session", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "api" }, { name: "other" }]));
     const grid = sidebar.getGrid();
-    // Row 2: api name, Row 3: api detail, Row 4: spacer, Row 5: other name
-    const row5text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[5][i].char).join("");
-    expect(row5text).toContain("other");
+    // Row 2: api name, Row 3: api detail, Row 4: api row3, Row 5: spacer, Row 6: other name
+    const row6text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[6][i].char).join("");
+    expect(row6text).toContain("other");
   });
 });

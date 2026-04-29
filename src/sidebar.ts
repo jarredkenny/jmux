@@ -153,7 +153,7 @@ function getSubdirectory(dir: string, groupLabel: string): string | null {
 
 type RenderItem =
   | { type: "group-header"; label: string; collapsed: boolean; sessionCount: number }
-  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string; expanded: boolean }
+  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string }
   | { type: "spacer" };
 
 const PINNED_GROUP_LABEL = "Pinned";
@@ -162,7 +162,6 @@ function buildRenderPlan(
   sessions: SessionInfo[],
   collapsedGroups: Set<string>,
   pinnedNames: Set<string>,
-  expandedSessionId: string | null,
 ): {
   items: RenderItem[];
   displayOrder: number[];
@@ -226,7 +225,6 @@ function buildRenderPlan(
           sessionIndex: idx,
           grouped: true,
           groupLabel: PINNED_GROUP_LABEL,
-          expanded: sessions[idx].id === expandedSessionId,
         });
         displayOrder.push(idx);
         items.push({ type: "spacer" });
@@ -250,7 +248,6 @@ function buildRenderPlan(
           sessionIndex: idx,
           grouped: true,
           groupLabel: group.label,
-          expanded: sessions[idx].id === expandedSessionId,
         });
         displayOrder.push(idx);
         items.push({ type: "spacer" });
@@ -263,7 +260,6 @@ function buildRenderPlan(
       type: "session",
       sessionIndex: idx,
       grouped: false,
-      expanded: sessions[idx].id === expandedSessionId,
     });
     displayOrder.push(idx);
     items.push({ type: "spacer" });
@@ -273,7 +269,7 @@ function buildRenderPlan(
 }
 
 function itemHeight(item: RenderItem): number {
-  if (item.type === "session") return item.expanded ? 3 : 2;
+  if (item.type === "session") return 3;
   return 1; // group-header or spacer
 }
 
@@ -322,7 +318,6 @@ export class Sidebar {
   setActiveSession(id: string): void {
     if (this.activeSessionId === id) return;
     this.activeSessionId = id;
-    this.rebuildPlan();
   }
 
   toggleGroup(label: string): void {
@@ -344,19 +339,10 @@ export class Sidebar {
       this.sessions,
       this.collapsedGroups,
       this.pinnedSessions,
-      this.computeExpandedSessionId(),
     );
     this.items = items;
     this.displayOrder = displayOrder;
     this.clampScroll();
-  }
-
-  private computeExpandedSessionId(): string | null {
-    // Hover wins, but only when it resolves to a session row.
-    const hoveredId = this.hoveredRow !== null
-      ? this.sessions[this.rowToSessionIndex.get(this.hoveredRow) ?? -1]?.id ?? null
-      : null;
-    return hoveredId ?? this.activeSessionId;
   }
 
   isPinned(sessionName: string): boolean {
@@ -441,10 +427,7 @@ export class Sidebar {
 
   setHoveredRow(row: number | null): void {
     if (this.hoveredRow === row) return;
-    const prev = this.computeExpandedSessionId();
     this.hoveredRow = row;
-    const next = this.computeExpandedSessionId();
-    if (prev !== next) this.rebuildPlan();
   }
 
   getHoveredRow(): number | null {
@@ -617,10 +600,10 @@ export class Sidebar {
     if (!session) return;
 
     const detailRow = nameRow + 1;
+    const row3 = nameRow + 2;
     const isActive = session.id === this.activeSessionId;
-    const expandedRow = item.expanded ? nameRow + 2 : -1;
     const isHovered = !isActive && this.hoveredRow !== null &&
-      (this.hoveredRow === nameRow || this.hoveredRow === detailRow || this.hoveredRow === expandedRow);
+      (this.hoveredRow === nameRow || this.hoveredRow === detailRow || this.hoveredRow === row3);
 
     // Build the view
     const ctx = this.sessionContexts.get(session.name);
@@ -760,25 +743,22 @@ export class Sidebar {
     }
 
     // Row 3: cost / tool / idle from the OTEL state.
-    if (item.expanded) {
-      const row3 = nameRow + 2;
-      if (row3 < this.height) {
-        this.paintRowChrome(grid, row3, isActive, isHovered);
-        this.rowToSessionIndex.set(row3, sessionIdx);
+    if (row3 < this.height) {
+      this.paintRowChrome(grid, row3, isActive, isHovered);
+      this.rowToSessionIndex.set(row3, sessionIdx);
 
-        const otel = this.otelStates.get(session.id);
-        if (otel) {
-          // Pass the budget that buildSessionRow3 will treat as its full usable
-          // width. We start writing at col 3, so usable budget = this.width - 3.
-          const text = buildSessionRow3(otel, this.width - 3);
-          if (text.length > 0) {
-            const row3Attrs: CellAttrs = isActive
-              ? ACTIVE_DETAIL_ATTRS
-              : isHovered
-                ? HOVER_DETAIL_ATTRS
-                : DIM_ATTRS;
-            writeString(grid, row3, 3, text, row3Attrs);
-          }
+      const otel = this.otelStates.get(session.id);
+      if (otel) {
+        // Pass the budget that buildSessionRow3 will treat as its full usable
+        // width. We start writing at col 3, so usable budget = this.width - 3.
+        const text = buildSessionRow3(otel, this.width - 3);
+        if (text.length > 0) {
+          const row3Attrs: CellAttrs = isActive
+            ? ACTIVE_DETAIL_ATTRS
+            : isHovered
+              ? HOVER_DETAIL_ATTRS
+              : DIM_ATTRS;
+          writeString(grid, row3, 3, text, row3Attrs);
         }
       }
     }
