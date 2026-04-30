@@ -21,6 +21,27 @@ export function extractOwnerRepo(remoteUrl: string): string | null {
   }
 }
 
+function deriveGraphqlUrl(restBaseUrl: string): string {
+  try {
+    const url = new URL(restBaseUrl);
+    if (url.hostname === "api.github.com") return "https://api.github.com/graphql";
+    // GitHub Enterprise: https://HOST/api/v3 → https://HOST/api/graphql
+    return `${url.protocol}//${url.hostname}/api/graphql`;
+  } catch {
+    return "https://api.github.com/graphql";
+  }
+}
+
+function deriveWebUrl(restBaseUrl: string, ownerRepo: string, path: string): string {
+  try {
+    const url = new URL(restBaseUrl);
+    if (url.hostname === "api.github.com") return `https://github.com/${ownerRepo}/${path}`;
+    return `${url.protocol}//${url.hostname}/${ownerRepo}/${path}`;
+  } catch {
+    return `https://github.com/${ownerRepo}/${path}`;
+  }
+}
+
 export class GitHubAdapter implements CodeHostAdapter {
   type = "github";
   authState: AdapterAuthState = "unauthenticated";
@@ -30,7 +51,7 @@ export class GitHubAdapter implements CodeHostAdapter {
   private username: string | null = null;
 
   constructor(config: Record<string, unknown>) {
-    this.baseUrl = (config.url as string) ?? GITHUB_API;
+    this.baseUrl = (config.url as string) ?? process.env.GITHUB_ENTERPRISE_URL ?? GITHUB_API;
   }
 
   async authenticate(): Promise<void> {
@@ -47,8 +68,7 @@ export class GitHubAdapter implements CodeHostAdapter {
         const output = proc.stdout.toString().trim();
         if (output) {
           this.token = output;
-          this.authState = "ok";
-          await this.fetchUsername();
+          await this.validateAndFetchUsername();
           return;
         }
       } catch {}
@@ -56,18 +76,22 @@ export class GitHubAdapter implements CodeHostAdapter {
       return;
     }
     this.token = token;
-    this.authState = "ok";
-    await this.fetchUsername();
+    await this.validateAndFetchUsername();
   }
 
-  private async fetchUsername(): Promise<void> {
+  private async validateAndFetchUsername(): Promise<void> {
     try {
       const resp = await this.fetch(`${this.baseUrl}/user`);
       if (resp.ok) {
         const user = await resp.json();
         this.username = user.login ?? null;
+        this.authState = "ok";
+      } else {
+        this.authState = "failed";
       }
-    } catch {}
+    } catch {
+      this.authState = "failed";
+    }
   }
 
   async getMergeRequest(
@@ -116,18 +140,24 @@ export class GitHubAdapter implements CodeHostAdapter {
       byRepo.set(ownerRepo, list);
     }
     for (const [ownerRepo, contexts] of byRepo) {
-      const resp = await this.fetch(
-        `${this.baseUrl}/repos/${ownerRepo}/pulls?state=open&per_page=100`
-      );
-      if (!resp.ok) continue;
-      const prs = await resp.json();
-      if (!Array.isArray(prs)) continue;
-      for (const pr of prs) {
-        const matching = contexts.find(
-          (c) => c.branch === pr.head?.ref
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const resp = await this.fetch(
+          `${this.baseUrl}/repos/${ownerRepo}/pulls?state=open&per_page=100&page=${page}`
         );
-        if (matching)
-          result.set(matching.sessionName, await this.mapPullRequest(pr, ownerRepo));
+        if (!resp.ok) break;
+        const prs = await resp.json();
+        if (!Array.isArray(prs) || prs.length === 0) break;
+        for (const pr of prs) {
+          const matching = contexts.find(
+            (c) => c.branch === pr.head?.ref
+          );
+          if (matching)
+            result.set(matching.sessionName, await this.mapPullRequest(pr, ownerRepo));
+        }
+        hasMore = prs.length === 100 && page < 10;
+        page++;
       }
     }
     return result;
@@ -135,7 +165,7 @@ export class GitHubAdapter implements CodeHostAdapter {
 
   openInBrowser(mrId: string): void {
     const [ownerRepo, number] = this.parseId(mrId);
-    const url = `https://github.com/${ownerRepo}/pull/${number}`;
+    const url = deriveWebUrl(this.baseUrl, ownerRepo, `pull/${number}`);
     Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" });
   }
 
@@ -205,7 +235,7 @@ export class GitHubAdapter implements CodeHostAdapter {
 
   parseMrUrl(url: string): string | null {
     const match = url.match(
-      /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/
+      /\/([^/]+\/[^/]+)\/pull\/(\d+)/
     );
     if (!match) return null;
     return `${match[1]}:${match[2]}`;
@@ -286,7 +316,7 @@ export class GitHubAdapter implements CodeHostAdapter {
       else if (hasRunning) state = "running";
       else if (allSuccess) state = "passed";
       else if (hasCancelled) state = "canceled";
-      const webUrl = `https://github.com/${ownerRepo}/actions`;
+      const webUrl = deriveWebUrl(this.baseUrl, ownerRepo, "actions");
       return { state, webUrl };
     } catch {
       return null;
@@ -295,7 +325,8 @@ export class GitHubAdapter implements CodeHostAdapter {
 
   private async fetchApprovals(
     ownerRepo: string,
-    number: number
+    number: number,
+    targetBranch: string
   ): Promise<{ required: number; current: number }> {
     try {
       const resp = await this.fetch(
@@ -311,9 +342,10 @@ export class GitHubAdapter implements CodeHostAdapter {
           approvers.delete(review.user?.login ?? "");
       }
       let required = 0;
+      const branch = targetBranch || "main";
       try {
         const branchResp = await this.fetch(
-          `${this.baseUrl}/repos/${ownerRepo}/branches/main/protection`
+          `${this.baseUrl}/repos/${ownerRepo}/branches/${encodeURIComponent(branch)}/protection`
         );
         if (branchResp.ok) {
           const protection = await branchResp.json();
@@ -330,9 +362,10 @@ export class GitHubAdapter implements CodeHostAdapter {
 
   private async mapPullRequest(raw: any, ownerRepo: string): Promise<MergeRequest> {
     const sha = raw.head?.sha;
+    const targetBranch = raw.base?.ref ?? "";
     const [pipeline, approvals] = await Promise.all([
       sha ? this.fetchCheckRunStatus(ownerRepo, sha) : Promise.resolve(null),
-      this.fetchApprovals(ownerRepo, raw.number),
+      this.fetchApprovals(ownerRepo, raw.number, targetBranch),
     ]);
     return {
       id: `${ownerRepo}:${raw.number}`,
@@ -345,7 +378,7 @@ export class GitHubAdapter implements CodeHostAdapter {
             ? "closed"
             : "open",
       sourceBranch: raw.head?.ref ?? "",
-      targetBranch: raw.base?.ref ?? "",
+      targetBranch,
       pipeline,
       approvals,
       webUrl: raw.html_url ?? "",
@@ -388,7 +421,7 @@ export class GitHubAdapter implements CodeHostAdapter {
   }
 
   private async fetch(url: string, init?: RequestInit): Promise<Response> {
-    return fetch(url, {
+    const resp = await fetch(url, {
       ...init,
       headers: {
         ...init?.headers,
@@ -397,10 +430,22 @@ export class GitHubAdapter implements CodeHostAdapter {
         "X-GitHub-Api-Version": "2022-11-28",
       },
     });
+    this.inspectRateLimit(resp);
+    return resp;
+  }
+
+  private inspectRateLimit(resp: Response): void {
+    const remaining = resp.headers.get("x-ratelimit-remaining");
+    if (remaining !== null && parseInt(remaining, 10) <= 10) {
+      const reset = resp.headers.get("x-ratelimit-reset");
+      const resetAt = reset ? new Date(parseInt(reset, 10) * 1000).toISOString() : "unknown";
+      console.warn(`[github] rate limit low: ${remaining} remaining, resets at ${resetAt}`);
+    }
   }
 
   private async graphql(query: string): Promise<any> {
-    const resp = await fetch("https://api.github.com/graphql", {
+    const graphqlUrl = deriveGraphqlUrl(this.baseUrl);
+    const resp = await fetch(graphqlUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.token ?? ""}`,

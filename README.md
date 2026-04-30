@@ -70,7 +70,20 @@ Set `$LINEAR_API_KEY` and `$GITLAB_TOKEN` in your environment.
 }
 ```
 
-Set `$LINEAR_API_KEY` and `$GH_TOKEN` (or `$GITHUB_TOKEN`) in your environment. Falls back to `gh auth token` if no env var is set.
+Set `$LINEAR_API_KEY` and `$GH_TOKEN` (or `$GITHUB_TOKEN`) in your environment. Falls back to `gh auth token` if no env var is set. Token requires `repo` scope for full functionality (PRs, check runs, reviews, branch protection).
+
+**Setup (GitHub Enterprise):**
+
+```json
+// ~/.config/jmux/config.json
+{
+  "adapters": {
+    "codeHost": { "type": "github", "url": "https://github.mycompany.com/api/v3" }
+  }
+}
+```
+
+Or set `$GITHUB_ENTERPRISE_URL` in your environment instead of the config `url` field.
 
 See [docs/issue-tracking.md](docs/issue-tracking.md) for the full guide.
 
