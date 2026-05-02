@@ -582,7 +582,8 @@ async function spawnHunk(cols: number, rows: number): Promise<void> {
   diffPty = pty_;
 
   pty_.onData((data: string) => {
-    diffBridge!.write(data).then(() => scheduleRender());
+    if (diffPty !== pty_ || !diffBridge) return;
+    diffBridge.write(data).then(() => scheduleRender());
   });
 
   pty_.onExit(() => {
