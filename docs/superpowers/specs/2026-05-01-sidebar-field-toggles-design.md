@@ -114,25 +114,46 @@ sidebar.cacheTimersEnabled = cacheTimersEnabled;
 This becomes:
 
 ```ts
-let sidebarFields = resolveSidebarFields(configStore.config);
+let sidebarFields: Required<SidebarFieldsConfig> = resolveSidebarFields(configStore.config);
 sidebar.setSidebarFields(sidebarFields);
 ```
 
-The config-watcher block (currently around `main.ts:2845`) updates similarly: on reload, recompute `sidebarFields` from the new config and push it to the sidebar.
+The `Required<SidebarFieldsConfig>` annotation means every read site (`sidebarFields.cacheTimer`, etc.) gets a `boolean`, not `boolean | undefined` — no `??` needed at use sites. The toggle-spread pattern (`{ ...sidebarFields, [key]: value }`) still typechecks because spreading a `Required<T>` and overwriting one key produces a `Required<T>`.
+
+### Config-watcher behavior
+
+The current watcher at `main.ts:2839-2854` does two things on a `cacheTimers` change: it writes the new boolean to the `Sidebar` and it conditionally starts or stops `cacheTimerTick`. The replacement must preserve both, but only react to a `cacheTimer` field change — not on every reload regardless of which field changed.
+
+Logic:
+
+```ts
+const newFields = resolveSidebarFields(updated);
+const cacheTimerChanged = newFields.cacheTimer !== sidebarFields.cacheTimer;
+sidebarFields = newFields;
+sidebar.setSidebarFields(newFields);
+if (cacheTimerChanged) {
+  if (newFields.cacheTimer && otelReceiver.getActiveSessionIds().length > 0) {
+    startCacheTimerTick();
+  } else if (!newFields.cacheTimer) {
+    stopCacheTimerTick();
+  }
+}
+scheduleRender();
+```
+
+Other `sidebarFields` keys don't drive any side effect beyond rendering — the next `getGrid` picks up the new flags via `setSidebarFields`. Only `cacheTimer` gates the keepalive tick because the tick exists to keep the displayed timer counting down; with the timer hidden the tick is wasted work.
+
+The OTEL keepalive guard at `main.ts:487` (`if (cacheTimersEnabled && ...)`) becomes `if (sidebarFields.cacheTimer && ...)`.
 
 ### Settings modal
 
-`buildPaletteCommands` already builds the Settings sections. Add a new section "Sidebar fields" with eight `boolean` items, each in the existing pattern:
+The Settings modal sections live in `buildSettingsCategories` at `main.ts:1836`, not in `buildPaletteCommands`. Add a new "Sidebar fields" category there, **inserted directly after the existing "Display" category** (they're conceptually adjacent — both control sidebar appearance), with eight `boolean` items in the existing pattern:
 
 ```ts
 {
   id: "sidebar-cache-timer", label: "Cache timer", type: "boolean" as const,
   getValue: () => sidebarFields.cacheTimer ? "on" : "off",
-  onToggle: () => {
-    sidebarFields = { ...sidebarFields, cacheTimer: !sidebarFields.cacheTimer };
-    sidebar.setSidebarFields(sidebarFields);
-    configStore.set("sidebarFields", { ...configStore.config.sidebarFields, cacheTimer: sidebarFields.cacheTimer });
-  },
+  onToggle: () => updateSidebarField("cacheTimer", !sidebarFields.cacheTimer),
 },
 // ... seven more for modeBadge, linearId, mrAndPipeline, branch, cost, lastTool, idleTime
 ```
@@ -148,9 +169,38 @@ The eight items use these labels in this order:
 7. Last tool
 8. Idle time
 
-The existing top-level `Cache timers` toggle in the Display section is removed. The Display section continues to host the sidebar-width and info-panel-width settings.
+A small helper inside `main.ts` keeps each `onToggle` site terse:
 
-A small helper inside `main.ts` (`updateSidebarField(key, value)`) keeps each `onToggle` call site terse — the `{ ...sidebarFields, [key]: value }` and `configStore.set` plumbing lives in one place.
+```ts
+function updateSidebarField<K extends keyof SidebarFieldsConfig>(
+  key: K,
+  value: NonNullable<SidebarFieldsConfig[K]>,
+): void {
+  sidebarFields = { ...sidebarFields, [key]: value };
+  sidebar.setSidebarFields(sidebarFields);
+  configStore.set("sidebarFields", {
+    ...(configStore.config.sidebarFields ?? {}),
+    [key]: value,
+  });
+  // Cache-timer toggle additionally drives the keepalive tick — see watcher section.
+  if (key === "cacheTimer") {
+    if (value && otelReceiver.getActiveSessionIds().length > 0) {
+      startCacheTimerTick();
+    } else if (!value) {
+      stopCacheTimerTick();
+    }
+  }
+  scheduleRender();
+}
+```
+
+The existing top-level `Cache timers` toggle in the Display section of `buildSettingsCategories` is removed. The Display section continues to host the sidebar-width and info-panel-width settings.
+
+### Palette command removal
+
+A second surface exposes the cache-timers toggle today: a top-level palette command `setting-cache-timers` at `main.ts:1763-1767` plus its handler at `main.ts:2448-2452`. To stay consistent with "Settings modal is the single entry point", **both the command definition and its handler are removed in this change.** Leaving them would (a) bypass the new `sidebarFields` write path and continue writing to the legacy `cacheTimers` key, and (b) duplicate UI for one of the eight toggles while the others have no palette equivalent.
+
+After removal, the cache-timer toggle is only reachable via the Settings modal, matching every other Sidebar fields toggle.
 
 ### Persistence semantics
 
@@ -202,7 +252,7 @@ One test per toggle (8 total), each asserting the relevant field becomes `null` 
 - `cacheTimer` toggle → `view.timerText === null`, `view.timerRemaining === 0`.
 - `modeBadge` toggle → `view.modeBadge === null`, including with both `permissionMode: "plan"` and a recent `lastCompactionTime` (the badge slot stays empty).
 - `cost` toggle → `buildSessionRow3` output does not contain `"$"`.
-- `lastTool` toggle → output does not contain the tool name.
+- `lastTool` toggle → output does not contain the tool name. Use a fixture name distinctive from cost/idle text — e.g. `"Read"` or `"Glob"` rather than `"Edit"` (no risk of substring collisions, but also pick something that won't ever appear inside an `idle` or `$X.YZ` literal).
 - `idleTime` toggle → output does not contain `"idle"`.
 
 ### `src/__tests__/sidebar.test.ts` (extend)
@@ -214,9 +264,19 @@ Two integration tests:
 ## Migration / compatibility
 
 - Existing `cacheTimers` key is read forever via the back-compat fallback. No flag day.
-- `Sidebar.cacheTimersEnabled` (the public field) is removed in this change. Call sites: `main.ts` (six references — initial wire-up, OTEL keepalive guard, the soon-removed Display-section toggle, the config-watcher branch) and the existing test `cacheTimersEnabled false suppresses timer rendering` in `sidebar.test.ts`. The test migrates to `sidebar.setSidebarFields({ ..., cacheTimer: false, ... })`.
+- `Sidebar.cacheTimersEnabled` (the public field) and `cacheTimersEnabled` (the ambient `let` in `main.ts`) are removed. References to migrate or delete:
+  - `src/main.ts:219` — initial assignment, becomes `let sidebarFields = resolveSidebarFields(...)`.
+  - `src/main.ts:374` — initial push to sidebar, becomes `sidebar.setSidebarFields(sidebarFields)`.
+  - `src/main.ts:487` — OTEL keepalive guard, becomes `if (sidebarFields.cacheTimer && ...)`.
+  - `src/main.ts:1765` — palette command label string, removed with the command itself (see "Palette command removal" section).
+  - `src/main.ts:1869-1873` — Display-section toggle, removed (replaced by the new section's `cacheTimer` toggle).
+  - `src/main.ts:2449-2450` — palette command handler, removed with the command.
+  - `src/main.ts:2845-2847` — config-watcher branch, replaced per "Config-watcher behavior".
+  - `src/sidebar.ts:300` — public field declaration, removed.
+  - `src/sidebar.ts:610` — usage at the top of `renderSession`, removed (gating moves into `buildSessionView`).
+  - `src/__tests__/sidebar.test.ts:790` — test `cacheTimersEnabled false suppresses timer rendering`, migrated to call `sidebar.setSidebarFields({ ..., cacheTimer: false })`.
 - `JmuxConfig.cacheTimers` stays on the type — removing it would break users with the legacy key in their config file.
-- The OTEL keepalive guard at `main.ts:487` (`if (cacheTimersEnabled && otelReceiver.getActiveSessionIds().length > 0)`) becomes `if (sidebarFields.cacheTimer && ...)` so the cache-timer tick interval still gates correctly when the timer is off.
+- `src/demo/setup.ts:57` writes `cacheTimers: false` directly into a fixture config. Back-compat read in `resolveSidebarFields` handles it; no migration needed there. Mentioned for reviewer awareness only.
 
 ## Open questions resolved during brainstorming
 
