@@ -904,12 +904,23 @@ function renderFrame(): void {
   );
 }
 
+const RENDER_INTERVAL_ACTIVE = 33;  // ~30fps when focused
+const RENDER_INTERVAL_IDLE = 200;   // ~5fps when no recent input
+
+let lastInputTime = Date.now();
+
+function markInputActivity(): void {
+  lastInputTime = Date.now();
+}
+
 function scheduleRender(): void {
   if (renderTimer !== null) return;
+  const elapsed = Date.now() - lastInputTime;
+  const interval = elapsed < 2000 ? RENDER_INTERVAL_ACTIVE : RENDER_INTERVAL_IDLE;
   renderTimer = setTimeout(() => {
     renderTimer = null;
     renderFrame();
-  }, 16); // ~60fps cap
+  }, interval);
 }
 
 // --- Indicator clearing on interaction ---
@@ -2777,6 +2788,7 @@ pty.onData((data: string) => {
 // --- Stdin ---
 
 process.stdin.on("data", (data: Buffer) => {
+  markInputActivity();
   inputRouter.handleInput(data.toString());
 });
 
