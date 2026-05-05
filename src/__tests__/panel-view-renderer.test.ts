@@ -81,6 +81,64 @@ describe("buildViewNodes", () => {
     const firstItem = nodes.find((n) => n.kind === "item");
     expect(firstItem?.kind === "item" && firstItem.item.id).toBe("i3");
   });
+
+  test("groups are sorted alphabetically, not by item insertion order", () => {
+    // Item-level sort is by priority asc → ISSUE (Platform, prio 1) is first,
+    // ISSUE3 (Frontend, prio 2) second. Without explicit group sort the
+    // groups would appear as [Platform, Frontend]; with it they're [Frontend, Platform].
+    const items = transformIssues([ISSUE, ISSUE3, ISSUE2], new Set());
+    const nodes = buildViewNodes(items, VIEW, new Set());
+    const groupLabels = nodes.filter((n) => n.kind === "group" && n.depth === 0).map((n) => (n as any).label);
+    expect(groupLabels).toEqual(["Frontend", "Platform"]);
+  });
+
+  test("subgroup order is stable when an item changes status", () => {
+    // Two Platform issues: one Todo (unstarted), one In Progress (started).
+    // The lower-priority issue is initially Todo so the In Progress subgroup
+    // is encountered first under priority-asc sort.
+    const before: Issue[] = [
+      { ...ISSUE, id: "p1", priority: 1, status: "In Progress", stateType: "started", team: "Platform" },
+      { ...ISSUE, id: "p2", priority: 2, status: "Todo", stateType: "unstarted", team: "Platform" },
+    ];
+    const beforeNodes = buildViewNodes(transformIssues(before, new Set()), VIEW, new Set());
+    const beforeSubs = beforeNodes.filter((n) => n.kind === "group" && n.depth === 1).map((n) => (n as any).label);
+
+    // After: change p1 from In Progress → Todo. p1 is now the higher-priority
+    // Todo, so under Map-insertion-order subgroups would be [Todo, In Progress].
+    // With deterministic ordering they remain in workflow order regardless.
+    const after: Issue[] = [
+      { ...ISSUE, id: "p1", priority: 1, status: "Todo", stateType: "unstarted", team: "Platform" },
+      { ...ISSUE, id: "p2", priority: 2, status: "Todo", stateType: "unstarted", team: "Platform" },
+    ];
+    const afterNodes = buildViewNodes(transformIssues(after, new Set()), VIEW, new Set());
+    const afterSubs = afterNodes.filter((n) => n.kind === "group" && n.depth === 1).map((n) => (n as any).label);
+
+    expect(beforeSubs).toEqual(["Todo", "In Progress"]);
+    expect(afterSubs).toEqual(["Todo"]);
+    // unstarted < started in workflow order, so Todo is always before In Progress
+    // when both are present, regardless of which item moved.
+    const mixed: Issue[] = [
+      { ...ISSUE, id: "p1", priority: 1, status: "In Progress", stateType: "started", team: "Platform" },
+      { ...ISSUE, id: "p2", priority: 2, status: "Todo", stateType: "unstarted", team: "Platform" },
+      { ...ISSUE, id: "p3", priority: 3, status: "In Progress", stateType: "started", team: "Platform" },
+    ];
+    const mixedNodes = buildViewNodes(transformIssues(mixed, new Set()), VIEW, new Set());
+    const mixedSubs = mixedNodes.filter((n) => n.kind === "group" && n.depth === 1).map((n) => (n as any).label);
+    expect(mixedSubs).toEqual(["Todo", "In Progress"]);
+  });
+
+  test("priority groups order: 1=Urgent..4=Low, 0=None last", () => {
+    const issues: Issue[] = [
+      { ...ISSUE, id: "a", priority: 0, team: "T" },
+      { ...ISSUE, id: "b", priority: 4, team: "T" },
+      { ...ISSUE, id: "c", priority: 1, team: "T" },
+      { ...ISSUE, id: "d", priority: 3, team: "T" },
+    ];
+    const view: PanelView = { ...VIEW, groupBy: "priority", subGroupBy: "none" };
+    const nodes = buildViewNodes(transformIssues(issues, new Set()), view, new Set());
+    const labels = nodes.filter((n) => n.kind === "group").map((n) => (n as any).label);
+    expect(labels).toEqual(["1", "3", "4", "0"]);
+  });
 });
 
 describe("renderView", () => {

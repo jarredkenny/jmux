@@ -18,11 +18,14 @@ export interface MergeRequest {
   updatedAt?: number;  // epoch ms
 }
 
+export type IssueStateType = "triage" | "backlog" | "unstarted" | "started" | "completed" | "canceled";
+
 export interface Issue {
   id: string;
   identifier: string;
   title: string;
   status: string;
+  stateType?: IssueStateType;  // stable workflow position; status name varies per workspace
   assignee: string | null;
   linkedMrUrls: string[];
   webUrl: string;

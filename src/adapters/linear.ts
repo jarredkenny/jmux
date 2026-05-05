@@ -1,12 +1,17 @@
 // src/adapters/linear.ts
-import { HttpError, type IssueTrackerAdapter, type AdapterAuthState, type Issue } from "./types";
+import { HttpError, type IssueTrackerAdapter, type AdapterAuthState, type Issue, type IssueStateType } from "./types";
 import { buildLinearPrompt } from "./linear-prompt";
 import { logError } from "../log";
 
 const LINEAR_API = "https://api.linear.app/graphql";
 
 // Shared GraphQL fields for issue queries
-const ISSUE_FIELDS = `id identifier title description branchName state { name } assignee { name } team { name } project { name } priority updatedAt labels { nodes { name parent { name } } } attachments { nodes { title url sourceType } } comments(first: 20) { nodes { id parent { id } body user { name } createdAt } } url`;
+const ISSUE_FIELDS = `id identifier title description branchName state { name type } assignee { name } team { name } project { name } priority updatedAt labels { nodes { name parent { name } } } attachments { nodes { title url sourceType } } comments(first: 20) { nodes { id parent { id } body user { name } createdAt } } url`;
+
+const ISSUE_STATE_TYPES: ReadonlySet<IssueStateType> = new Set(["triage", "backlog", "unstarted", "started", "completed", "canceled"]);
+function isIssueStateType(v: unknown): v is IssueStateType {
+  return typeof v === "string" && ISSUE_STATE_TYPES.has(v as IssueStateType);
+}
 
 export function extractIssueIdFromBranch(branch: string): string | null {
   const match = branch.match(/(?:^|\/?)([a-zA-Z]+-\d+)/);
@@ -172,6 +177,7 @@ export class LinearAdapter implements IssueTrackerAdapter {
       identifier: raw.identifier ?? "",
       title: raw.title ?? "",
       status: raw.state?.name ?? "Unknown",
+      stateType: isIssueStateType(raw.state?.type) ? raw.state.type : undefined,
       assignee: raw.assignee?.name ?? null,
       linkedMrUrls: (raw.attachments?.nodes ?? [])
         .map((a: any) => a.url)

@@ -2,8 +2,8 @@
 import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeString, textCols, type CellAttrs, type StyledLine } from "./cell-grid";
-import type { PanelView } from "./panel-view";
-import type { Issue, MergeRequest } from "./adapters/types";
+import type { PanelView, GroupByField } from "./panel-view";
+import type { Issue, IssueStateType, MergeRequest } from "./adapters/types";
 import { fuzzyMatch } from "./fuzzy";
 import { renderMarkdownToStyledLines } from "./markdown";
 
@@ -23,6 +23,7 @@ export interface RenderableItem {
   updatedAt: number;
   raw: Issue | MergeRequest;
   issueSessionState?: IssueSessionState;  // only for issues
+  stateType?: IssueStateType;  // only for issues; stable ordering across status renames
 }
 
 export type ViewNode =
@@ -62,6 +63,7 @@ export function transformIssues(
     updatedAt: issue.updatedAt ?? 0,
     raw: issue,
     issueSessionState: sessionStates?.get(issue.id) ?? "none",
+    stateType: issue.stateType,
   }));
 }
 
@@ -131,9 +133,10 @@ export function buildViewNodes(
     list.push(item);
     groups.set(key, list);
   }
+  const sortedGroups = sortGroupEntries([...groups.entries()], view.groupBy);
 
   const nodes: ViewNode[] = [];
-  for (const [label, groupItems] of groups) {
+  for (const [label, groupItems] of sortedGroups) {
     const groupKey = label;
     const collapsed = collapsedGroups.has(groupKey);
     nodes.push({ kind: "group", key: groupKey, label: label || "(none)", count: groupItems.length, collapsed, depth: 0 });
@@ -148,7 +151,8 @@ export function buildViewNodes(
         list.push(item);
         subGroups.set(subKey, list);
       }
-      for (const [subLabel, subItems] of subGroups) {
+      const sortedSubGroups = sortGroupEntries([...subGroups.entries()], view.subGroupBy);
+      for (const [subLabel, subItems] of sortedSubGroups) {
         const subKey = `${groupKey}:${subLabel}`;
         const subCollapsed = collapsedGroups.has(subKey);
         nodes.push({ kind: "group", key: subKey, label: subLabel || "(none)", count: subItems.length, collapsed: subCollapsed, depth: 1 });
@@ -166,6 +170,59 @@ export function buildViewNodes(
   }
 
   return nodes;
+}
+
+// Linear's workflow position. Status display names ("Todo", "In Review", etc.)
+// are workspace-customizable, but stateType is the stable enum.
+const STATE_TYPE_RANK: Record<IssueStateType, number> = {
+  triage: 0,
+  backlog: 1,
+  unstarted: 2,
+  started: 3,
+  completed: 4,
+  canceled: 5,
+};
+
+// Order group keys by an intrinsic property of the field (alphabetical for
+// teams/projects, workflow position for status, numeric for priority) so the
+// group ordering stays stable when an item's status, priority, or team
+// changes. Without this, groups are emitted in Map-insertion order, which
+// reflects whichever group's first item happened to come first under the
+// current item-level sort — and that shifts whenever an item moves.
+function sortGroupEntries(
+  entries: Array<[string, RenderableItem[]]>,
+  field: GroupByField,
+): Array<[string, RenderableItem[]]> {
+  const compare = (a: [string, RenderableItem[]], b: [string, RenderableItem[]]): number => {
+    const [aKey, aItems] = a;
+    const [bKey, bItems] = b;
+    switch (field) {
+      case "status": {
+        const aRank = aItems[0]?.stateType ? STATE_TYPE_RANK[aItems[0].stateType] : 99;
+        const bRank = bItems[0]?.stateType ? STATE_TYPE_RANK[bItems[0].stateType] : 99;
+        if (aRank !== bRank) return aRank - bRank;
+        return aKey.localeCompare(bKey);
+      }
+      case "priority": {
+        // Priority 0 means "no priority" in Linear — sort it last, then 1=Urgent..4=Low
+        const aN = parseInt(aKey, 10);
+        const bN = parseInt(bKey, 10);
+        const aRank = !aN ? 99 : aN;
+        const bRank = !bN ? 99 : bN;
+        return aRank - bRank;
+      }
+      case "team":
+      case "project": {
+        // Empty key ("(none)") sorts last
+        if (aKey === "" && bKey !== "") return 1;
+        if (aKey !== "" && bKey === "") return -1;
+        return aKey.localeCompare(bKey);
+      }
+      default:
+        return aKey.localeCompare(bKey);
+    }
+  };
+  return [...entries].sort(compare);
 }
 
 function sortItems(items: RenderableItem[], sortBy: string, order: "asc" | "desc"): RenderableItem[] {
