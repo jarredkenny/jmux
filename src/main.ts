@@ -1233,7 +1233,10 @@ const inputRouter = new InputRouter(
       if (!view || view.source !== "issues") return;
       const viewState = viewStates.get(view.id);
       if (!viewState) return;
-      let rawItems = transformIssues(pollCoordinator.getGlobalIssues(), new Set<string>(), getIssueSessionStates());
+      const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+      const ctx = pollCoordinator.getContext(sessionName);
+      const linkedIssueIds = new Set(ctx?.issues.map((i) => i.id) ?? []);
+      let rawItems = transformIssues(pollCoordinator.getGlobalIssues(), linkedIssueIds, getIssueSessionStates());
       if (viewState.filterQuery) rawItems = filterItems(rawItems, viewState.filterQuery);
       const effectiveView = viewState.filterQuery ? { ...view, groupBy: "none" as const } : view;
       const nodes = buildViewNodes(rawItems, effectiveView, viewState.collapsedGroups);
