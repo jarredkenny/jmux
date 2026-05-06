@@ -243,6 +243,8 @@ function sortItems(items: RenderableItem[], sortBy: string, order: "asc" | "desc
 
 const CURSOR_ATTRS: CellAttrs = { fg: (0xFB << 16) | (0xD4 << 8) | 0xB8, fgMode: ColorMode.RGB };
 const LINKED_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
+const SESSION_CURRENT_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette, bold: true };
+const WORKTREE_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette, dim: true };
 const UNLINKED_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const TITLE_ATTRS: CellAttrs = { fg: (0xC9 << 16) | (0xD1 << 8) | 0xD9, fgMode: ColorMode.RGB };
 const GROUP_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, bold: true };
@@ -356,6 +358,23 @@ function renderGroupHeader(grid: CellGrid, row: number, cols: number, node: Extr
   writeString(grid, row, col, label, selected ? { ...GROUP_ATTRS, fg: (0xFB << 16) | (0xD4 << 8) | 0xB8, fgMode: ColorMode.RGB } : GROUP_ATTRS);
 }
 
+export function pickSessionIndicator(item: RenderableItem): { glyph: string; glyphAttrs: CellAttrs } {
+  if (item.type === "issue") {
+    const state = item.issueSessionState ?? "none";
+    if (state === "session") {
+      return { glyph: "●", glyphAttrs: item.sessionLinked ? SESSION_CURRENT_ATTRS : LINKED_ATTRS };
+    }
+    if (state === "worktree") {
+      return { glyph: "◐", glyphAttrs: WORKTREE_ATTRS };
+    }
+    return { glyph: "○", glyphAttrs: UNLINKED_ATTRS };
+  }
+  // MR: no session-state model, fall back to "linked to current session" dot
+  return item.sessionLinked
+    ? { glyph: "●", glyphAttrs: LINKED_ATTRS }
+    : { glyph: "○", glyphAttrs: UNLINKED_ATTRS };
+}
+
 function renderItem(grid: CellGrid, row: number, cols: number, item: RenderableItem, depth: number, selected: boolean): void {
   const indent = depth * 2;
   let col = indent;
@@ -368,8 +387,14 @@ function renderItem(grid: CellGrid, row: number, cols: number, item: RenderableI
     col += 2;
   }
 
-  // Linked indicator
-  writeString(grid, row, col, item.sessionLinked ? "●" : "○", item.sessionLinked ? LINKED_ATTRS : UNLINKED_ATTRS);
+  // Session indicator
+  //   ●  bold green  — issue has a session AND that session is the one currently focused
+  //   ●  green       — issue has a session somewhere (not the current one)
+  //   ◐  dim green   — issue has a worktree but no live session
+  //   ○  dim grey    — issue has nothing
+  // For MRs (no issueSessionState), retain the original sessionLinked-driven dot.
+  const { glyph, glyphAttrs } = pickSessionIndicator(item);
+  writeString(grid, row, col, glyph, glyphAttrs);
   col += 2;
 
   // Priority badge (right-aligned)

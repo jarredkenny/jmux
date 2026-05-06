@@ -5,6 +5,7 @@ import {
   buildViewNodes,
   renderView,
   createViewState,
+  pickSessionIndicator,
 } from "../panel-view-renderer";
 import type { PanelView } from "../panel-view";
 import type { Issue, MergeRequest } from "../adapters/types";
@@ -138,6 +139,41 @@ describe("buildViewNodes", () => {
     const nodes = buildViewNodes(transformIssues(issues, new Set()), view, new Set());
     const labels = nodes.filter((n) => n.kind === "group").map((n) => (n as any).label);
     expect(labels).toEqual(["1", "3", "4", "0"]);
+  });
+});
+
+describe("pickSessionIndicator", () => {
+  test("issue with no session/worktree shows hollow dot", () => {
+    const items = transformIssues([ISSUE], new Set(), new Map([["i1", "none"]]));
+    expect(pickSessionIndicator(items[0]).glyph).toBe("○");
+  });
+
+  test("issue with worktree only shows half-circle", () => {
+    const items = transformIssues([ISSUE], new Set(), new Map([["i1", "worktree"]]));
+    expect(pickSessionIndicator(items[0]).glyph).toBe("◐");
+  });
+
+  test("issue with session shows filled dot", () => {
+    const items = transformIssues([ISSUE], new Set(), new Map([["i1", "session"]]));
+    expect(pickSessionIndicator(items[0]).glyph).toBe("●");
+  });
+
+  test("issue whose session is current is bold (distinguishable from other-session)", () => {
+    const otherItems = transformIssues([ISSUE], new Set(), new Map([["i1", "session"]]));
+    const currentItems = transformIssues([ISSUE], new Set(["i1"]), new Map([["i1", "session"]]));
+    expect(pickSessionIndicator(otherItems[0]).glyphAttrs.bold).toBeFalsy();
+    expect(pickSessionIndicator(currentItems[0]).glyphAttrs.bold).toBe(true);
+  });
+
+  test("MR falls back to sessionLinked-only behaviour", () => {
+    const mr: MergeRequest = {
+      id: "m1", title: "x", status: "open", sourceBranch: "f", targetBranch: "main",
+      pipeline: null, approvals: { required: 0, current: 0 }, webUrl: "",
+    };
+    const linked = transformMrs([mr], new Set(["m1"]));
+    const unlinked = transformMrs([mr], new Set());
+    expect(pickSessionIndicator(linked[0]).glyph).toBe("●");
+    expect(pickSessionIndicator(unlinked[0]).glyph).toBe("○");
   });
 });
 
