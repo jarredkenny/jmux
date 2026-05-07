@@ -1416,11 +1416,14 @@ const inputRouter = new InputRouter(
       if (selected?.kind !== "item") return;
       if (!sessionName) return;
       if (selected.item.type === "issue") {
-        sessionState.addLink(sessionName, { type: "issue", id: selected.item.id });
+        const issue = selected.item.raw as import("./adapters/types").Issue;
+        sessionState.addLink(sessionName, { type: "issue", id: issue.id });
+        pollCoordinator.addLinkedIssue(sessionName, issue);
       } else {
-        sessionState.addLink(sessionName, { type: "mr", id: selected.item.id });
+        const mr = selected.item.raw as import("./adapters/types").MergeRequest;
+        sessionState.addLink(sessionName, { type: "mr", id: mr.id });
+        pollCoordinator.addLinkedMr(sessionName, mr);
       }
-      pollCoordinator.setActiveSession(sessionName);
       scheduleRender();
     },
     onPanelFilterStart: () => {
@@ -2604,7 +2607,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
             const sName = currentSessions.find((s) => s.id === currentSessionId)?.name;
             if (sName) {
               sessionState.addLink(sName, { type: "issue", id: issue.id });
-              pollCoordinator.setActiveSession(sName);
+              pollCoordinator.addLinkedIssue(sName, issue);
             }
           }
         });
@@ -2625,7 +2628,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       openModal(modal, (selected) => {
         const sel = selected as { id: string };
         sessionState.removeLink(sName, { type: "issue", id: sel.id });
-        pollCoordinator.setActiveSession(sName);
+        pollCoordinator.removeLinkedIssue(sName, sel.id);
       });
       return;
     }
@@ -2647,8 +2650,10 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
           const sel = selected as { id: string };
           const sName = currentSessions.find((s) => s.id === currentSessionId)?.name;
           if (sName) {
-            sessionState.addLink(sName, { type: "mr", id: sel.id });
-            pollCoordinator.setActiveSession(sName);
+            const mr = results.find((m) => m.id === sel.id);
+            if (!mr) return;
+            sessionState.addLink(sName, { type: "mr", id: mr.id });
+            pollCoordinator.addLinkedMr(sName, mr);
           }
         });
       });
@@ -2668,7 +2673,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       openModal(modal, (selected) => {
         const sel = selected as { id: string };
         sessionState.removeLink(sName, { type: "mr", id: sel.id });
-        pollCoordinator.setActiveSession(sName);
+        pollCoordinator.removeLinkedMr(sName, sel.id);
       });
       return;
     }

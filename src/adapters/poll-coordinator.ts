@@ -66,6 +66,49 @@ export class PollCoordinator {
     this.opts.onUpdate("__global__");
   }
 
+  // Optimistic in-memory link mutators. SessionState persists the link to
+  // disk; resolveContext only re-reads that disk state on initial resolve, so
+  // without these mutators the rendered context wouldn't reflect a freshly
+  // added or removed link until the user reopened the session.
+
+  addLinkedIssue(sessionName: string, issue: Issue): void {
+    const ctx = this.contexts.get(sessionName);
+    if (!ctx) return;
+    if (ctx.issues.some((i) => i.id === issue.id)) return;
+    ctx.issues.push({ ...issue, source: "manual" });
+    ctx.resolvedAt = Date.now();
+    this.opts.onUpdate(sessionName);
+  }
+
+  removeLinkedIssue(sessionName: string, issueId: string): void {
+    const ctx = this.contexts.get(sessionName);
+    if (!ctx) return;
+    const idx = ctx.issues.findIndex((i) => i.id === issueId);
+    if (idx < 0) return;
+    ctx.issues.splice(idx, 1);
+    ctx.resolvedAt = Date.now();
+    this.opts.onUpdate(sessionName);
+  }
+
+  addLinkedMr(sessionName: string, mr: MergeRequest): void {
+    const ctx = this.contexts.get(sessionName);
+    if (!ctx) return;
+    if (ctx.mrs.some((m) => m.id === mr.id)) return;
+    ctx.mrs.push({ ...mr, source: "manual" });
+    ctx.resolvedAt = Date.now();
+    this.opts.onUpdate(sessionName);
+  }
+
+  removeLinkedMr(sessionName: string, mrId: string): void {
+    const ctx = this.contexts.get(sessionName);
+    if (!ctx) return;
+    const idx = ctx.mrs.findIndex((m) => m.id === mrId);
+    if (idx < 0) return;
+    ctx.mrs.splice(idx, 1);
+    ctx.resolvedAt = Date.now();
+    this.opts.onUpdate(sessionName);
+  }
+
   constructor(opts: PollCoordinatorOptions) {
     this.opts = opts;
   }
