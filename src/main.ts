@@ -38,10 +38,11 @@ import { logError } from "./log";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
+import pkg from "../package.json" with { type: "json" };
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.15.0";
+const VERSION = pkg.version;
 const MIN_BUN_VERSION = "1.3.8";
 
 function checkBunVersion(): void {
