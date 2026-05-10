@@ -148,4 +148,59 @@ describe("ScreenBridge", () => {
     expect(grid.cols).toBe(20);
     expect(grid.rows).toBe(5);
   });
+
+  test("detects http URL on a single line and sets cell.link", async () => {
+    const bridge = new ScreenBridge(40, 3);
+    await bridge.write("see https://example.com/foo here");
+    const grid = bridge.getGrid();
+    // 'h' of "https"
+    expect(grid.cells[0][4].char).toBe("h");
+    expect(grid.cells[0][4].link).toBe("https://example.com/foo");
+    // last char of URL
+    expect(grid.cells[0][26].char).toBe("o");
+    expect(grid.cells[0][26].link).toBe("https://example.com/foo");
+    // space after URL — no link
+    expect(grid.cells[0][27].char).toBe(" ");
+    expect(grid.cells[0][27].link).toBeUndefined();
+    // 'see' before URL — no link
+    expect(grid.cells[0][0].link).toBeUndefined();
+  });
+
+  test("trims trailing sentence punctuation from detected URL", async () => {
+    const bridge = new ScreenBridge(40, 1);
+    await bridge.write("visit https://example.com.");
+    const grid = bridge.getGrid();
+    // URL chars carry the trimmed link
+    expect(grid.cells[0][6].char).toBe("h");
+    expect(grid.cells[0][6].link).toBe("https://example.com");
+    // trailing dot — no link
+    const dotCol = "visit https://example.com".length;
+    expect(grid.cells[0][dotCol].char).toBe(".");
+    expect(grid.cells[0][dotCol].link).toBeUndefined();
+  });
+
+  test("detects URL across an autowrapped line boundary", async () => {
+    // 20-col pane, URL deliberately crosses col 20.
+    const bridge = new ScreenBridge(20, 3);
+    await bridge.write("xx https://example.com/long/path/here-end");
+    const grid = bridge.getGrid();
+    // First-row URL chars carry the link
+    expect(grid.cells[0][3].char).toBe("h");
+    expect(grid.cells[0][3].link).toBe("https://example.com/long/path/here-end");
+    expect(grid.cells[0][19].link).toBe("https://example.com/long/path/here-end");
+    // Wrapped-line URL chars also carry it
+    expect(grid.cells[1][0].link).toBe("https://example.com/long/path/here-end");
+    // "xx " (3) + URL (38) = 41 chars; on a 20-col grid, last char lands at row 2 col 0.
+    expect(grid.cells[2][0].char).toBe("d");
+    expect(grid.cells[2][0].link).toBe("https://example.com/long/path/here-end");
+  });
+
+  test("plain text without a URL leaves cell.link undefined", async () => {
+    const bridge = new ScreenBridge(20, 1);
+    await bridge.write("just some plain text");
+    const grid = bridge.getGrid();
+    for (let x = 0; x < 20; x++) {
+      expect(grid.cells[0][x].link).toBeUndefined();
+    }
+  });
 });
