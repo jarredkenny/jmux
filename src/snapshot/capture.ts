@@ -25,6 +25,7 @@ export class Snapshotter {
   private lock: Lock | null = null;
   private stopped = false;
   private degraded = false;
+  private degradedReason_: string | null = null;
   private scrollbackBusy = false;
 
   constructor(private readonly opts: SnapshotterOptions) {}
@@ -33,8 +34,17 @@ export class Snapshotter {
     return this.degraded;
   }
 
+  degradedReason(): string | null {
+    return this.degradedReason_;
+  }
+
   async start(): Promise<void> {
-    // Lock acquisition is added in Task 9.
+    this.lock = await this.opts.fs.lock(`${this.opts.dir}/.lock`);
+    if (!this.lock) {
+      this.degraded = true;
+      this.degradedReason_ = "lock_held";
+      return;
+    }
     this.scrollbackCancel = this.opts.clock.setInterval(
       () => void this.scrollbackTick(),
       this.opts.scrollbackIntervalMs,
@@ -42,7 +52,7 @@ export class Snapshotter {
   }
 
   markDirty(): void {
-    if (this.stopped) return;
+    if (this.stopped || this.degraded) return;
     this.dirty = true;
     if (this.debounceCancel) return;
     this.debounceCancel = this.opts.clock.setTimeout(() => {
@@ -52,7 +62,7 @@ export class Snapshotter {
   }
 
   async flushNow(): Promise<void> {
-    if (this.stopped) return;
+    if (this.stopped || this.degraded) return;
     if (!this.dirty) return;
     // Mark not-dirty BEFORE the await so a concurrent markDirty during writeAtomic
     // correctly re-flags dirty=true and triggers a follow-up flush.
@@ -65,15 +75,13 @@ export class Snapshotter {
         `${this.opts.dir}/state.json`,
         new TextEncoder().encode(json),
       );
-      // Success — if no markDirty fired during the await, dirty stays false.
-      // If a markDirty did fire, dirty is true and the next debounce/tick handles it.
     } catch {
-      // Write failed — re-flag dirty so the next debounce retries.
       this.dirty = true;
     }
   }
 
   async stop(): Promise<void> {
+    if (this.stopped) return;
     this.stopped = true;
     if (this.debounceCancel) {
       this.debounceCancel();
@@ -82,6 +90,20 @@ export class Snapshotter {
     if (this.scrollbackCancel) {
       this.scrollbackCancel();
       this.scrollbackCancel = null;
+    }
+    // Synchronous final flush (bypass debounce) if dirty and not degraded.
+    if (this.dirty && !this.degraded) {
+      try {
+        const capturedAt = new Date(this.opts.clock.now()).toISOString();
+        const file = this.opts.model.toFile(capturedAt);
+        const json = JSON.stringify(file, null, 2);
+        await this.opts.fs.writeAtomic(
+          `${this.opts.dir}/state.json`,
+          new TextEncoder().encode(json),
+        );
+      } catch {
+        // best-effort during shutdown
+      }
     }
     if (this.lock) {
       await this.lock.release();

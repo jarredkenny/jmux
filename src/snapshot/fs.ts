@@ -2,6 +2,8 @@ import { promises as fsp, constants as fsConstants } from "fs";
 import { dirname } from "path";
 import type { FileSystem, FileStat, Lock } from "./deps";
 
+let writeCounter = 0;
+
 export class ProductionFileSystem implements FileSystem {
   async readFile(path: string): Promise<Uint8Array | null> {
     try {
@@ -15,7 +17,9 @@ export class ProductionFileSystem implements FileSystem {
 
   async writeAtomic(path: string, bytes: Uint8Array): Promise<void> {
     await fsp.mkdir(dirname(path), { recursive: true });
-    const tmp = `${path}.tmp`;
+    // Each concurrent write gets its own unique tmp path so concurrent writers
+    // don't race over a shared .tmp file.
+    const tmp = `${path}.tmp.${process.pid}.${++writeCounter}`;
     let wroteTmp = false;
     try {
       const fh = await fsp.open(tmp, "w");
