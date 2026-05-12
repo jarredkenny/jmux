@@ -1,5 +1,34 @@
 import { Terminal } from "bun-pty";
 
+export type AttachMode = "createOrAttach" | "strictAttach";
+
+export function buildTmuxPtyArgs(opts: {
+  attachMode: AttachMode;
+  sessionName?: string;
+  socketName?: string;
+  configFile?: string;
+}): string[] {
+  const args: string[] = [];
+  if (opts.configFile) {
+    args.push("-f", opts.configFile);
+  }
+  if (opts.socketName) {
+    args.push("-L", opts.socketName);
+  }
+  if (opts.attachMode === "strictAttach") {
+    if (!opts.sessionName) {
+      throw new Error("strictAttach requires sessionName");
+    }
+    args.push("attach-session", "-t", opts.sessionName);
+  } else {
+    args.push("new-session", "-A");
+    if (opts.sessionName) {
+      args.push("-s", opts.sessionName);
+    }
+  }
+  return args;
+}
+
 export interface TmuxPtyOptions {
   sessionName?: string;
   socketName?: string;
@@ -7,6 +36,7 @@ export interface TmuxPtyOptions {
   jmuxDir?: string;
   cols: number;
   rows: number;
+  attachMode?: AttachMode;
 }
 
 export class TmuxPty {
@@ -16,17 +46,12 @@ export class TmuxPty {
   private exitListeners: Array<(code: number) => void> = [];
 
   constructor(options: TmuxPtyOptions) {
-    const args: string[] = [];
-    if (options.configFile) {
-      args.push("-f", options.configFile);
-    }
-    if (options.socketName) {
-      args.push("-L", options.socketName);
-    }
-    args.push("new-session", "-A");
-    if (options.sessionName) {
-      args.push("-s", options.sessionName);
-    }
+    const args = buildTmuxPtyArgs({
+      attachMode: options.attachMode ?? "createOrAttach",
+      sessionName: options.sessionName,
+      socketName: options.socketName,
+      configFile: options.configFile,
+    });
 
     this.pty = new Terminal("tmux", args, {
       name: "xterm-256color",
