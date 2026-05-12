@@ -37,6 +37,10 @@ export class SnapshotModel {
     return this.sessions.has(name);
   }
 
+  sessionNames(): string[] {
+    return Array.from(this.sessions.keys());
+  }
+
   renameSession(oldName: string, newName: string): void {
     const s = this.sessions.get(oldName);
     if (!s) return;

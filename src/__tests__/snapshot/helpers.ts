@@ -36,28 +36,26 @@ export class FakeClock implements Clock {
   advance(ms: number): void {
     const target = this.current + ms;
     while (true) {
-      const nextTimeout = this.timeouts
-        .filter((t) => t.at <= target)
-        .sort((a, b) => a.at - b.at)[0];
-      const nextInterval = this.intervals
-        .filter((i) => i.nextAt <= target)
-        .sort((a, b) => a.nextAt - b.nextAt)[0];
-      const pickTimeout =
-        nextTimeout &&
-        (!nextInterval || nextTimeout.at <= nextInterval.nextAt);
-      if (pickTimeout) {
-        this.current = nextTimeout.at;
-        this.timeouts = this.timeouts.filter((t) => t.id !== nextTimeout.id);
-        nextTimeout.fn();
-        continue;
+      // Gather all callbacks due at or before target, sorted by (time, id)
+      type Due = { at: number; id: number; fire: () => void };
+      const due: Due[] = [];
+      for (const t of this.timeouts) {
+        if (t.at <= target) due.push({ at: t.at, id: t.id, fire: t.fn });
       }
-      if (nextInterval) {
-        this.current = nextInterval.nextAt;
-        nextInterval.nextAt += nextInterval.ms;
-        nextInterval.fn();
-        continue;
+      for (const i of this.intervals) {
+        if (i.nextAt <= target) due.push({ at: i.nextAt, id: i.id, fire: i.fn });
       }
-      break;
+      if (due.length === 0) break;
+      due.sort((a, b) => (a.at !== b.at ? a.at - b.at : a.id - b.id));
+      const next = due[0];
+      this.current = next.at;
+      // Remove fired timeout
+      this.timeouts = this.timeouts.filter((t) => !(t.id === next.id && t.at === next.at));
+      // Reschedule fired interval
+      for (const iv of this.intervals) {
+        if (iv.id === next.id && iv.nextAt === next.at) iv.nextAt += iv.ms;
+      }
+      next.fire();
     }
     this.current = target;
   }

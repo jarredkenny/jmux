@@ -74,9 +74,35 @@ describe("Snapshotter structural events", () => {
       scrollbackIntervalMs: 5000,
     });
     await s.start();
-    await s.onLayoutChanged("alpha", 0);
+    await s.onLayoutChanged("alpha");
     const file = model.toFile("2026-05-12T00:00:00.000Z");
     expect(file.sessions[0].windows[0].layout).toBe("NEW-LAYOUT");
+    await s.stop();
+  });
+
+  test("metadata event on unknown session is a no-op", async () => {
+    const { model, clock, fs, runner } = snap();
+    const s = new Snapshotter({
+      dir: "/snap",
+      model,
+      fs,
+      runner,
+      clock,
+      debounceMs: 200,
+      scrollbackIntervalMs: 5000,
+    });
+    await s.start();
+    // No session in the model. These should not throw or pollute the snapshot.
+    s.onPermissionMode("ghost", "plan");
+    s.onPinned("ghost", true);
+    s.onAttention("ghost", true);
+    s.onLinks("ghost", [{ type: "issue", id: "ENG-1" }]);
+    s.onOtel("ghost", null);
+    await s.flushNow();
+    const written = fs.files.get("/snap/state.json");
+    expect(written).not.toBeUndefined();
+    const parsed = JSON.parse(new TextDecoder().decode(written!));
+    expect(parsed.sessions).toEqual([]);
     await s.stop();
   });
 

@@ -50,6 +50,9 @@ export class Snapshotter {
   async flushNow(): Promise<void> {
     if (this.stopped) return;
     if (!this.dirty) return;
+    // Mark not-dirty BEFORE the await so a concurrent markDirty during writeAtomic
+    // correctly re-flags dirty=true and triggers a follow-up flush.
+    this.dirty = false;
     const capturedAt = new Date(this.opts.clock.now()).toISOString();
     const file = this.opts.model.toFile(capturedAt);
     const json = JSON.stringify(file, null, 2);
@@ -58,11 +61,11 @@ export class Snapshotter {
         `${this.opts.dir}/state.json`,
         new TextEncoder().encode(json),
       );
-      // Only clear dirty after a successful write so a failed flush
-      // (ENOSPC, EIO, etc.) is retried on the next debounce or tick.
-      this.dirty = false;
+      // Success — if no markDirty fired during the await, dirty stays false.
+      // If a markDirty did fire, dirty is true and the next debounce/tick handles it.
     } catch {
-      // Stay dirty. Next markDirty will reschedule the debounce.
+      // Write failed — re-flag dirty so the next debounce retries.
+      this.dirty = true;
     }
   }
 
@@ -106,11 +109,8 @@ export class Snapshotter {
       await this.rederiveSessionWindows(name);
     }
     // Remove sessions no longer present.
-    const file = this.opts.model.toFile(
-      new Date(this.opts.clock.now()).toISOString(),
-    );
-    for (const s of file.sessions) {
-      if (!live.has(s.name)) this.opts.model.removeSession(s.name);
+    for (const name of this.opts.model.sessionNames()) {
+      if (!live.has(name)) this.opts.model.removeSession(name);
     }
     this.markDirty();
   }
@@ -130,10 +130,7 @@ export class Snapshotter {
     this.markDirty();
   }
 
-  async onLayoutChanged(
-    sessionName: string,
-    _windowIndex: number,
-  ): Promise<void> {
+  async onLayoutChanged(sessionName: string): Promise<void> {
     await this.rederiveSessionWindows(sessionName);
     this.markDirty();
   }
@@ -203,6 +200,12 @@ export class Snapshotter {
         "-F",
         "#{pane_index}|#{pane_current_path}|#{pane_start_command}",
       ]);
+      if (paneRes.exitCode !== 0) {
+        // Window vanished between list-windows and list-panes — skip it.
+        // Leave any prior model state for this session untouched by NOT pushing
+        // a windowless window. The next event will trigger a fresh rederive.
+        continue;
+      }
       const panes: SnapshotPane[] = [];
       for (const pline of paneRes.stdout.split("\n")) {
         if (!pline.trim()) continue;
