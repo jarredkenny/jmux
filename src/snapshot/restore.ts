@@ -1,6 +1,7 @@
 import type { Clock, FileSystem, TmuxRunner } from "./deps";
-import { validateSnapshot, type SnapshotFile } from "./schema";
+import { validateSnapshot, type SnapshotFile, type SnapshotSession } from "./schema";
 import { RestoreLog, type RestoreOutcome } from "./log";
+import { buildPainterArgv } from "./painter";
 
 export interface RestorerOptions {
   dir: string;
@@ -70,5 +71,149 @@ export class Restorer {
       `${this.opts.dir}/state.json.broken-${ts}`,
       raw,
     );
+  }
+
+  async run(snapshot: SnapshotFile): Promise<void> {
+    for (const session of snapshot.sessions) {
+      await this.restoreSession(session, snapshot.capturedAt);
+    }
+  }
+
+  protected async restoreSession(
+    session: SnapshotSession,
+    capturedAt: string,
+  ): Promise<void> {
+    const exists = this.opts.cwdExists ?? this.defaultCwdExists.bind(this);
+    if (!(await exists(session.cwd))) {
+      this.outcomes.set(session.name, "skipped");
+      await this.log.append({
+        ts: new Date(this.opts.clock.now()).toISOString(),
+        session: session.name,
+        outcome: "skipped",
+        reason: "cwd_missing",
+      });
+      return;
+    }
+
+    let layoutDegraded = false;
+    let totalPanes = 0;
+
+    for (let wi = 0; wi < session.windows.length; wi++) {
+      const w = session.windows[wi];
+      const firstPane = w.panes[0];
+      const painter = buildPainterArgv({
+        scrollbackPath: firstPane.scrollbackFile
+          ? `${this.opts.dir}/${firstPane.scrollbackFile}`
+          : "",
+        capturedAt,
+        kind: firstPane.kind,
+        claudeCommand: this.opts.claudeCommand,
+        userShell: this.opts.userShell,
+      });
+
+      const baseArgs =
+        wi === 0
+          ? ["new-session", "-d", "-s", session.name, "-c", firstPane.cwd]
+          : ["new-window", "-t", `${session.name}:${w.index}`, "-c", firstPane.cwd];
+
+      const r1 = await this.opts.runner.run([...baseArgs, ...painter]);
+      if (r1.exitCode !== 0) {
+        await this.failSession(
+          session.name,
+          wi === 0 ? "new_session_failed" : "new_window_failed",
+          r1.stderr,
+        );
+        return;
+      }
+      totalPanes++;
+
+      // Remaining panes: split-window
+      for (let pi = 1; pi < w.panes.length; pi++) {
+        const p = w.panes[pi];
+        const painterP = buildPainterArgv({
+          scrollbackPath: p.scrollbackFile
+            ? `${this.opts.dir}/${p.scrollbackFile}`
+            : "",
+          capturedAt,
+          kind: p.kind,
+          claudeCommand: this.opts.claudeCommand,
+          userShell: this.opts.userShell,
+        });
+        const r2 = await this.opts.runner.run([
+          "split-window",
+          "-t",
+          `${session.name}:${w.index}`,
+          "-c",
+          p.cwd,
+          ...painterP,
+        ]);
+        if (r2.exitCode !== 0) {
+          await this.failSession(session.name, "split_window_failed", r2.stderr);
+          return;
+        }
+        totalPanes++;
+      }
+
+      // Apply layout — failure is cosmetic, keep going
+      const rL = await this.opts.runner.run([
+        "select-layout",
+        "-t",
+        `${session.name}:${w.index}`,
+        w.layout,
+      ]);
+      if (rL.exitCode !== 0) layoutDegraded = true;
+
+      // Window name — failure is session-fatal
+      const rR = await this.opts.runner.run([
+        "rename-window",
+        "-t",
+        `${session.name}:${w.index}`,
+        w.name,
+      ]);
+      if (rR.exitCode !== 0) {
+        await this.failSession(session.name, "rename_window_failed", rR.stderr);
+        return;
+      }
+    }
+
+    // Active window
+    const activeWindow = session.windows.find((w) => w.active);
+    if (activeWindow) {
+      await this.opts.runner.run([
+        "select-window",
+        "-t",
+        `${session.name}:${activeWindow.index}`,
+      ]);
+    }
+
+    this.outcomes.set(session.name, "restored");
+    await this.log.append({
+      ts: new Date(this.opts.clock.now()).toISOString(),
+      session: session.name,
+      outcome: "restored",
+      windowCount: session.windows.length,
+      paneCount: totalPanes,
+      reason: layoutDegraded ? "layout_degraded" : undefined,
+    });
+  }
+
+  protected async failSession(
+    name: string,
+    reason: string,
+    stderr: string,
+  ): Promise<void> {
+    await this.opts.runner.run(["kill-session", "-t", name]);
+    this.outcomes.set(name, "failed");
+    await this.log.append({
+      ts: new Date(this.opts.clock.now()).toISOString(),
+      session: name,
+      outcome: "failed",
+      reason,
+      stderr,
+    });
+  }
+
+  protected async defaultCwdExists(p: string): Promise<boolean> {
+    return (await this.opts.fs.stat(p)) !== null;
   }
 }
