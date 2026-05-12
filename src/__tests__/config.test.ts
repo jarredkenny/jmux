@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { sanitizeTmuxSessionName, buildOtelResourceAttrs, loadUserConfig, ConfigStore } from "../config";
+import { sanitizeTmuxSessionName, buildOtelResourceAttrs, loadUserConfig, ConfigStore, defaultConfig } from "../config";
 import { writeFileSync, unlinkSync, existsSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -39,12 +39,16 @@ describe("buildOtelResourceAttrs", () => {
 });
 
 describe("loadUserConfig", () => {
-  test("returns empty object for nonexistent path", () => {
-    expect(loadUserConfig("/nonexistent/path/config.json")).toEqual({});
+  test("returns defaults for nonexistent path", () => {
+    const result = loadUserConfig("/nonexistent/path/config.json");
+    expect(result.snapshot).toBeDefined();
+    expect(result.snapshot?.enabled).toBe(true);
   });
 
-  test("returns empty object for directory that does not exist", () => {
-    expect(loadUserConfig("/tmp/__jmux_does_not_exist__/config.json")).toEqual({});
+  test("returns defaults for directory that does not exist", () => {
+    const result = loadUserConfig("/tmp/__jmux_does_not_exist__/config.json");
+    expect(result.snapshot).toBeDefined();
+    expect(result.snapshot?.enabled).toBe(true);
   });
 });
 
@@ -89,9 +93,10 @@ describe("ConfigStore", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test("initializes with empty config when file missing", () => {
+  test("initializes with defaults when file missing", () => {
     const store = new ConfigStore(cfgPath);
-    expect(store.config).toEqual({});
+    expect(store.config.snapshot?.enabled).toBe(true);
+    expect(store.config.snapshot?.scrollbackIntervalMs).toBe(5000);
   });
 
   test("loads existing config from disk", () => {
@@ -238,5 +243,94 @@ describe("ConfigStore", () => {
   test("configPath returns the path", () => {
     const store = new ConfigStore(cfgPath);
     expect(store.configPath).toBe(cfgPath);
+  });
+});
+
+describe("snapshot config defaults", () => {
+  test("snapshot.enabled defaults to true", () => {
+    expect(defaultConfig.snapshot?.enabled).toBe(true);
+  });
+
+  test("snapshot.scrollbackIntervalMs defaults to 5000", () => {
+    expect(defaultConfig.snapshot?.scrollbackIntervalMs).toBe(5000);
+  });
+
+  test("snapshot.scrollbackMaxBytes defaults to 2 MiB", () => {
+    expect(defaultConfig.snapshot?.scrollbackMaxBytes).toBe(2 * 1024 * 1024);
+  });
+
+  test("snapshot.dir defaults to null", () => {
+    expect(defaultConfig.snapshot?.dir).toBeNull();
+  });
+});
+
+describe("snapshot config merging", () => {
+  let tmpDir: string;
+  let cfgPath: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `jmux-snapshot-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmpDir, { recursive: true });
+    cfgPath = join(tmpDir, "config.json");
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("loadUserConfig merges partial snapshot config with defaults", () => {
+    writeFileSync(cfgPath, JSON.stringify({
+      snapshot: {
+        scrollbackIntervalMs: 10000,
+      },
+    }));
+    const loaded = loadUserConfig(cfgPath);
+    expect(loaded.snapshot?.enabled).toBe(true);
+    expect(loaded.snapshot?.scrollbackIntervalMs).toBe(10000);
+    expect(loaded.snapshot?.scrollbackMaxBytes).toBe(2 * 1024 * 1024);
+    expect(loaded.snapshot?.dir).toBeNull();
+  });
+
+  test("loadUserConfig applies snapshot defaults when omitted", () => {
+    writeFileSync(cfgPath, JSON.stringify({ sidebarWidth: 30 }));
+    const loaded = loadUserConfig(cfgPath);
+    expect(loaded.snapshot?.enabled).toBe(true);
+    expect(loaded.snapshot?.scrollbackIntervalMs).toBe(5000);
+    expect(loaded.snapshot?.scrollbackMaxBytes).toBe(2 * 1024 * 1024);
+    expect(loaded.snapshot?.dir).toBeNull();
+  });
+
+  test("loadUserConfig merges all snapshot fields", () => {
+    writeFileSync(cfgPath, JSON.stringify({
+      snapshot: {
+        enabled: false,
+        scrollbackIntervalMs: 3000,
+        scrollbackMaxBytes: 1024 * 1024,
+        dir: "/custom/path",
+      },
+    }));
+    const loaded = loadUserConfig(cfgPath);
+    expect(loaded.snapshot?.enabled).toBe(false);
+    expect(loaded.snapshot?.scrollbackIntervalMs).toBe(3000);
+    expect(loaded.snapshot?.scrollbackMaxBytes).toBe(1024 * 1024);
+    expect(loaded.snapshot?.dir).toBe("/custom/path");
+  });
+
+  test("ConfigStore persists and loads snapshot config", () => {
+    const store = new ConfigStore(cfgPath);
+    store.set("snapshot", {
+      enabled: false,
+      scrollbackIntervalMs: 8000,
+      scrollbackMaxBytes: 3 * 1024 * 1024,
+      dir: "/data",
+    });
+    expect(store.config.snapshot?.enabled).toBe(false);
+    expect(store.config.snapshot?.scrollbackIntervalMs).toBe(8000);
+
+    const reloaded = new ConfigStore(cfgPath);
+    expect(reloaded.config.snapshot?.enabled).toBe(false);
+    expect(reloaded.config.snapshot?.scrollbackIntervalMs).toBe(8000);
+    expect(reloaded.config.snapshot?.scrollbackMaxBytes).toBe(3 * 1024 * 1024);
+    expect(reloaded.config.snapshot?.dir).toBe("/data");
   });
 });

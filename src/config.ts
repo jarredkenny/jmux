@@ -13,6 +13,13 @@ export interface IssueWorkflowConfig {
   sessionNameTemplate?: string;           // default: "{identifier}" — supports {identifier}, {title}
 }
 
+export interface SnapshotConfig {
+  enabled: boolean;
+  scrollbackIntervalMs: number;
+  scrollbackMaxBytes: number;
+  dir: string | null;
+}
+
 export interface JmuxConfig {
   sidebarWidth?: number;
   infoPanelWidth?: number;
@@ -28,6 +35,7 @@ export interface JmuxConfig {
   adapters?: AdapterConfig;
   panelViews?: PanelView[];
   issueWorkflow?: IssueWorkflowConfig;
+  snapshot?: SnapshotConfig;
 }
 
 /**
@@ -50,20 +58,63 @@ export function buildOtelResourceAttrs(sessionName: string): string {
 
 const DEFAULT_CONFIG_PATH = resolve(homedir(), ".config", "jmux", "config.json");
 
+export const defaultConfig: JmuxConfig = {
+  snapshot: {
+    enabled: true,
+    scrollbackIntervalMs: 5000,
+    scrollbackMaxBytes: 2 * 1024 * 1024,
+    dir: null,
+  },
+};
+
+/**
+ * Deep merge a partial snapshot config with defaults.
+ * Preserves default values for fields not provided in the partial config.
+ */
+function mergeSnapshot(
+  defaults: SnapshotConfig,
+  partial: Partial<SnapshotConfig> | undefined,
+): SnapshotConfig {
+  if (!partial) return { ...defaults };
+  return {
+    enabled: partial.enabled ?? defaults.enabled,
+    scrollbackIntervalMs: partial.scrollbackIntervalMs ?? defaults.scrollbackIntervalMs,
+    scrollbackMaxBytes: partial.scrollbackMaxBytes ?? defaults.scrollbackMaxBytes,
+    dir: partial.dir ?? defaults.dir,
+  };
+}
+
+/**
+ * Merge user config with defaults, handling nested objects.
+ * Shallow merge at the top level, but deep merge known nested configs.
+ */
+function mergeConfigWithDefaults(userConfig: JmuxConfig, defaults: JmuxConfig): JmuxConfig {
+  const merged: JmuxConfig = { ...defaults, ...userConfig };
+
+  // Deep merge snapshot config
+  if (defaults.snapshot) {
+    merged.snapshot = mergeSnapshot(defaults.snapshot, userConfig.snapshot);
+  }
+
+  return merged;
+}
+
 /**
  * Load jmux user config from ~/.config/jmux/config.json.
- * Returns an empty object if the file is missing or unparseable.
+ * Merges with defaults to ensure all required fields are present.
+ * Returns merged config, or just defaults if the file is missing or unparseable.
  */
 export function loadUserConfig(configPath?: string): JmuxConfig {
   const path = configPath ?? DEFAULT_CONFIG_PATH;
+  let userConfig: JmuxConfig = {};
   try {
     if (existsSync(path)) {
-      return JSON.parse(readFileSync(path, "utf-8")) as JmuxConfig;
+      userConfig = JSON.parse(readFileSync(path, "utf-8")) as JmuxConfig;
     }
   } catch {
     // Invalid config — use defaults
   }
-  return {};
+  return mergeConfigWithDefaults(userConfig, defaultConfig);
 }
 
 /**
