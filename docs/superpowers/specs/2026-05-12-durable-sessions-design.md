@@ -44,9 +44,29 @@ src/main.ts       — wires Snapshotter to existing events; calls Restorer pre-U
 **Boundary rules:**
 
 - `capture.ts` only reads state and writes files. It does not drive tmux.
-- `restore.ts` only writes to tmux via the existing `TmuxControl` and never touches snapshot files except to read them. After successful restore, control passes to Snapshotter for capture.
+- `restore.ts` only writes to tmux via `TmuxRunner` (direct `tmux` invocations, not the `-C` control channel — see Boot sequence for why) and never touches snapshot files except to read them. After successful restore, control passes to Snapshotter for capture.
 - `schema.ts` is the contract between capture and restore. Both import it; neither imports the other.
-- `main.ts` change is ~30 lines: instantiate Snapshotter post-boot, run Restorer pre-UI when conditions are met.
+- `main.ts` change: instantiate Snapshotter post-boot, run Restorer pre-UI when conditions are met. Reorder existing boot to defer `TmuxControl` start until after a session exists. See Existing module changes.
+
+### Existing module changes
+
+- **`src/tmux-pty.ts`** — add an `attachMode` option. Today the constructor unconditionally emits `new-session -A` (`src/tmux-pty.ts:26`), which creates the named session if it doesn't exist. That's wrong for the restore path: if `lastFocusedSession` references a session that was skipped during restore, `-A` would silently fabricate a stub session at the wrong cwd. New shape:
+
+  ```ts
+  export interface TmuxPtyOptions {
+    // ...existing...
+    attachMode: "createOrAttach" | "strictAttach";  // default "createOrAttach"
+  }
+  ```
+
+  `createOrAttach` → current behavior (`new-session -A [-s NAME]`). Used for cold boot with no snapshot.
+  `strictAttach` → `attach-session -t NAME`. Fails with non-zero exit if NAME doesn't exist. Used after restore. Main.ts validates the target exists in `tmux list-sessions` output before constructing TmuxPty in strict mode; if the chosen target vanished in a race, fall back to `createOrAttach` with no name.
+
+- **`src/main.ts`** — boot reordering (see Boot sequence). The current `TmuxControl` start moves to after `TmuxPty`. The `Snapshotter` is instantiated after `TmuxControl` is connected so it can subscribe to events. ~50 lines of change including the eligibility check and the Restorer call site.
+
+- **`src/session-state.ts`** — expose a `linksChanged` event (or expose `addLink`/`removeLink`/`pruneSessions` callbacks). The Snapshotter subscribes to it to know when to flush. Also add an `upsertLinksForSession(sessionName, links[])` method the Restorer can call during rehydration step 7.
+
+- **`src/otel-receiver.ts`** — add a per-session change event. Today it stores state in-memory; we need a hook so the Snapshotter can mark dirty without polling. Trivial change.
 
 ### Files on disk
 
@@ -88,7 +108,7 @@ export interface SnapshotSession {
   projectGroup: string | null;    // wtm project basename, for sidebar grouping
   pinned: boolean;
   attention: boolean;
-  permissionMode: "plan" | "accept" | null;
+  permissionMode: "default" | "plan" | "accept-edits" | null;  // null = unknown / not yet observed
   otel: {
     costUsd: number;
     cacheWasHit: boolean | null;
@@ -223,14 +243,20 @@ Runs once, synchronously, before the PTY attaches.
 
 ### Boot sequence
 
+`tmux -C attach` exits immediately when the server has no sessions, so the metadata channel can't be the thing we use to *detect* an empty server. We use `TmuxRunner` (plain `tmux` invocations, no `-C`) for eligibility and restore, and start `TmuxControl` only after at least one session is guaranteed to exist.
+
 ```
-1. start TmuxControl (-C)                  // metadata channel only
-2. tmux list-sessions                      // anything live?
-3. eligible for restore?                   // see eligibility rules
-4.   if yes: Restorer.run()                // re-create everything
-5. spawn TmuxPty (-A -s <lastFocused>)     // user-visible attach
-6. wire up Snapshotter                     // begin capturing again
+1. TmuxRunner.run(["list-sessions", "-F", "#{session_name}"])
+                                           // direct shell-out, no control channel
+2. eligible for restore?                   // see eligibility rules below
+3.   if yes: Restorer.run() via TmuxRunner // re-create sessions, set lastFocused target
+4. pick attach target                      // see "Attach target selection" below
+5. spawn TmuxPty (attach-mode -t <target>) // user-visible attach, see TmuxPty change
+6. start TmuxControl (-C attach)           // metadata channel — now a session exists
+7. wire up Snapshotter                     // begin capturing again
 ```
+
+The Snapshotter's structural loop subscribes to `TmuxControl` events, so it can only wire up at step 7. Anything that fires between restore and step 7 will be captured by the post-connect full re-derivation Snapshotter performs (see capture loop 1). No data loss window for structural state because the model is also rebuilt fresh at connect time.
 
 ### Eligibility — restore runs only if all are true
 
@@ -250,9 +276,17 @@ For each `SnapshotSession`:
 4. **Subsequent panes in a window:** `tmux split-window -t <session>:<w> -c <cwd> <painter-argv>` (split direction irrelevant; layout fixes it).
 5. **Apply layout:** `tmux select-layout -t <session>:<w> <layoutString>`.
 6. **Names:** `rename-window` for each window, `select-window` to mark active.
-7. **In-memory rehydration:** OTEL accumulators, permissionMode, pinned/attention flags pushed into live caches keyed by session name. Issue/MR links already loaded by existing `SessionState`.
+7. **In-memory rehydration:** OTEL accumulators, permissionMode, pinned/attention flags pushed into live caches keyed by session name. **Links: explicitly upsert each `SnapshotSession.links[]` entry into `SessionState` for the restored session name** — don't rely on `SessionState`'s own on-disk file to be authoritative, because a prior failed launch may have pruned it, the user may have edited it, or the file may have been rolled back independently of the snapshot. The snapshot's links win for restored sessions; pre-existing links for sessions not in the snapshot are left untouched.
 
-After all sessions are built, the PTY attaches to `lastFocusedSession` (or the first session if null).
+### Attach target selection
+
+After all sessions are built, pick the PTY's attach target:
+
+1. If `lastFocusedSession` is non-null **and** that session was actually restored (i.e. its restore.log entry is `restored`), use it.
+2. Else, use the first session whose restore.log entry is `restored`.
+3. Else (no sessions restored at all — every one failed or was skipped), fall through to the no-snapshot path: spawn TmuxPty in create-mode with no `-s` so tmux picks a default name.
+
+This handles the case where `lastFocusedSession` references a session that was skipped (cwd missing, etc.). We never attach to a session that wasn't actually created — see TmuxPty change below.
 
 ### The painter argv
 
@@ -280,10 +314,12 @@ Tail per pane kind:
 
 ### Partial-failure semantics
 
-**Granularity is per session.** Within a session, *any* subprocess failure (new-window, split-window, select-layout, rename-window) is treated as a session-level failure: the partial session is `kill-session`'d and the Restorer moves to the next. There is no "restore N of M panes for session X" — half-restored sessions are confusing UX and the layout invariants don't hold. Better to fully skip with a clear log entry.
+**Granularity is per session, with one cosmetic exception.** Topology-building failures (`new-session`, `new-window`, `split-window`, `rename-window`) are session-fatal: the partial session is `kill-session`'d and the Restorer moves to the next. There is no "restore N of M panes" — half-built topologies are confusing UX and the layout invariants don't hold.
+
+The cosmetic exception is **`select-layout`**: a rejected layout string is logged with `outcome: "restored"`, `reason: "layout_degraded"` and the session is kept. Panes plus scrollback in default geometry is strictly better than losing the whole session over a tmux-version layout quirk. The user can resize manually.
 
 - Sessions are isolated from each other. Failure of session N logs to `restore.log` and N+1 proceeds.
-- If session N is partially built when failure hits, `kill-session -t <N>` cleans up; no half-built artifacts visible to the user.
+- If session N is partially built when a topology-fatal error hits, `kill-session -t <N>` cleans up; no half-built artifacts visible to the user.
 - Entire restore failure (tmux server dies mid-restore) → log, leave snapshot intact, exit clean. jmux still boots, just empty. User retries.
 - Restorer Ctrl+C handler sweeps partially-built sessions (any session present in tmux not yet marked "restored" in the Restorer's internal log gets `kill-session`'d), exits clean. Snapshot untouched.
 
@@ -319,7 +355,7 @@ A single-line splash: `restoring N sessions from <capturedAt>...`. Each session 
 - **Control channel dies during capture:** TmuxControl's existing reconnect kicks in. Snapshotter pauses both loops while disconnected; on reconnect does a full re-derivation (no trust in cached deltas across reconnect).
 - **tmux server dies during restore:** Restorer aborts on first failed command, logs, leaves snapshot intact. jmux still boots empty.
 - **Session name collision:** impossible by construction (eligibility requires empty server).
-- **Layout string rejected:** logged but session not killed. Panes exist in arbitrary geometry; degraded but usable; user can resize.
+- **Layout string rejected:** logged with `reason: "layout_degraded"` and session kept (see Partial-failure semantics). Panes exist in default geometry; degraded but usable.
 
 ### External filesystem & worktree state
 
@@ -331,7 +367,7 @@ A single-line splash: `restoring N sessions from <capturedAt>...`. Each session 
 
 - **Graceful shutdown** (SIGTERM/SIGINT/SIGHUP, clean exit): synchronous final flush of structural model. Scrollback not flushed (runs on its own 5 s loop; shutdown isn't worth N pane captures).
 - **SIGKILL / OOM:** worst-case loss is one debounce window (~200 ms structural) + one scrollback tick (~5 s). This is the documented durability floor.
-- **Snapshotter starts before TmuxControl connects:** events queue in a bounded ring buffer (1 K events, drops oldest if exceeded — pathological, never expected) and drain on connect.
+- **TmuxControl reconnect during capture:** the structural model is fully re-derived from `list-sessions`/`list-windows`/`list-panes` on every (re)connect, so transient disconnects don't leave the model stale. Scrollback loop resumes on next tick. No event queueing is needed because Snapshotter only subscribes after the first connect (see Boot sequence).
 
 ### Configuration drift between capture and restore
 
@@ -357,8 +393,11 @@ src/__tests__/snapshot/
   capture-atomic.test.ts    — disk-full retry, .tmp sweep, concurrent writes never tear
   restore-eligibility.test.ts — only when server empty + snapshot valid + lock free
   restore-sequence.test.ts  — argv order: new-session → splits → select-layout → rename
-  restore-partial.test.ts   — failing session is kill-session'd, next proceeds
+  restore-partial.test.ts   — topology-fatal failure kills session; layout failure keeps it
   restore-missing-cwd.test.ts — skipped sessions land in restore.log
+  restore-links-upsert.test.ts — snapshot links override SessionState even when stale
+  restore-attach-target.test.ts — lastFocusedSession fallback chain when target unrestored
+  tmux-pty-strict-attach.test.ts — strictAttach fails when target absent; createOrAttach unchanged
   painter-argv.test.ts      — buildPainterArgv for claude/shell/other, escaping
   migrations.test.ts        — fake v0→v1 migrator runs, registry routes correctly
   multi-socket.test.ts      — two snapshot dirs operate independently
