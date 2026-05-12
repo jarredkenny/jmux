@@ -90,3 +90,51 @@ describe("SessionState", () => {
     if (existsSync(path)) unlinkSync(path);
   });
 });
+
+describe("SessionState change events", () => {
+  test("addLink fires onChange with affected session name", () => {
+    const path = tmpPath();
+    const state = new SessionState(path);
+    const changes: string[] = [];
+    state.onChange((name) => changes.push(name));
+    state.addLink("alpha", { type: "issue", id: "ENG-1" });
+    expect(changes).toEqual(["alpha"]);
+    if (existsSync(path)) unlinkSync(path);
+  });
+
+  test("removeLink fires onChange", () => {
+    const path = tmpPath();
+    const state = new SessionState(path);
+    state.addLink("alpha", { type: "issue", id: "ENG-1" });
+    const changes: string[] = [];
+    state.onChange((name) => changes.push(name));
+    state.removeLink("alpha", { type: "issue", id: "ENG-1" });
+    expect(changes).toEqual(["alpha"]);
+    if (existsSync(path)) unlinkSync(path);
+  });
+
+  test("upsertLinksForSession replaces existing links", () => {
+    const path = tmpPath();
+    const state = new SessionState(path);
+    state.addLink("alpha", { type: "issue", id: "OLD-1" });
+    state.upsertLinksForSession("alpha", [
+      { type: "issue", id: "NEW-1" },
+      { type: "mr", id: "42" },
+    ]);
+    expect(state.getLinks("alpha")).toEqual([
+      { type: "issue", id: "NEW-1" },
+      { type: "mr", id: "42" },
+    ]);
+    if (existsSync(path)) unlinkSync(path);
+  });
+
+  test("upsertLinksForSession fires onChange exactly once", () => {
+    const path = tmpPath();
+    const state = new SessionState(path);
+    const changes: string[] = [];
+    state.onChange((name) => changes.push(name));
+    state.upsertLinksForSession("alpha", [{ type: "issue", id: "X" }]);
+    expect(changes).toEqual(["alpha"]);
+    if (existsSync(path)) unlinkSync(path);
+  });
+});

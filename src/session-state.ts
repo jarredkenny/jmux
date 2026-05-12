@@ -14,6 +14,7 @@ interface StateData {
 export class SessionState {
   private data: StateData = { sessionLinks: {} };
   private filePath: string;
+  private changeListeners: Array<(sessionName: string) => void> = [];
 
   constructor(filePath: string) {
     this.filePath = filePath;
@@ -45,6 +46,7 @@ export class SessionState {
     if (!exists) {
       list.push({ type: link.type, id: link.id });
       this.save();
+      this.emitChange(sessionName);
     }
   }
 
@@ -56,6 +58,7 @@ export class SessionState {
       list.splice(idx, 1);
       if (list.length === 0) delete this.data.sessionLinks[sessionName];
       this.save();
+      this.emitChange(sessionName);
     }
   }
 
@@ -65,18 +68,46 @@ export class SessionState {
       this.data.sessionLinks[newName] = links;
       delete this.data.sessionLinks[oldName];
       this.save();
+      this.emitChange(oldName);
+      this.emitChange(newName);
     }
   }
 
   pruneSessions(liveSessions: Set<string>): void {
-    let changed = false;
+    const pruned: string[] = [];
     for (const name of Object.keys(this.data.sessionLinks)) {
       if (!liveSessions.has(name)) {
         delete this.data.sessionLinks[name];
-        changed = true;
+        pruned.push(name);
       }
     }
-    if (changed) this.save();
+    if (pruned.length > 0) {
+      this.save();
+      for (const name of pruned) {
+        this.emitChange(name);
+      }
+    }
+  }
+
+  onChange(fn: (sessionName: string) => void): void {
+    this.changeListeners.push(fn);
+  }
+
+  private emitChange(name: string): void {
+    for (const fn of this.changeListeners) fn(name);
+  }
+
+  upsertLinksForSession(sessionName: string, links: SessionLink[]): void {
+    if (links.length === 0) {
+      delete this.data.sessionLinks[sessionName];
+    } else {
+      this.data.sessionLinks[sessionName] = links.map((l) => ({
+        type: l.type,
+        id: l.id,
+      }));
+    }
+    this.save();
+    this.emitChange(sessionName);
   }
 
   private load(): void {
