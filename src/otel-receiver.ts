@@ -1,10 +1,41 @@
 import type { SessionOtelState, PermissionMode } from "./types";
 import { makeSessionOtelState } from "./types";
 
+function toIso(value: number | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  if (Number.isFinite(value) && value > 0) return new Date(value).toISOString();
+  return null;
+}
+
 export class OtelReceiver {
   private server: ReturnType<typeof Bun.serve> | null = null;
   private state = new Map<string, SessionOtelState>();
   onUpdate: ((sessionName: string) => void) | null = null;
+  private sessionUpdateListeners: Array<(name: string) => void> = [];
+
+  onSessionUpdate(fn: (name: string) => void): void {
+    this.sessionUpdateListeners.push(fn);
+  }
+
+  private emitSessionUpdate(name: string): void {
+    for (const fn of this.sessionUpdateListeners) fn(name);
+  }
+
+  getSessionSnapshot(name: string): import("./snapshot/schema").SnapshotOtel | null {
+    const s = this.state.get(name);
+    if (!s) return null;
+    return {
+      costUsd: s.costUsd,
+      cacheWasHit: s.lastRequestTime > 0 ? s.cacheWasHit : null,
+      lastRequestTime: toIso(s.lastRequestTime),
+      lastCompactionTime: toIso(s.lastCompactionTime),
+      lastTool: s.lastTool?.name ?? null,
+      lastUserPromptTime: toIso(s.lastUserPromptTime),
+      lastError: s.lastError?.type ?? null,
+      failedMcpServers: Array.from(s.failedMcpServers),
+    };
+  }
 
   async start(): Promise<number> {
     this.server = Bun.serve({
@@ -89,6 +120,7 @@ export class OtelReceiver {
       this.state.set(sessionName, existing);
 
       this.onUpdate?.(sessionName);
+      this.emitSessionUpdate(sessionName);
       return;
     }
 
@@ -100,6 +132,7 @@ export class OtelReceiver {
       };
       this.state.set(sessionName, existing);
       this.onUpdate?.(sessionName);
+      this.emitSessionUpdate(sessionName);
       return;
     }
 
@@ -108,6 +141,7 @@ export class OtelReceiver {
       existing.lastUserPromptTime = Date.now();
       this.state.set(sessionName, existing);
       this.onUpdate?.(sessionName);
+      this.emitSessionUpdate(sessionName);
       return;
     }
 
@@ -116,6 +150,7 @@ export class OtelReceiver {
       existing.lastCompactionTime = Date.now();
       this.state.set(sessionName, existing);
       this.onUpdate?.(sessionName);
+      this.emitSessionUpdate(sessionName);
       return;
     }
 
@@ -129,6 +164,7 @@ export class OtelReceiver {
       existing.permissionMode = normalized;
       this.state.set(sessionName, existing);
       this.onUpdate?.(sessionName);
+      this.emitSessionUpdate(sessionName);
       return;
     }
 
@@ -147,6 +183,7 @@ export class OtelReceiver {
       }
       this.state.set(sessionName, existing);
       this.onUpdate?.(sessionName);
+      this.emitSessionUpdate(sessionName);
       return;
     }
 
@@ -165,6 +202,7 @@ export class OtelReceiver {
       };
       this.state.set(sessionName, existing);
       this.onUpdate?.(sessionName);
+      this.emitSessionUpdate(sessionName);
       return;
     }
   }

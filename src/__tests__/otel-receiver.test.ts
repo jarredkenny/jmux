@@ -521,3 +521,216 @@ describe("OtelReceiver", () => {
     expect(receiver.getSessionState("$m4")).toBeNull();
   });
 });
+
+describe("OtelReceiver change events", () => {
+  let receiver: OtelReceiver;
+
+  beforeEach(() => {
+    receiver = new OtelReceiver();
+  });
+
+  afterEach(() => {
+    receiver.stop();
+  });
+
+  test("onSessionUpdate fires when per-session state changes", async () => {
+    const port = await receiver.start();
+    const changes: string[] = [];
+    receiver.onSessionUpdate((name) => changes.push(name));
+
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "alpha" })),
+    });
+
+    expect(changes).toContain("alpha");
+  });
+
+  test("onSessionUpdate fires for every mutation event type", async () => {
+    const port = await receiver.start();
+    const changes: string[] = [];
+    receiver.onSessionUpdate((name) => changes.push(name));
+
+    const events = [
+      makeOtlpPayload({ sessionName: "beta", eventName: "api_request" }),
+      makeOtlpPayload({ sessionName: "beta", eventName: "api_error" }),
+      makeOtlpPayload({ sessionName: "beta", eventName: "user_prompt" }),
+      makeOtlpPayload({ sessionName: "beta", eventName: "compaction" }),
+      makeOtlpPayload({
+        sessionName: "beta",
+        eventName: "permission_mode_changed",
+        attributes: [{ key: "mode", value: { stringValue: "plan" } }],
+      }),
+      makeOtlpPayload({
+        sessionName: "beta",
+        eventName: "mcp_server_connection",
+        attributes: [
+          { key: "server_name", value: { stringValue: "linear" } },
+          { key: "state", value: { stringValue: "failed" } },
+        ],
+      }),
+      makeOtlpPayload({
+        sessionName: "beta",
+        eventName: "tool_result",
+        attributes: [
+          { key: "tool_name", value: { stringValue: "Edit" } },
+          { key: "duration_ms", value: { intValue: "100" } },
+          { key: "success", value: { boolValue: true } },
+        ],
+      }),
+    ];
+
+    for (const payload of events) {
+      await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    expect(changes.length).toBe(7);
+    expect(changes.every((n) => n === "beta")).toBe(true);
+  });
+
+  test("multiple onSessionUpdate listeners all fire", async () => {
+    const port = await receiver.start();
+    const a: string[] = [];
+    const b: string[] = [];
+    receiver.onSessionUpdate((name) => a.push(name));
+    receiver.onSessionUpdate((name) => b.push(name));
+
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "gamma" })),
+    });
+
+    expect(a).toContain("gamma");
+    expect(b).toContain("gamma");
+  });
+
+  test("getSessionSnapshot returns a SnapshotOtel-shaped object", async () => {
+    const port = await receiver.start();
+
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "snap1", costUsd: 0.25 })),
+    });
+
+    const snap = receiver.getSessionSnapshot("snap1");
+    expect(snap).not.toBeNull();
+    expect(typeof snap!.costUsd).toBe("number");
+    expect(snap!.costUsd).toBeCloseTo(0.25, 5);
+    expect(typeof snap!.cacheWasHit).toBe("boolean");
+    expect(Array.isArray(snap!.failedMcpServers)).toBe(true);
+  });
+
+  test("getSessionSnapshot timestamps are ISO strings or null", async () => {
+    const port = await receiver.start();
+
+    // api_request sets lastRequestTime; user_prompt sets lastUserPromptTime; compaction sets lastCompactionTime
+    for (const eventName of ["api_request", "user_prompt", "compaction"]) {
+      await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(makeOtlpPayload({ sessionName: "snap2", eventName })),
+      });
+    }
+
+    const snap = receiver.getSessionSnapshot("snap2");
+    expect(snap).not.toBeNull();
+
+    const isoRe = /^\d{4}-\d{2}-\d{2}T/;
+
+    if (snap!.lastRequestTime !== null) {
+      expect(snap!.lastRequestTime).toMatch(isoRe);
+    }
+    if (snap!.lastUserPromptTime !== null) {
+      expect(snap!.lastUserPromptTime).toMatch(isoRe);
+    }
+    if (snap!.lastCompactionTime !== null) {
+      expect(snap!.lastCompactionTime).toMatch(isoRe);
+    }
+    // These were set so they should be non-null
+    expect(snap!.lastRequestTime).not.toBeNull();
+    expect(snap!.lastUserPromptTime).not.toBeNull();
+    expect(snap!.lastCompactionTime).not.toBeNull();
+  });
+
+  test("getSessionSnapshot lastTool is the tool name string or null", async () => {
+    const port = await receiver.start();
+
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        makeOtlpPayload({
+          sessionName: "snap3",
+          eventName: "tool_result",
+          attributes: [
+            { key: "tool_name", value: { stringValue: "Bash" } },
+            { key: "duration_ms", value: { intValue: "500" } },
+            { key: "success", value: { boolValue: true } },
+          ],
+        })
+      ),
+    });
+
+    const snap = receiver.getSessionSnapshot("snap3");
+    expect(snap).not.toBeNull();
+    expect(snap!.lastTool).toBe("Bash");
+  });
+
+  test("getSessionSnapshot lastError is a string representation or null", async () => {
+    const port = await receiver.start();
+
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "snap4", eventName: "api_error" })),
+    });
+
+    const snap = receiver.getSessionSnapshot("snap4");
+    expect(snap).not.toBeNull();
+    // lastError in snapshot is a string label or null
+    expect(snap!.lastError).toBe("api_error");
+  });
+
+  test("getSessionSnapshot failedMcpServers is an array of server names", async () => {
+    const port = await receiver.start();
+
+    for (const serverName of ["linear", "github"]) {
+      await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          makeOtlpPayload({
+            sessionName: "snap5",
+            eventName: "mcp_server_connection",
+            attributes: [
+              { key: "server_name", value: { stringValue: serverName } },
+              { key: "state", value: { stringValue: "failed" } },
+            ],
+          })
+        ),
+      });
+    }
+
+    const snap = receiver.getSessionSnapshot("snap5");
+    expect(snap).not.toBeNull();
+    expect(Array.isArray(snap!.failedMcpServers)).toBe(true);
+    expect(snap!.failedMcpServers.sort()).toEqual(["github", "linear"]);
+  });
+
+  test("getSessionSnapshot returns null for unknown session", () => {
+    expect(receiver.getSessionSnapshot("does-not-exist")).toBeNull();
+  });
+
+  test("getSessionSnapshot cacheWasHit is null when no api_request received", () => {
+    // No events fired — unknown session
+    const snap = receiver.getSessionSnapshot("no-events");
+    expect(snap).toBeNull();
+  });
+});
