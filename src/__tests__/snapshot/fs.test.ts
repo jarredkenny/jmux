@@ -43,6 +43,22 @@ describe("ProductionFileSystem.writeAtomic", () => {
     await fs.writeAtomic(path, new TextEncoder().encode("ok"));
     expect(readFileSync(path, "utf8")).toBe("ok");
   });
+
+  test("cleans up .tmp on rename failure", async () => {
+    const fs = new ProductionFileSystem();
+    const path = join(dir, "target");
+    // Pre-create target as a directory — rename will fail trying to overwrite it with a file
+    const { mkdirSync } = await import("fs");
+    mkdirSync(path);
+    let threw = false;
+    try {
+      await fs.writeAtomic(path, new TextEncoder().encode("hello"));
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+    expect(existsSync(path + ".tmp")).toBe(false);
+  });
 });
 
 describe("ProductionFileSystem.readFile", () => {
@@ -85,6 +101,26 @@ describe("ProductionFileSystem.lock", () => {
     const path = join(dir, ".lock");
     const first = await fs.lock(path);
     await first!.release();
+    const second = await fs.lock(path);
+    expect(second).not.toBeNull();
+    await second!.release();
+  });
+
+  test("double release is a no-op", async () => {
+    const fs = new ProductionFileSystem();
+    const lock = await fs.lock(join(dir, ".lock"));
+    expect(lock).not.toBeNull();
+    await lock!.release();
+    // Should not throw
+    await lock!.release();
+  });
+
+  test("can re-acquire after double release", async () => {
+    const fs = new ProductionFileSystem();
+    const path = join(dir, ".lock");
+    const first = await fs.lock(path);
+    await first!.release();
+    await first!.release(); // double release, no throw
     const second = await fs.lock(path);
     expect(second).not.toBeNull();
     await second!.release();

@@ -16,14 +16,27 @@ export class ProductionFileSystem implements FileSystem {
   async writeAtomic(path: string, bytes: Uint8Array): Promise<void> {
     await fsp.mkdir(dirname(path), { recursive: true });
     const tmp = `${path}.tmp`;
-    const fh = await fsp.open(tmp, "w");
+    let wroteTmp = false;
     try {
-      await fh.writeFile(bytes);
-      await fh.sync();
-    } finally {
-      await fh.close();
+      const fh = await fsp.open(tmp, "w");
+      try {
+        await fh.writeFile(bytes);
+        await fh.sync();
+      } finally {
+        await fh.close();
+      }
+      wroteTmp = true;
+      await fsp.rename(tmp, path);
+    } catch (err) {
+      if (wroteTmp) {
+        // rename failed — tmp exists on disk, unlink it
+        await fsp.unlink(tmp).catch(() => undefined);
+      } else {
+        // open/write/sync failed — tmp may exist partially
+        await fsp.unlink(tmp).catch(() => undefined);
+      }
+      throw err;
     }
-    await fsp.rename(tmp, path);
   }
 
   async rename(from: string, to: string): Promise<void> {
@@ -74,10 +87,23 @@ export class ProductionFileSystem implements FileSystem {
       if ((err as NodeJS.ErrnoException).code === "EEXIST") return null;
       throw err;
     }
+    let released = false;
     return {
       release: async () => {
-        await handle.close();
-        await fsp.unlink(path).catch(() => undefined);
+        if (released) return;
+        released = true;
+        try {
+          await handle.close();
+        } catch {
+          // already closed — fine
+        }
+        try {
+          await fsp.unlink(path);
+        } catch (err) {
+          // ENOENT is fine (someone else removed the lockfile)
+          // Other errors (EACCES, EIO) we propagate so we don't silently deadlock future lock() calls
+          if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+        }
       },
     };
   }
