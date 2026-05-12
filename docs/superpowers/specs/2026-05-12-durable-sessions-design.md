@@ -68,6 +68,8 @@ src/main.ts       — wires Snapshotter to existing events; calls Restorer pre-U
 
 - **`src/otel-receiver.ts`** — add a per-session change event. Today it stores state in-memory; we need a hook so the Snapshotter can mark dirty without polling. Trivial change.
 
+- **`src/tmux-control.ts`** — add reconnect. Today the read loop runs until EOF and the class then sits inert (`src/tmux-control.ts:203`). For durability to hold across a tmux server hiccup (e.g. user accidentally kills the control client, a tmux config reload, transient socket weirdness), `TmuxControl` needs an EOF handler that schedules an exponential-backoff reconnect (250 ms → 500 ms → 1 s → 2 s, capped at 5 s) and re-issues `refresh-client -f no-output` plus emits a `reconnected` event. Snapshotter listens to `reconnected` and triggers a full structural re-derivation. If reconnect fails for >30 s, emit a `lost` event and surface the toolbar `snapshot off` chip with reason `control_channel_lost` — the user has a real problem and silently flying blind is worse than telling them. Unit-tested with an injected runner that closes the control pipe and reopens it.
+
 ### Files on disk
 
 ```
@@ -261,7 +263,7 @@ The Snapshotter's structural loop subscribes to `TmuxControl` events, so it can 
 ### Eligibility — restore runs only if all are true
 
 - `state.json` exists and validates against schema (else move to `state.json.broken-<ISO-ts>`, log, skip).
-- `tmux list-sessions` returns zero sessions (fresh tmux server).
+- The tmux server has no sessions. This means either: (a) `tmux list-sessions` returns exit code 0 with empty stdout, or (b) `tmux list-sessions` exits non-zero with stderr matching `no server running|error connecting to|no sessions` — a not-running server is the most common shape of "fresh" and must be treated as eligible, not as an error. Any other non-zero exit (e.g. permission denied on the socket, malformed args) skips restore and logs.
 - `.lock` is acquirable (no other jmux process).
 
 If any condition fails, jmux boots normally and the existing snapshot is left untouched. The snapshot is never deleted by the restore path — only overwritten by successful capture.
@@ -280,13 +282,13 @@ For each `SnapshotSession`:
 
 ### Attach target selection
 
-After all sessions are built, pick the PTY's attach target:
+After all sessions are built, pick the PTY's attach target using the **Restorer's in-memory outcome list** (a `Map<sessionName, "restored" | "skipped" | "failed">` built up during this run — distinct from `restore.log`, which is append-only and may contain stale entries from prior runs):
 
-1. If `lastFocusedSession` is non-null **and** that session was actually restored (i.e. its restore.log entry is `restored`), use it.
-2. Else, use the first session whose restore.log entry is `restored`.
-3. Else (no sessions restored at all — every one failed or was skipped), fall through to the no-snapshot path: spawn TmuxPty in create-mode with no `-s` so tmux picks a default name.
+1. If `lastFocusedSession` is non-null **and** the in-memory outcome for it is `restored`, use it.
+2. Else, use the first session in the snapshot's iteration order whose in-memory outcome is `restored`.
+3. Else (no sessions restored — every one failed or was skipped), fall through to the no-snapshot path: spawn TmuxPty in create-mode with no `-s` so tmux picks a default name.
 
-This handles the case where `lastFocusedSession` references a session that was skipped (cwd missing, etc.). We never attach to a session that wasn't actually created — see TmuxPty change below.
+This handles the case where `lastFocusedSession` references a session that was skipped (cwd missing, etc.). We never attach to a session that wasn't actually created — see TmuxPty change above.
 
 ### The painter argv
 
@@ -330,10 +332,11 @@ Newline-delimited JSON, appended (never truncated). One record per session attem
 ```json
 {"ts":"2026-05-12T18:43:01Z","session":"feature-x","outcome":"restored","windowCount":2,"paneCount":5}
 {"ts":"2026-05-12T18:43:02Z","session":"old-branch","outcome":"skipped","reason":"cwd_missing","cwd":"/repos/foo/old-branch"}
-{"ts":"2026-05-12T18:43:03Z","session":"broken","outcome":"failed","reason":"select_layout_rejected","stderr":"..."}
+{"ts":"2026-05-12T18:43:03Z","session":"degraded","outcome":"restored","reason":"layout_degraded","stderr":"..."}
+{"ts":"2026-05-12T18:43:04Z","session":"broken","outcome":"failed","reason":"new_window_failed","stderr":"..."}
 ```
 
-`outcome` is one of `restored | skipped | failed`. `reason` is a stable enum string suitable for grepping.
+`outcome` is one of `restored | skipped | failed`. `reason` is a stable enum string suitable for grepping. A `restored` outcome may still carry a `reason` (e.g. `layout_degraded`) to flag cosmetic degradation.
 
 ### User-visible UX during restore
 
@@ -352,7 +355,7 @@ A single-line splash: `restoring N sessions from <capturedAt>...`. Each session 
 
 ### tmux state weirdness
 
-- **Control channel dies during capture:** TmuxControl's existing reconnect kicks in. Snapshotter pauses both loops while disconnected; on reconnect does a full re-derivation (no trust in cached deltas across reconnect).
+- **Control channel dies during capture:** TmuxControl's new EOF + exponential-backoff reconnect (see Existing module changes) emits `reconnected` to Snapshotter, which pauses both loops while disconnected and does a full structural re-derivation on reconnect (no trust in cached deltas across the gap). If reconnect doesn't succeed within 30 s, jmux flips to degraded mode and surfaces the `snapshot off` toolbar chip with reason `control_channel_lost`.
 - **tmux server dies during restore:** Restorer aborts on first failed command, logs, leaves snapshot intact. jmux still boots empty.
 - **Session name collision:** impossible by construction (eligibility requires empty server).
 - **Layout string rejected:** logged with `reason: "layout_degraded"` and session kept (see Partial-failure semantics). Panes exist in default geometry; degraded but usable.
@@ -398,6 +401,8 @@ src/__tests__/snapshot/
   restore-links-upsert.test.ts — snapshot links override SessionState even when stale
   restore-attach-target.test.ts — lastFocusedSession fallback chain when target unrestored
   tmux-pty-strict-attach.test.ts — strictAttach fails when target absent; createOrAttach unchanged
+  tmux-control-reconnect.test.ts — EOF triggers backoff reconnect; reconnected event fires;
+                                   30 s give-up flips to lost; Snapshotter re-derives on reconnect
   painter-argv.test.ts      — buildPainterArgv for claude/shell/other, escaping
   migrations.test.ts        — fake v0→v1 migrator runs, registry routes correctly
   multi-socket.test.ts      — two snapshot dirs operate independently
