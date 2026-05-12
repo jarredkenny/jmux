@@ -25,6 +25,7 @@ export class Snapshotter {
   private lock: Lock | null = null;
   private stopped = false;
   private degraded = false;
+  private scrollbackBusy = false;
 
   constructor(private readonly opts: SnapshotterOptions) {}
 
@@ -34,7 +35,10 @@ export class Snapshotter {
 
   async start(): Promise<void> {
     // Lock acquisition is added in Task 9.
-    // Scrollback loop is added in Task 8.
+    this.scrollbackCancel = this.opts.clock.setInterval(
+      () => void this.scrollbackTick(),
+      this.opts.scrollbackIntervalMs,
+    );
   }
 
   markDirty(): void {
@@ -174,6 +178,134 @@ export class Snapshotter {
   onFocused(name: string | null): void {
     this.opts.model.setLastFocused(name);
     this.markDirty();
+  }
+
+  async scrollbackTick(): Promise<void> {
+    if (this.stopped || this.degraded || this.scrollbackBusy) return;
+    this.scrollbackBusy = true;
+    try {
+      const sessRes = await this.opts.runner.run([
+        "list-sessions",
+        "-F",
+        "#{session_name}",
+      ]);
+      if (sessRes.exitCode !== 0) return;
+      const liveSessions = sessRes.stdout
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+      for (const session of liveSessions) {
+        const winRes = await this.opts.runner.run([
+          "list-windows",
+          "-t",
+          session,
+          "-F",
+          "#{window_index}",
+        ]);
+        if (winRes.exitCode !== 0) continue;
+        const windows = winRes.stdout
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0)
+          .map((s) => Number(s));
+
+        for (const w of windows) {
+          const paneRes = await this.opts.runner.run([
+            "list-panes",
+            "-t",
+            `${session}:${w}`,
+            "-F",
+            "#{pane_index}",
+          ]);
+          if (paneRes.exitCode !== 0) continue;
+          const panes = paneRes.stdout
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => l.length > 0)
+            .map((s) => Number(s));
+
+          for (const p of panes) {
+            await this.captureOnePane(session, w, p);
+          }
+        }
+      }
+
+      await this.gcScrollback(liveSessions);
+    } finally {
+      this.scrollbackBusy = false;
+    }
+  }
+
+  private async captureOnePane(
+    session: string,
+    w: number,
+    p: number,
+  ): Promise<void> {
+    const cap = await this.opts.runner.run([
+      "capture-pane",
+      "-p",
+      "-e",
+      "-J",
+      "-S",
+      "-",
+      "-t",
+      `${session}:${w}.${p}`,
+    ]);
+    const path = `${this.opts.dir}/scrollback/${session}/${w}-${p}.ansi`;
+    if (cap.exitCode !== 0) return;
+    if (cap.stdout.length === 0) {
+      await this.opts.fs.unlink(path);
+      this.opts.model.setScrollbackFile(session, w, p, null);
+      this.markDirty();
+      return;
+    }
+    let bytes = new TextEncoder().encode(cap.stdout);
+    const cap2 = this.opts.scrollbackMaxBytes ?? 2 * 1024 * 1024;
+    if (bytes.byteLength > cap2) {
+      // Reserve space for the marker so total <= cap2 AND the marker survives.
+      const enc = new TextEncoder();
+      let droppedGuess = bytes.byteLength;
+      let marker = enc.encode(
+        `\n--- truncated: oldest ${droppedGuess} bytes dropped ---\n`,
+      );
+      let tailBudget = Math.max(0, cap2 - marker.byteLength);
+      let droppedActual = bytes.byteLength - tailBudget;
+      if (droppedActual !== droppedGuess) {
+        marker = enc.encode(
+          `\n--- truncated: oldest ${droppedActual} bytes dropped ---\n`,
+        );
+        tailBudget = Math.max(0, cap2 - marker.byteLength);
+      }
+      let cut = bytes.byteLength - tailBudget;
+      // Align tail start to a UTF-8 leading byte
+      while (cut < bytes.byteLength && (bytes[cut] & 0xc0) === 0x80) cut++;
+      const tail = bytes.subarray(cut);
+      const combined = new Uint8Array(marker.byteLength + tail.byteLength);
+      combined.set(marker, 0);
+      combined.set(tail, marker.byteLength);
+      bytes = combined;
+    }
+    await this.opts.fs.writeAtomic(path, bytes);
+    this.opts.model.setScrollbackFile(
+      session,
+      w,
+      p,
+      `scrollback/${session}/${w}-${p}.ansi`,
+    );
+    this.markDirty();
+  }
+
+  private async gcScrollback(liveSessions: string[]): Promise<void> {
+    const live = new Set(liveSessions);
+    const root = `${this.opts.dir}/scrollback`;
+    const entries = await this.opts.fs.readDir(root);
+    for (const dir of entries) {
+      if (live.has(dir)) continue;
+      const dead = `${root}/${dir}`;
+      const files = await this.opts.fs.readDir(dead);
+      for (const f of files) await this.opts.fs.unlink(`${dead}/${f}`);
+    }
   }
 
   private async rederiveSessionWindows(name: string): Promise<void> {
