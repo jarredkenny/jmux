@@ -12,6 +12,20 @@ export interface RestorerOptions {
   userShell: string;
   claudeCommand: string;
   cwdExists?: (path: string) => Promise<boolean>;
+  sessionLinksSink?: (
+    name: string,
+    links: import("./schema").SessionLink[],
+  ) => void;
+  permissionModeSink?: (
+    name: string,
+    mode: import("./schema").SnapshotPermissionMode,
+  ) => void;
+  otelSink?: (
+    name: string,
+    otel: import("./schema").SnapshotOtel | null,
+  ) => void;
+  pinnedSink?: (name: string, pinned: boolean) => void;
+  attentionSink?: (name: string, attention: boolean) => void;
 }
 
 export type EligibilityResult =
@@ -23,9 +37,20 @@ const NO_SERVER_RX = /no server running|error connecting to|no sessions/i;
 export class Restorer {
   protected readonly log: RestoreLog;
   protected outcomes = new Map<string, RestoreOutcome>();
+  protected lastSnapshot: SnapshotFile | null = null;
 
   constructor(protected readonly opts: RestorerOptions) {
     this.log = new RestoreLog(opts.fs, `${opts.dir}/restore.log`);
+  }
+
+  attachTarget(): string | null {
+    if (!this.lastSnapshot) return null;
+    const lf = this.lastSnapshot.lastFocusedSession;
+    if (lf && this.outcomes.get(lf) === "restored") return lf;
+    for (const s of this.lastSnapshot.sessions) {
+      if (this.outcomes.get(s.name) === "restored") return s.name;
+    }
+    return null;
   }
 
   outcomeFor(session: string): RestoreOutcome | undefined {
@@ -74,6 +99,7 @@ export class Restorer {
   }
 
   async run(snapshot: SnapshotFile): Promise<void> {
+    this.lastSnapshot = snapshot;
     for (const session of snapshot.sessions) {
       await this.restoreSession(session, snapshot.capturedAt);
     }
@@ -185,6 +211,12 @@ export class Restorer {
         `${session.name}:${activeWindow.index}`,
       ]);
     }
+
+    this.opts.sessionLinksSink?.(session.name, session.links);
+    this.opts.permissionModeSink?.(session.name, session.permissionMode);
+    this.opts.otelSink?.(session.name, session.otel);
+    this.opts.pinnedSink?.(session.name, session.pinned);
+    this.opts.attentionSink?.(session.name, session.attention);
 
     this.outcomes.set(session.name, "restored");
     await this.log.append({
