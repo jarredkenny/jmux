@@ -6,7 +6,7 @@
 
 **The terminal workspace for running coding agents in parallel.**
 
-Run Claude Code, Codex, or any agent across isolated sessions — jmux shows you which are working, which finished, and which need your review. Optionally connect [Linear](https://linear.app) and [GitLab](https://about.gitlab.com) to go from triage to deployment without leaving your terminal.
+Run Claude Code, Codex, or any agent across isolated sessions — jmux shows you which are working, which finished, and which need your review. Optionally connect [Linear](https://linear.app) and [GitLab](https://about.gitlab.com) or [GitHub](https://github.com) to go from triage to deployment without leaving your terminal.
 
 [![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
 [![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)
@@ -28,9 +28,9 @@ Try it without credentials: `jmux --demo` runs with mock data so you can explore
 
 ---
 
-## Linear & GitLab Integration
+## Linear, GitLab & GitHub Integration
 
-Connect Linear and GitLab to manage your workflow from the terminal. Open the info panel (`Ctrl-a g`) to see your issues grouped by team and status, MRs with pipeline state, and your review queue — all in tabbed views alongside an integrated diff viewer.
+Connect Linear and GitLab or GitHub to manage your workflow from the terminal. Open the info panel (`Ctrl-a g`) to see your issues grouped by team and status, MRs/PRs with pipeline state, and your review queue — all in tabbed views alongside an integrated diff viewer.
 
 ![jmux info panel showing Linear issues grouped by team and status](docs/screenshots/linear-issues.png)
 
@@ -44,7 +44,7 @@ When the agent finishes, toggle the diff panel to review changes. Then flip to t
 
 Press `o` to open anything in your browser, `s` to update an issue's status, `a` to approve an MR, `r` to undraft. The keyboard shortcuts are shown at the bottom of each view.
 
-**Setup:**
+**Setup (GitLab):**
 
 ```json
 // ~/.config/jmux/config.json
@@ -56,7 +56,36 @@ Press `o` to open anything in your browser, `s` to update an issue's status, `a`
 }
 ```
 
-Set `$LINEAR_API_KEY` and `$GITLAB_TOKEN` in your environment. See [docs/issue-tracking.md](docs/issue-tracking.md) for the full guide.
+Set `$LINEAR_API_KEY` and `$GITLAB_TOKEN` in your environment.
+
+**Setup (GitHub):**
+
+```json
+// ~/.config/jmux/config.json
+{
+  "adapters": {
+    "codeHost": { "type": "github" },
+    "issueTracker": { "type": "linear" }
+  }
+}
+```
+
+Set `$LINEAR_API_KEY` and `$GH_TOKEN` (or `$GITHUB_TOKEN`) in your environment. Falls back to `gh auth token` if no env var is set. Token requires `repo` scope for full functionality (PRs, check runs, reviews, branch protection).
+
+**Setup (GitHub Enterprise):**
+
+```json
+// ~/.config/jmux/config.json
+{
+  "adapters": {
+    "codeHost": { "type": "github", "url": "https://github.mycompany.com/api/v3" }
+  }
+}
+```
+
+Or set `$GITHUB_ENTERPRISE_URL` in your environment instead of the config `url` field.
+
+See [docs/issue-tracking.md](docs/issue-tracking.md) for the full guide.
 
 ---
 
@@ -142,6 +171,7 @@ Use any editor. Any Git tool. Any AI agent. Any shell. No Electron. No proprieta
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI coding agent. jmux reads its telemetry for cache timers and attention flags
 - **[Linear](https://linear.app)** — Issue tracking. Pull issues, link to sessions, update statuses from the terminal
 - **[GitLab](https://about.gitlab.com)** — MR status, pipelines, approvals in the sidebar and info panel
+- **[GitHub](https://github.com)** — PR status, check runs, approvals in the sidebar and info panel
 - **[lazygit](https://github.com/jesseduffield/lazygit)** — Terminal Git UI. Run it in a jmux pane alongside your agent
 - **[gh](https://cli.github.com/)** / **[glab](https://gitlab.com/gitlab-org/cli)** — GitHub and GitLab CLIs
 
@@ -244,6 +274,7 @@ Terminal (Ghostty, iTerm, etc.)
        +-- Adapters
        |    +-- Linear ------------- issues, statuses, comments (GraphQL)
        |    +-- GitLab ------------- MRs, pipelines, approvals (REST)
+       |    +-- GitHub ------------- PRs, check runs, approvals (REST + GraphQL)
        |    +-- Poll coordinator --- tiered polling, rate-limit backoff
        +-- jmux ctl (JSON API, used by agents inside sessions)
             +-- session / window / pane / run-claude
