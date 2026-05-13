@@ -9,6 +9,11 @@ import { renderMarkdownToStyledLines } from "./markdown";
 
 export type IssueSessionState = "none" | "worktree" | "session";
 
+export interface IssueSessionInfo {
+  state: IssueSessionState;
+  sessionName: string;  // tmux session name; for "worktree", the name a session would take
+}
+
 export interface RenderableItem {
   id: string;
   type: "issue" | "mr";
@@ -23,6 +28,10 @@ export interface RenderableItem {
   updatedAt: number;
   raw: Issue | MergeRequest;
   issueSessionState?: IssueSessionState;  // only for issues
+  // Resolved session name when issueSessionState is "session" or "worktree".
+  // Comes from an explicit sessionState link first, falling back to the
+  // workflow-derived name. Used by the n-key handler to switch.
+  linkedSessionName?: string;
   stateType?: IssueStateType;  // only for issues; stable ordering across status renames
 }
 
@@ -47,24 +56,28 @@ export function createViewState(): ViewState {
 export function transformIssues(
   issues: Issue[],
   linkedIds: Set<string>,
-  sessionStates?: Map<string, IssueSessionState>,
+  sessionStates?: Map<string, IssueSessionInfo>,
 ): RenderableItem[] {
-  return issues.map((issue) => ({
-    id: issue.id,
-    type: "issue" as const,
-    primary: issue.identifier,
-    title: issue.title,
-    status: issue.status,
-    meta: issue.assignee ?? "",
-    group: issue.team ?? "",
-    subGroup: issue.status ?? "",
-    sessionLinked: linkedIds.has(issue.id),
-    priority: issue.priority ?? 0,
-    updatedAt: issue.updatedAt ?? 0,
-    raw: issue,
-    issueSessionState: sessionStates?.get(issue.id) ?? "none",
-    stateType: issue.stateType,
-  }));
+  return issues.map((issue) => {
+    const info = sessionStates?.get(issue.id);
+    return {
+      id: issue.id,
+      type: "issue" as const,
+      primary: issue.identifier,
+      title: issue.title,
+      status: issue.status,
+      meta: issue.assignee ?? "",
+      group: issue.team ?? "",
+      subGroup: issue.status ?? "",
+      sessionLinked: linkedIds.has(issue.id),
+      priority: issue.priority ?? 0,
+      updatedAt: issue.updatedAt ?? 0,
+      raw: issue,
+      issueSessionState: info?.state ?? "none",
+      linkedSessionName: info?.sessionName,
+      stateType: issue.stateType,
+    };
+  });
 }
 
 export function transformMrs(mrs: MergeRequest[], linkedIds: Set<string>): RenderableItem[] {

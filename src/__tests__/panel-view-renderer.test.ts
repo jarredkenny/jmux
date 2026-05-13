@@ -144,23 +144,23 @@ describe("buildViewNodes", () => {
 
 describe("pickSessionIndicator", () => {
   test("issue with no session/worktree shows hollow dot", () => {
-    const items = transformIssues([ISSUE], new Set(), new Map([["i1", "none"]]));
+    const items = transformIssues([ISSUE], new Set(), new Map([["i1", { state: "none", sessionName: "" }]]));
     expect(pickSessionIndicator(items[0]).glyph).toBe("○");
   });
 
   test("issue with worktree only shows half-circle", () => {
-    const items = transformIssues([ISSUE], new Set(), new Map([["i1", "worktree"]]));
+    const items = transformIssues([ISSUE], new Set(), new Map([["i1", { state: "worktree", sessionName: "i1" }]]));
     expect(pickSessionIndicator(items[0]).glyph).toBe("◐");
   });
 
   test("issue with session shows filled dot", () => {
-    const items = transformIssues([ISSUE], new Set(), new Map([["i1", "session"]]));
+    const items = transformIssues([ISSUE], new Set(), new Map([["i1", { state: "session", sessionName: "i1" }]]));
     expect(pickSessionIndicator(items[0]).glyph).toBe("●");
   });
 
   test("issue whose session is current is bold (distinguishable from other-session)", () => {
-    const otherItems = transformIssues([ISSUE], new Set(), new Map([["i1", "session"]]));
-    const currentItems = transformIssues([ISSUE], new Set(["i1"]), new Map([["i1", "session"]]));
+    const otherItems = transformIssues([ISSUE], new Set(), new Map([["i1", { state: "session", sessionName: "i1" }]]));
+    const currentItems = transformIssues([ISSUE], new Set(["i1"]), new Map([["i1", { state: "session", sessionName: "i1" }]]));
     expect(pickSessionIndicator(otherItems[0]).glyphAttrs.bold).toBeFalsy();
     expect(pickSessionIndicator(currentItems[0]).glyphAttrs.bold).toBe(true);
   });

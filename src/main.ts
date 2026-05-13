@@ -24,7 +24,7 @@ import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
 import { InfoPanel } from "./info-panel";
 import { parseViews, cycleGroupBy, cycleSortBy, toggleSortOrder, type PanelView } from "./panel-view";
-import { transformIssues, transformMrs, buildViewNodes, renderView, createViewState, filterItems, type ViewState, type ViewNode, type IssueSessionState } from "./panel-view-renderer";
+import { transformIssues, transformMrs, buildViewNodes, renderView, createViewState, filterItems, type ViewState, type ViewNode, type IssueSessionInfo } from "./panel-view-renderer";
 import { createAdapters } from "./adapters/registry";
 import { PollCoordinator } from "./adapters/poll-coordinator";
 import { SessionState } from "./session-state";
@@ -1256,6 +1256,18 @@ const inputRouter = new InputRouter(
       if (selected?.kind !== "item" || selected.item.type !== "issue") return;
       const issue = selected.item.raw as import("./adapters/types").Issue;
       const issueState = selected.item.issueSessionState ?? "none";
+      const linkedSessionName = selected.item.linkedSessionName;
+
+      // STATE 3: a live session already exists for this issue (either via an
+      // explicit L-key link or a workflow-derived name match). Switch to it.
+      // Done before the workflow/repoDir check so explicit links work even
+      // when the issue's team has no teamRepoMap entry.
+      if (issueState === "session" && linkedSessionName) {
+        if (!ptyClientName) await resolveClientName();
+        if (!ptyClientName) return;
+        await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(linkedSessionName)}`);
+        return;
+      }
 
       const workflow = configStore.config.issueWorkflow;
       const repoDir = workflow?.teamRepoMap?.[issue.team ?? ""];
@@ -1272,12 +1284,6 @@ const inputRouter = new InputRouter(
         const baseBranch = workflow?.defaultBaseBranch ?? "main";
 
         try {
-          // STATE 3: Session already exists → just switch
-          if (issueState === "session") {
-            await control.sendCommand(`switch-client -c ${ptyClientName} -t ${tq(session)}`);
-            return;
-          }
-
           // Seed the first user message for Claude by writing the issue prompt
           // to a temp file — the main pane reads it via $(cat ...) and claude
           // takes its content as a positional argument (the documented
@@ -2023,26 +2029,46 @@ function resolveIssueSessionName(issue: import("./adapters/types").Issue): strin
   return sanitizeTmuxSessionName(branchName);
 }
 
-function getIssueSessionStates(): Map<string, IssueSessionState> {
-  const states = new Map<string, IssueSessionState>();
+function getIssueSessionStates(): Map<string, IssueSessionInfo> {
+  const states = new Map<string, IssueSessionInfo>();
   const workflow = configStore.config.issueWorkflow;
-  if (!workflow?.teamRepoMap) return states;
-
   const sessionNames = new Set(currentSessions.map((s) => s.name));
+  const currentName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? "";
+
+  // Build a reverse index from sessionState: issue id -> live session name.
+  // An explicit link (set via the L key) wins over the workflow-derived name
+  // so that re-linking an issue to a different session is honoured by `n`.
+  // If multiple live sessions claim the same issue, prefer the current session.
+  const explicitLinks = new Map<string, string>();
+  for (const sessionName of sessionNames) {
+    for (const id of sessionState.getLinkedIssueIds(sessionName)) {
+      const existing = explicitLinks.get(id);
+      if (!existing || sessionName === currentName) {
+        explicitLinks.set(id, sessionName);
+      }
+    }
+  }
 
   for (const issue of pollCoordinator.getGlobalIssues()) {
+    const explicit = explicitLinks.get(issue.id);
+    if (explicit) {
+      states.set(issue.id, { state: "session", sessionName: explicit });
+      continue;
+    }
+
+    if (!workflow?.teamRepoMap) continue;
     const session = resolveIssueSessionName(issue);
     if (!session) continue;
 
     if (sessionNames.has(session)) {
-      states.set(issue.id, "session");
+      states.set(issue.id, { state: "session", sessionName: session });
     } else {
       const repoDir = workflow.teamRepoMap[issue.team ?? ""];
       if (repoDir) {
         const expandedDir = repoDir.replace("~", homedir());
         const wtPath = `${expandedDir}/${session}`;
         if (existsSync(wtPath)) {
-          states.set(issue.id, "worktree");
+          states.set(issue.id, { state: "worktree", sessionName: session });
         }
       }
     }
