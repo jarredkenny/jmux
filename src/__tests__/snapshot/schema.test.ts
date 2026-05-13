@@ -65,6 +65,7 @@ describe("snapshot schema", () => {
     bad.sessions[0].windows[0].panes[0].kind = "wrong";
     const result = validateSnapshot(bad);
     expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("kind");
   });
 
   test("validateSnapshot rejects non-ISO capturedAt", () => {

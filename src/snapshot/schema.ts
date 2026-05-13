@@ -1,6 +1,7 @@
 export const SNAPSHOT_FORMAT_VERSION = 1 as const;
 
 export type PaneKind = "claude" | "shell" | "other";
+// null = unknown / not yet observed (session existed at snapshot time but no OTEL permission mode reported yet)
 export type SnapshotPermissionMode = "default" | "plan" | "accept-edits" | null;
 
 export interface SessionLink {
