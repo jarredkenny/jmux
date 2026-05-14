@@ -354,6 +354,79 @@ function makeToolbar(): ToolbarConfig {
   };
 }
 
+// --- Durable-session boot helper ---
+
+async function performBoot(opts: {
+  socketName: string | undefined;
+  config: import("./config").JmuxConfig;
+  sessionState: import("./session-state").SessionState;
+}): Promise<{
+  attachSessionName: string | null;
+  snapshotDir: string;
+}> {
+  const {
+    ProductionFileSystem,
+    ProductionTmuxRunner,
+    ProductionClock,
+    Restorer,
+    resolveSnapshotDir,
+  } = await import("./snapshot");
+
+  const dir = resolveSnapshotDir({
+    override: opts.config.snapshot?.dir ?? null,
+    socketName: opts.socketName ?? null,
+    xdgDataHome: process.env.XDG_DATA_HOME ?? null,
+    home: process.env.HOME ?? "/tmp",
+  });
+
+  if (!opts.config.snapshot?.enabled) {
+    return { attachSessionName: null, snapshotDir: dir };
+  }
+
+  const fs = new ProductionFileSystem();
+  const runner = new ProductionTmuxRunner(opts.socketName ?? null);
+  const clock = new ProductionClock();
+
+  // Sweep orphaned .tmp files from a prior crash
+  const entries = await fs.readDir(dir).catch(() => [] as string[]);
+  for (const e of entries) {
+    if (e.endsWith(".tmp")) await fs.unlink(`${dir}/${e}`).catch(() => undefined);
+  }
+  const scrollbackDir = `${dir}/scrollback`;
+  const sessionDirs = await fs.readDir(scrollbackDir).catch(() => [] as string[]);
+  for (const sd of sessionDirs) {
+    const files = await fs.readDir(`${scrollbackDir}/${sd}`).catch(() => [] as string[]);
+    for (const f of files) {
+      if (f.endsWith(".tmp")) await fs.unlink(`${scrollbackDir}/${sd}/${f}`).catch(() => undefined);
+    }
+  }
+
+  const restorer = new Restorer({
+    dir,
+    fs,
+    runner,
+    clock,
+    jmuxVersion: process.env.JMUX_VERSION ?? "dev",
+    userShell: process.env.SHELL ?? "/bin/sh",
+    claudeCommand: opts.config.claudeCommand ?? "claude",
+    sessionLinksSink: (name, links) => opts.sessionState.upsertLinksForSession(name, links),
+  });
+
+  const eligibility = await restorer.checkEligibility();
+  if (eligibility.ok) {
+    process.stdout.write(
+      `restoring ${eligibility.snapshot.sessions.length} sessions from ${eligibility.snapshot.capturedAt}...\n`,
+    );
+    await restorer.run(eligibility.snapshot);
+    return {
+      attachSessionName: restorer.attachTarget(),
+      snapshotDir: dir,
+    };
+  }
+
+  return { attachSessionName: null, snapshotDir: dir };
+}
+
 // Enter alternate screen, raw mode, enable mouse tracking
 process.stdout.write("\x1b[?1049h");
 process.stdout.write("\x1b[?1000h"); // mouse button tracking
@@ -365,8 +438,27 @@ if (process.stdin.setRawMode) {
 }
 process.stdin.resume();
 
+// SessionState must be constructed before performBoot so restore can populate links.
+const sessionStatePath = demoCtx?.statePath ?? resolve(homedir(), ".config", "jmux", "state.json");
+const sessionState = new SessionState(sessionStatePath);
+
+// Run restore-before-attach boot phase.
+const boot = await performBoot({
+  socketName,
+  config: configStore.config,
+  sessionState,
+});
+
 // Core components
-const pty = new TmuxPty({ sessionName, socketName, configFile, jmuxDir, cols: mainCols, rows: ptyRows });
+const pty = new TmuxPty({
+  sessionName: boot.attachSessionName ?? sessionName,
+  socketName,
+  configFile,
+  jmuxDir,
+  cols: mainCols,
+  rows: ptyRows,
+  attachMode: boot.attachSessionName ? "strictAttach" : "createOrAttach",
+});
 const bridge = new ScreenBridge(mainCols, ptyRows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, rows);
@@ -415,9 +507,6 @@ async function initAdapters(): Promise<void> {
     viewLabels: new Map(visibleViews.map((v) => [v.id, v.label])),
   });
 }
-
-const sessionStatePath = demoCtx?.statePath ?? resolve(homedir(), ".config", "jmux", "state.json");
-const sessionState = new SessionState(sessionStatePath);
 
 const pollCoordinator = new PollCoordinator({
   codeHost: adapters.codeHost,
@@ -474,6 +563,7 @@ let currentSessionId: string | null = null;
 let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
 let currentSessions: SessionInfo[] = [];
+let snapshotter: import("./snapshot").Snapshotter | null = null;
 
 sidebar.setVersion(VERSION);
 const lastViewedTimestamps = new Map<string, number>();
@@ -784,6 +874,7 @@ async function switchSession(sessionId: string): Promise<void> {
     sidebar.scrollToActive();
     const sessionName = currentSessions.find((s) => s.id === sessionId)?.name;
     if (sessionName) {
+      snapshotter?.onFocused(sessionName);
       await pollCoordinator.setActiveSession(sessionName);
       focusPanelOnSessionIssue(sessionName);
     }
@@ -3089,9 +3180,10 @@ control.onEvent((event: ControlEvent) => {
             const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
             await spawnHunk(dpCols, dpRows);
           }
-          // Sync issue panel to the new session's linked issue
+          // Sync issue panel and snapshotter to the new session's linked issue
           const sessionName = currentSessions.find((s) => s.id === currentSessionId)?.name;
           if (sessionName) {
+            snapshotter?.onFocused(sessionName);
             await pollCoordinator.setActiveSession(sessionName);
             focusPanelOnSessionIssue(sessionName);
           }
@@ -3264,6 +3356,85 @@ async function start(): Promise<void> {
   await fetchWindows();
   startupComplete = true;
 
+  // --- Snapshotter wiring ---
+  {
+    const {
+      Snapshotter,
+      SnapshotModel,
+      ProductionFileSystem: SnapFs,
+      ProductionTmuxRunner: SnapRunner,
+      ProductionClock: SnapClock,
+    } = await import("./snapshot");
+
+    const snapshotModel = new SnapshotModel(process.env.JMUX_VERSION ?? "dev");
+    snapshotModel.setSocket(socketName ?? "default");
+
+    snapshotter = new Snapshotter({
+      dir: boot.snapshotDir,
+      model: snapshotModel,
+      fs: new SnapFs(),
+      runner: new SnapRunner(socketName ?? null),
+      clock: new SnapClock(),
+      debounceMs: 200,
+      scrollbackIntervalMs: configStore.config.snapshot?.scrollbackIntervalMs ?? 5000,
+      scrollbackMaxBytes: configStore.config.snapshot?.scrollbackMaxBytes ?? 2 * 1024 * 1024,
+    });
+
+    await snapshotter.start();
+
+    // Seed the model with current live tmux state
+    await snapshotter.onSessionsChanged();
+
+    // Subscribe to TmuxControl events that affect the model
+    control.onEvent((e: ControlEvent) => {
+      switch (e.type) {
+        case "sessions-changed":
+          void snapshotter!.onSessionsChanged();
+          break;
+        case "session-renamed":
+          // Model rename + re-derive in one pass
+          if (e.args) {
+            const parts = e.args.split(" ");
+            if (parts.length >= 2) {
+              const sessionId = parts[0];
+              const newName = parts.slice(1).join(" ");
+              const oldName = currentSessions.find((s) => s.id === sessionId)?.name;
+              if (oldName && oldName !== newName) {
+                void snapshotter!.onSessionRenamed(oldName, newName);
+              }
+            }
+          }
+          void snapshotter!.onSessionsChanged();
+          break;
+        case "window-add":
+        case "window-close":
+        case "window-renamed":
+          void snapshotter!.onSessionsChanged();
+          break;
+      }
+    });
+
+    // On control reconnect, do a full re-derivation
+    control.onReconnected(() => {
+      void snapshotter!.onSessionsChanged();
+    });
+
+    // SessionState link changes
+    sessionState.onChange((name) => {
+      snapshotter!.onLinks(name, sessionState.getLinks(name));
+    });
+
+    // OtelReceiver updates
+    otelReceiver.onSessionUpdate((name) => {
+      const snap = otelReceiver.getSessionSnapshot(name);
+      snapshotter!.onOtel(name, snap);
+    });
+
+    // Seed focus with the initial session
+    const initialFocusName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? null;
+    snapshotter.onFocused(initialFocusName);
+  }
+
   // Sync issue panel to the initial session
   const initialSessionName = currentSessions.find((s) => s.id === currentSessionId)?.name;
   if (initialSessionName) {
@@ -3336,7 +3507,7 @@ async function start(): Promise<void> {
 
 // --- Cleanup ---
 
-function cleanup(): void {
+function cleanupSync(): void {
   killDiffProcess();
   pollCoordinator.stop();
   otelReceiver.stop();
@@ -3357,13 +3528,19 @@ function cleanup(): void {
   if (demoCtx && demoCleanup) {
     demoCleanup(demoCtx);
   }
+}
+
+async function cleanup(): Promise<void> {
+  await snapshotter?.stop().catch(() => undefined);
+  cleanupSync();
   process.exit(0);
 }
 
-pty.onExit(() => cleanup());
-process.on("SIGINT", () => cleanup());
-process.on("SIGTERM", () => cleanup());
+pty.onExit(() => void cleanup());
+process.on("SIGINT", () => void cleanup());
+process.on("SIGTERM", () => void cleanup());
+process.on("SIGHUP", () => void cleanup());
 
 // --- Go ---
 
-start().catch(() => cleanup());
+start().catch(() => void cleanup());
