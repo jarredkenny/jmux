@@ -1,4 +1,4 @@
-import type { SessionOtelState, PermissionMode } from "./types";
+import type { SessionOtelState, PermissionMode, ErrorState } from "./types";
 import { makeSessionOtelState } from "./types";
 
 function toIso(value: number | string | null | undefined): string | null {
@@ -35,6 +35,48 @@ export class OtelReceiver {
       lastError: s.lastError?.type ?? null,
       failedMcpServers: Array.from(s.failedMcpServers),
     };
+  }
+
+  /**
+   * Overwrite per-session OTEL state from a persisted snapshot.
+   * Called during boot to restore state that was captured at shutdown.
+   * Timestamps are stored as ISO strings in the snapshot; convert back to epoch ms.
+   */
+  setSessionSnapshot(name: string, snap: import("./snapshot/schema").SnapshotOtel): void {
+    const fromIso = (iso: string | null): number => {
+      if (!iso) return 0;
+      const t = Date.parse(iso);
+      return Number.isFinite(t) ? t : 0;
+    };
+
+    const existing = this.state.get(name) ?? makeSessionOtelState();
+    existing.costUsd = snap.costUsd;
+    existing.cacheWasHit = snap.cacheWasHit ?? false;
+    existing.lastRequestTime = fromIso(snap.lastRequestTime);
+    existing.lastCompactionTime = snap.lastCompactionTime ? fromIso(snap.lastCompactionTime) : null;
+    existing.lastUserPromptTime = snap.lastUserPromptTime ? fromIso(snap.lastUserPromptTime) : null;
+    existing.lastTool = snap.lastTool
+      ? { name: snap.lastTool, durationMs: 0, success: true, timestamp: 0 }
+      : null;
+    existing.lastError = snap.lastError
+      ? { type: snap.lastError as ErrorState["type"], timestamp: 0 }
+      : null;
+    existing.failedMcpServers = new Set(snap.failedMcpServers);
+    this.state.set(name, existing);
+    this.emitSessionUpdate(name);
+  }
+
+  /**
+   * Set the permission mode for a session from a persisted snapshot.
+   * A null mode (unknown at snapshot time) is treated as "default".
+   */
+  setPermissionMode(name: string, mode: import("./snapshot/schema").SnapshotPermissionMode): void {
+    const normalized: PermissionMode =
+      mode === "plan" || mode === "accept-edits" ? mode : "default";
+    const existing = this.state.get(name) ?? makeSessionOtelState();
+    existing.permissionMode = normalized;
+    this.state.set(name, existing);
+    this.emitSessionUpdate(name);
   }
 
   async start(): Promise<number> {

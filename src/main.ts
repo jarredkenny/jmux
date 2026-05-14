@@ -371,9 +371,11 @@ async function performBoot(opts: {
   socketName: string | undefined;
   config: import("./config").JmuxConfig;
   sessionState: import("./session-state").SessionState;
+  pinnedSessions: Set<string>;
 }): Promise<{
   attachSessionName: string | null;
   snapshotDir: string;
+  postRestoreActions: Array<() => void>;
 }> {
   const {
     ProductionFileSystem,
@@ -391,7 +393,7 @@ async function performBoot(opts: {
   });
 
   if (!opts.config.snapshot?.enabled) {
-    return { attachSessionName: null, snapshotDir: dir };
+    return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [] };
   }
 
   const fs = new ProductionFileSystem();
@@ -412,6 +414,9 @@ async function performBoot(opts: {
     }
   }
 
+  // Collect actions that require OtelReceiver (constructed after performBoot).
+  const postRestoreActions: Array<() => void> = [];
+
   const restorer = new Restorer({
     dir,
     fs,
@@ -421,6 +426,30 @@ async function performBoot(opts: {
     userShell: process.env.SHELL ?? "/bin/sh",
     claudeCommand: opts.config.claudeCommand ?? "claude",
     sessionLinksSink: (name, links) => opts.sessionState.upsertLinksForSession(name, links),
+    pinnedSink: (name, pinned) => {
+      if (pinned && !opts.pinnedSessions.has(name)) {
+        opts.pinnedSessions.add(name);
+        // Persist the restored pinned state — configStore is in scope at call site.
+        configStore.set("pinnedSessions", [...opts.pinnedSessions]);
+      }
+    },
+    attentionSink: (name, attention) => {
+      if (attention) {
+        // runner is a ProductionTmuxRunner — fire-and-forget is safe here.
+        void runner.run(["set-option", "-t", name, "@jmux-attention", "1"]);
+      }
+    },
+    permissionModeSink: (name, mode) => {
+      postRestoreActions.push(() => {
+        otelReceiverRef.current?.setPermissionMode(name, mode);
+      });
+    },
+    otelSink: (name, otel) => {
+      if (!otel) return;
+      postRestoreActions.push(() => {
+        otelReceiverRef.current?.setSessionSnapshot(name, otel);
+      });
+    },
   });
 
   const eligibility = await restorer.checkEligibility();
@@ -432,10 +461,11 @@ async function performBoot(opts: {
     return {
       attachSessionName: restorer.attachTarget(),
       snapshotDir: dir,
+      postRestoreActions,
     };
   }
 
-  return { attachSessionName: null, snapshotDir: dir };
+  return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [] };
 }
 
 // Enter alternate screen, raw mode, enable mouse tracking
@@ -453,11 +483,16 @@ process.stdin.resume();
 const sessionStatePath = demoCtx?.statePath ?? resolve(homedir(), ".config", "jmux", "state.json");
 const sessionState = new SessionState(sessionStatePath);
 
+// Forward reference used by performBoot's deferred otel sinks.
+// OtelReceiver is constructed just after performBoot; sinks are replayed immediately after.
+const otelReceiverRef: { current: OtelReceiver | null } = { current: null };
+
 // Run restore-before-attach boot phase.
 const boot = await performBoot({
   socketName,
   config: configStore.config,
   sessionState,
+  pinnedSessions,
 });
 
 // Core components
@@ -474,6 +509,9 @@ const bridge = new ScreenBridge(mainCols, ptyRows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, rows);
 const otelReceiver = new OtelReceiver();
+otelReceiverRef.current = otelReceiver;
+// Replay any restore actions that required OtelReceiver (permissionMode, otel state).
+for (const fn of boot.postRestoreActions) fn();
 sidebar.cacheTimersEnabled = cacheTimersEnabled;
 sidebar.setPinnedSessions(pinnedSessions);
 const control = new TmuxControl();
