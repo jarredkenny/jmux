@@ -488,22 +488,44 @@ const sessionState = new SessionState(sessionStatePath);
 const otelReceiverRef: { current: OtelReceiver | null } = { current: null };
 
 // Run restore-before-attach boot phase.
-const boot = await performBoot({
-  socketName,
-  config: configStore.config,
-  sessionState,
-  pinnedSessions,
-});
+let boot: Awaited<ReturnType<typeof performBoot>>;
+try {
+  boot = await performBoot({
+    socketName,
+    config: configStore.config,
+    sessionState,
+    pinnedSessions,
+  });
+} catch (err) {
+  process.stdout.write("\x1b[?1049l");
+  process.stdin.setRawMode?.(false);
+  throw err;
+}
 
 // Core components
+let attachMode: "strictAttach" | "createOrAttach" = "createOrAttach";
+let attachSessionName = boot.attachSessionName ?? undefined;
+if (boot.attachSessionName) {
+  // Confirm the restored session still exists before committing to strictAttach.
+  // There is a window between performBoot and TmuxPty construction where the session
+  // could have been destroyed, which would cause tmux attach-session to exit immediately.
+  const { ProductionTmuxRunner: BootRunner } = await import("./snapshot");
+  const check = await new BootRunner(socketName || null).run(["has-session", "-t", boot.attachSessionName]);
+  if (check.exitCode === 0) {
+    attachMode = "strictAttach";
+  } else {
+    // session vanished post-restore — fall back, let tmux pick a session
+    attachSessionName = undefined;
+  }
+}
 const pty = new TmuxPty({
-  sessionName: boot.attachSessionName ?? sessionName,
+  sessionName: attachSessionName ?? sessionName,
   socketName,
   configFile,
   jmuxDir,
   cols: mainCols,
   rows: ptyRows,
-  attachMode: boot.attachSessionName ? "strictAttach" : "createOrAttach",
+  attachMode,
 });
 const bridge = new ScreenBridge(mainCols, ptyRows);
 const renderer = new Renderer();
@@ -3407,7 +3429,7 @@ async function start(): Promise<void> {
   startupComplete = true;
 
   // --- Snapshotter wiring ---
-  {
+  if (configStore.config.snapshot?.enabled !== false) {
     const {
       Snapshotter,
       SnapshotModel,

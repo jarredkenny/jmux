@@ -55,6 +55,15 @@ export class ProductionFileSystem implements FileSystem {
     }
   }
 
+  async rmdir(path: string): Promise<void> {
+    try {
+      await fsp.rmdir(path);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTEMPTY") throw err;
+    }
+  }
+
   async readDir(path: string): Promise<string[]> {
     try {
       return await fsp.readdir(path);

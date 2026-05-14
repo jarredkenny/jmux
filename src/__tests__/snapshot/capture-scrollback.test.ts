@@ -191,4 +191,48 @@ describe("Snapshotter scrollback loop", () => {
     expect(written.byteLength).toBeLessThan(10000);
     await s.stop();
   });
+
+  test("gcScrollback removes files and dir for dead sessions", async () => {
+    const clock = new FakeClock();
+    const fs = new FakeFs();
+    const runner = new FakeRunner();
+
+    // Only "beta" is live; "dead" is gone
+    runner.setResponse("list-sessions -F #{session_name}", {
+      stdout: "beta\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    runner.setResponse("list-windows -t beta -F #{window_index}", {
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+    });
+
+    // Pre-populate scrollback files for the dead session
+    fs.files.set("/snap/scrollback/dead/0-0.ansi", new Uint8Array([1, 2, 3]));
+    fs.dirs.add("/snap/scrollback/dead");
+
+    const model = new SnapshotModel("test");
+    model.upsertSession(SnapshotModel.makeEmptySession("beta", "/x"));
+
+    const s = new Snapshotter({
+      dir: "/snap",
+      model,
+      fs,
+      runner,
+      clock,
+      debounceMs: 200,
+      scrollbackIntervalMs: 1000,
+    });
+    await s.start();
+    clock.advance(1000);
+    await clock.flushMicrotasks();
+
+    // File in dead session dir should be removed
+    expect(fs.files.has("/snap/scrollback/dead/0-0.ansi")).toBe(false);
+    // The dead session dir itself should be removed
+    expect(fs.dirs.has("/snap/scrollback/dead")).toBe(false);
+    await s.stop();
+  });
 });

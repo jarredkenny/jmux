@@ -298,6 +298,10 @@ export class Snapshotter {
           `\n--- truncated: oldest ${droppedActual} bytes dropped ---\n`,
         );
         tailBudget = Math.max(0, cap2 - marker.byteLength);
+        droppedActual = bytes.byteLength - tailBudget;
+        marker = enc.encode(
+          `\n--- truncated: oldest ${droppedActual} bytes dropped ---\n`,
+        );
       }
       let cut = bytes.byteLength - tailBudget;
       // Align tail start to a UTF-8 leading byte
@@ -327,6 +331,7 @@ export class Snapshotter {
       const dead = `${root}/${dir}`;
       const files = await this.opts.fs.readDir(dead);
       for (const f of files) await this.opts.fs.unlink(`${dead}/${f}`);
+      await this.opts.fs.rmdir(dead).catch(() => undefined);
     }
   }
 
@@ -372,6 +377,7 @@ export class Snapshotter {
           scrollbackFile: null,
         });
       }
+      if (panes.length === 0) continue;
       windows.push({
         index: idx,
         name: wname,

@@ -12,6 +12,7 @@ export interface FileSystem {
   writeAtomic(path: string, bytes: Uint8Array): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   unlink(path: string): Promise<void>;
+  rmdir(path: string): Promise<void>;
   readDir(path: string): Promise<string[]>;
   mkdir(path: string, recursive?: boolean): Promise<void>;
   stat(path: string): Promise<FileStat | null>;

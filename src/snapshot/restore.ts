@@ -126,6 +126,7 @@ export class Restorer {
 
     for (let wi = 0; wi < session.windows.length; wi++) {
       const w = session.windows[wi];
+      if (w.panes.length === 0) continue;  // degenerate window — skip
       const firstPane = w.panes[0];
       const painter = buildPainterArgv({
         scrollbackPath: firstPane.scrollbackFile

@@ -1,4 +1,5 @@
 import type { Clock } from "./snapshot/deps";
+import { ProductionClock } from "./snapshot/clock";
 
 // --- Protocol Parser (unit-testable) ---
 
@@ -191,6 +192,7 @@ export class TmuxControl {
   private currentBackoff = 0;
   private firstFailureAt: number | null = null;
   private reconnectTimerCancel: (() => void) | null = null;
+  private cooldownTimerCancel: (() => void) | null = null;
   private isLost = false;
 
   // Options set at construction time; start() may override socketName/configFile
@@ -252,6 +254,8 @@ export class TmuxControl {
 
   private attach(): void {
     if (this.isLost) return;
+    // Cancel any prior cooldown timer before spawning a new connection.
+    this.cooldownTimerCancel?.();
     const proc = this.spawner.spawn();
     this.currentProcess = proc;
     proc.onData((s) => this.parser.feed(s));
@@ -262,7 +266,8 @@ export class TmuxControl {
     this.sendCommand("refresh-client -f no-output").catch(() => {});
 
     // Reset backoff if the connection survives a full cooldown period
-    this.clock.setTimeout(() => {
+    this.cooldownTimerCancel = this.clock.setTimeout(() => {
+      this.cooldownTimerCancel = null;
       if (this.currentProcess === proc) {
         this.currentBackoff = 0;
         this.firstFailureAt = null;
@@ -306,7 +311,6 @@ export class TmuxControl {
   }
 
   private makeDefaultClock(): Clock {
-    const { ProductionClock } = require("./snapshot/clock") as typeof import("./snapshot/clock");
     return new ProductionClock();
   }
 
@@ -390,6 +394,8 @@ export class TmuxControl {
   async close(): Promise<void> {
     this.reconnectTimerCancel?.();
     this.reconnectTimerCancel = null;
+    this.cooldownTimerCancel?.();
+    this.cooldownTimerCancel = null;
     this.isLost = true; // Prevent reconnect after explicit close
     this.currentProcess?.kill();
     this.currentProcess = null;

@@ -165,6 +165,34 @@ describe("ProductionFileSystem.mkdir", () => {
   });
 });
 
+describe("ProductionFileSystem.rmdir", () => {
+  test("removes an empty directory", async () => {
+    const fs = new ProductionFileSystem();
+    const { mkdirSync } = await import("fs");
+    const sub = join(dir, "empty-sub");
+    mkdirSync(sub);
+    await fs.rmdir(sub);
+    expect(existsSync(sub)).toBe(false);
+  });
+
+  test("ignores ENOENT silently", async () => {
+    const fs = new ProductionFileSystem();
+    // Should not throw for a directory that does not exist
+    await fs.rmdir(join(dir, "nonexistent-dir"));
+  });
+
+  test("ignores ENOTEMPTY silently (non-empty dir)", async () => {
+    const fs = new ProductionFileSystem();
+    const { mkdirSync } = await import("fs");
+    const sub = join(dir, "nonempty-sub");
+    mkdirSync(sub);
+    writeFileSync(join(sub, "file.txt"), "content");
+    // Should not throw — ENOTEMPTY is silently swallowed
+    await fs.rmdir(sub);
+    expect(existsSync(sub)).toBe(true); // dir still exists since we didn't remove it
+  });
+});
+
 describe("ProductionFileSystem.lock", () => {
   test("acquires lock on a fresh path", async () => {
     const fs = new ProductionFileSystem();
