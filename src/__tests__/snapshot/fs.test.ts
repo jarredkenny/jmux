@@ -78,6 +78,93 @@ describe("ProductionFileSystem.readFile", () => {
   });
 });
 
+describe("ProductionFileSystem.rename", () => {
+  test("moves a file from one path to another", async () => {
+    const fs = new ProductionFileSystem();
+    const from = join(dir, "a.txt");
+    const to = join(dir, "b.txt");
+    writeFileSync(from, "hello");
+    await fs.rename(from, to);
+    expect(existsSync(from)).toBe(false);
+    expect(readFileSync(to, "utf8")).toBe("hello");
+  });
+});
+
+describe("ProductionFileSystem.unlink", () => {
+  test("deletes an existing file", async () => {
+    const fs = new ProductionFileSystem();
+    const path = join(dir, "del.txt");
+    writeFileSync(path, "x");
+    await fs.unlink(path);
+    expect(existsSync(path)).toBe(false);
+  });
+
+  test("ignores ENOENT silently", async () => {
+    const fs = new ProductionFileSystem();
+    // Should not throw for a file that does not exist
+    await fs.unlink(join(dir, "nonexistent.txt"));
+  });
+
+  test("propagates non-ENOENT errors", async () => {
+    const fs = new ProductionFileSystem();
+    // Attempt to unlink a directory (EISDIR on Linux, EPERM on macOS)
+    const subdir = join(dir, "subdir");
+    const { mkdirSync } = await import("fs");
+    mkdirSync(subdir);
+    let threw = false;
+    try {
+      await fs.unlink(subdir);
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+  });
+});
+
+describe("ProductionFileSystem.readDir", () => {
+  test("returns empty array for missing directory", async () => {
+    const fs = new ProductionFileSystem();
+    const result = await fs.readDir(join(dir, "nosuchdir"));
+    expect(result).toEqual([]);
+  });
+
+  test("returns file names in an existing directory", async () => {
+    const fs = new ProductionFileSystem();
+    writeFileSync(join(dir, "one.txt"), "");
+    writeFileSync(join(dir, "two.txt"), "");
+    const result = await fs.readDir(dir);
+    expect(result).toContain("one.txt");
+    expect(result).toContain("two.txt");
+  });
+});
+
+describe("ProductionFileSystem.stat", () => {
+  test("returns null for missing file", async () => {
+    const fs = new ProductionFileSystem();
+    const result = await fs.stat(join(dir, "missing.txt"));
+    expect(result).toBeNull();
+  });
+
+  test("returns size and mtimeMs for existing file", async () => {
+    const fs = new ProductionFileSystem();
+    const path = join(dir, "sized.txt");
+    writeFileSync(path, "hello");
+    const result = await fs.stat(path);
+    expect(result).not.toBeNull();
+    expect(result!.size).toBe(5);
+    expect(typeof result!.mtimeMs).toBe("number");
+  });
+});
+
+describe("ProductionFileSystem.mkdir", () => {
+  test("creates nested directories", async () => {
+    const fs = new ProductionFileSystem();
+    const nested = join(dir, "a", "b", "c");
+    await fs.mkdir(nested);
+    expect(existsSync(nested)).toBe(true);
+  });
+});
+
 describe("ProductionFileSystem.lock", () => {
   test("acquires lock on a fresh path", async () => {
     const fs = new ProductionFileSystem();
