@@ -331,6 +331,8 @@ export class Snapshotter {
       const dead = `${root}/${dir}`;
       const files = await this.opts.fs.readDir(dead);
       for (const f of files) await this.opts.fs.unlink(`${dead}/${f}`);
+      // rmdir already ignores ENOENT/ENOTEMPTY; the outer catch keeps one
+      // permission-denied stale dir from aborting the whole scrollback tick.
       await this.opts.fs.rmdir(dead).catch(() => undefined);
     }
   }

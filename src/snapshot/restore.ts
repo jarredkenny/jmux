@@ -123,6 +123,7 @@ export class Restorer {
 
     let layoutDegraded = false;
     let totalPanes = 0;
+    let sessionCreated = false;
 
     for (let wi = 0; wi < session.windows.length; wi++) {
       const w = session.windows[wi];
@@ -138,20 +139,21 @@ export class Restorer {
         userShell: this.opts.userShell,
       });
 
-      const baseArgs =
-        wi === 0
-          ? ["new-session", "-d", "-s", session.name, "-c", firstPane.cwd]
-          : ["new-window", "-t", `${session.name}:${w.index}`, "-c", firstPane.cwd];
+      const isFirst = !sessionCreated;
+      const baseArgs = isFirst
+        ? ["new-session", "-d", "-s", session.name, "-c", firstPane.cwd]
+        : ["new-window", "-t", `${session.name}:${w.index}`, "-c", firstPane.cwd];
 
       const r1 = await this.opts.runner.run([...baseArgs, ...painter]);
       if (r1.exitCode !== 0) {
         await this.failSession(
           session.name,
-          wi === 0 ? "new_session_failed" : "new_window_failed",
+          isFirst ? "new_session_failed" : "new_window_failed",
           r1.stderr,
         );
         return;
       }
+      sessionCreated = true;
       totalPanes++;
 
       // Remaining panes: split-window
@@ -201,6 +203,18 @@ export class Restorer {
         await this.failSession(session.name, "rename_window_failed", rR.stderr);
         return;
       }
+    }
+
+    // If every window was zero-pane the session was never created — log and bail.
+    if (!sessionCreated) {
+      this.outcomes.set(session.name, "skipped");
+      await this.log.append({
+        ts: new Date(this.opts.clock.now()).toISOString(),
+        session: session.name,
+        outcome: "skipped",
+        reason: "no_restorable_windows",
+      });
+      return;
     }
 
     // Active window
