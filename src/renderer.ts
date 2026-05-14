@@ -17,6 +17,8 @@ export interface ToolbarConfig {
   hoveredButton?: string | null;
   tabs?: WindowTab[];
   hoveredTabId?: string | null;
+  /** When set, a dim status chip is rendered between tabs and buttons. */
+  statusChip?: string | null;
 }
 
 export function sgrForCell(cell: Cell): string {
@@ -88,6 +90,18 @@ export function getToolbarButtonRanges(toolbar: ToolbarConfig): Array<{ id: stri
   return ranges;
 }
 
+// Returns the column range for the status chip (right-aligned, just before buttons).
+// Returns null if there is no statusChip.
+export function getToolbarStatusChipRange(toolbar: ToolbarConfig): { startCol: number; endCol: number } | null {
+  if (!toolbar.statusChip) return null;
+  const buttonRanges = getToolbarButtonRanges(toolbar);
+  const buttonsStart = buttonRanges.length > 0 ? buttonRanges[0].startCol : toolbar.mainCols;
+  // chip text is " <statusChip> " — 1 space padding each side
+  const chipWidth = stringDisplayWidth(toolbar.statusChip) + 2;
+  const startCol = buttonsStart - chipWidth;
+  return { startCol, endCol: buttonsStart - 1 };
+}
+
 // Returns the column ranges for each window tab (left-aligned in toolbar)
 export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string; startCol: number; endCol: number; tab: WindowTab }> {
   const tabs = toolbar.tabs ?? [];
@@ -95,7 +109,10 @@ export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string;
 
   const buttonRanges = getToolbarButtonRanges(toolbar);
   const buttonsStart = buttonRanges.length > 0 ? buttonRanges[0].startCol : toolbar.mainCols;
-  const maxCol = buttonsStart - 2; // 2-col gap before buttons
+  // Reserve space for the status chip when present; tabs must not overlap it
+  const chipRange = getToolbarStatusChipRange(toolbar);
+  const effectiveRightEdge = chipRange ? chipRange.startCol - 1 : buttonsStart;
+  const maxCol = effectiveRightEdge - 2; // 2-col gap before buttons/chip
 
   const ranges: Array<{ id: string; startCol: number; endCol: number; tab: WindowTab }> = [];
   let col = 1; // 1-col left padding
@@ -251,6 +268,36 @@ export function compositeGrids(
                 ...DEFAULT_CELL, char: "", width: 0,
                 bg: isHovered ? hoverBg : 0,
                 bgMode: isHovered ? ColorMode.RGB : ColorMode.Default,
+              };
+            }
+          }
+          col += w;
+        }
+      }
+
+      // Render status chip (dim text, right-aligned just before action buttons)
+      const chipRange = getToolbarStatusChipRange(toolbar);
+      if (chipRange && toolbar.statusChip) {
+        const label = ` ${toolbar.statusChip} `;
+        let col = 0;
+        for (const ch of label) {
+          const c = borderCol + 1 + chipRange.startCol + col;
+          const w = charDisplayWidth(ch);
+          if (c < totalCols) {
+            grid.cells[0][c] = {
+              ...DEFAULT_CELL,
+              char: ch,
+              width: w,
+              fg: 8,
+              fgMode: ColorMode.Palette,
+              dim: true,
+            };
+            if (w === 2 && c + 1 < totalCols) {
+              grid.cells[0][c + 1] = {
+                ...DEFAULT_CELL, char: "", width: 0,
+                fg: 8,
+                fgMode: ColorMode.Palette,
+                dim: true,
               };
             }
           }

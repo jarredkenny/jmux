@@ -337,7 +337,17 @@ let hoveredTabId: string | null = null;
 let hoveredPanelTabId: string | null = null;
 let startupComplete = false;
 
+function getSnapshotChipReason(): string | null {
+  // Suppressed when the user has explicitly opted out of snapshots.
+  if (!configStore.config.snapshot?.enabled) return null;
+  // If the control channel is permanently lost, report that first.
+  if (controlChannelLost) return "control_channel_lost";
+  if (!snapshotter) return null;
+  return snapshotter.degradedReason();
+}
+
 function makeToolbar(): ToolbarConfig {
+  const snapshotChipReason = getSnapshotChipReason();
   return {
     buttons: [
       { label: "◈", id: "panel", fg: diffPanel.isActive() ? ((0xF0 << 16) | (0x88 << 8) | 0x3E) : undefined, fgMode: diffPanel.isActive() ? 2 : undefined },
@@ -351,6 +361,7 @@ function makeToolbar(): ToolbarConfig {
     hoveredButton: hoveredToolbarButton,
     tabs: currentWindows,
     hoveredTabId,
+    statusChip: snapshotChipReason ? "snapshot off" : null,
   };
 }
 
@@ -564,6 +575,7 @@ let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
 let currentSessions: SessionInfo[] = [];
 let snapshotter: import("./snapshot").Snapshotter | null = null;
+let controlChannelLost = false;
 
 sidebar.setVersion(VERSION);
 const lastViewedTimestamps = new Map<string, number>();
@@ -3417,6 +3429,13 @@ async function start(): Promise<void> {
     // On control reconnect, do a full re-derivation
     control.onReconnected(() => {
       void snapshotter!.onSessionsChanged();
+    });
+
+    // On permanent control channel loss, surface the degraded chip and stop captures
+    control.onLost(() => {
+      controlChannelLost = true;
+      void snapshotter?.stop();
+      scheduleRender();
     });
 
     // SessionState link changes
