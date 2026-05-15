@@ -1,4 +1,4 @@
-import type { Clock, FileSystem, TmuxRunner } from "./deps";
+import type { Clock, FileSystem, Lock, TmuxRunner } from "./deps";
 import { validateSnapshot, type SnapshotFile, type SnapshotSession } from "./schema";
 import { RestoreLog, type RestoreOutcome } from "./log";
 import { buildPainterArgv } from "./painter";
@@ -30,7 +30,7 @@ export interface RestorerOptions {
 
 export type EligibilityResult =
   | { ok: true; snapshot: SnapshotFile }
-  | { ok: false; reason: "no_snapshot" | "invalid_snapshot" | "server_busy" | "tmux_error" };
+  | { ok: false; reason: "no_snapshot" | "invalid_snapshot" | "server_busy" | "tmux_error" | "locked" };
 
 const NO_SERVER_RX = /no server running|error connecting to|no sessions/i;
 
@@ -38,9 +38,33 @@ export class Restorer {
   protected readonly log: RestoreLog;
   protected outcomes = new Map<string, RestoreOutcome>();
   protected lastSnapshot: SnapshotFile | null = null;
+  private heldLock: Lock | null = null;
 
   constructor(protected readonly opts: RestorerOptions) {
     this.log = new RestoreLog(opts.fs, `${opts.dir}/restore.log`);
+  }
+
+  /**
+   * Transfer ownership of the lock to the caller (typically the Snapshotter).
+   * After this call, the Restorer no longer owns the lock.
+   * Returns null if the lock was never acquired (e.g. reason was "locked").
+   */
+  takeLock(): Lock | null {
+    const l = this.heldLock;
+    this.heldLock = null;
+    return l;
+  }
+
+  /**
+   * Release the held lock if still owned by this Restorer.
+   * Used when no Snapshotter will be constructed (e.g. snapshot.enabled is false
+   * after eligibility returned an ineligible-but-not-locked result).
+   */
+  async releaseLock(): Promise<void> {
+    if (this.heldLock) {
+      await this.heldLock.release();
+      this.heldLock = null;
+    }
   }
 
   attachTarget(): string | null {
@@ -58,6 +82,18 @@ export class Restorer {
   }
 
   async checkEligibility(): Promise<EligibilityResult> {
+    // Acquire the lock FIRST — before reading state.json — to guarantee that no
+    // two jmux processes can both pass eligibility and both run restore().
+    // On lock failure (another jmux holds it), skip immediately without acquiring.
+    const lock = await this.opts.fs.lock(`${this.opts.dir}/.lock`);
+    if (!lock) {
+      return { ok: false, reason: "locked" };
+    }
+    // Hold the lock for the lifetime of this Restorer (and then hand it to
+    // the Snapshotter via takeLock()).  All return paths below keep heldLock set
+    // so the caller can always call takeLock() to receive it.
+    this.heldLock = lock;
+
     const raw = await this.opts.fs.readFile(`${this.opts.dir}/state.json`);
     if (!raw) return { ok: false, reason: "no_snapshot" };
 

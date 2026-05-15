@@ -37,6 +37,10 @@ export class SnapshotModel {
     return this.sessions.has(name);
   }
 
+  getSession(name: string): SnapshotSession | undefined {
+    return this.sessions.get(name);
+  }
+
   sessionNames(): string[] {
     return Array.from(this.sessions.keys());
   }

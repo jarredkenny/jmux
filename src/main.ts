@@ -376,6 +376,8 @@ async function performBoot(opts: {
   attachSessionName: string | null;
   snapshotDir: string;
   postRestoreActions: Array<() => void>;
+  snapshotLock: import("./snapshot/deps").Lock | null;
+  lockedOut: boolean;
 }> {
   const {
     ProductionFileSystem,
@@ -393,7 +395,7 @@ async function performBoot(opts: {
   });
 
   if (!opts.config.snapshot?.enabled) {
-    return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [] };
+    return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [], snapshotLock: null, lockedOut: false };
   }
 
   const fs = new ProductionFileSystem();
@@ -453,6 +455,17 @@ async function performBoot(opts: {
   });
 
   const eligibility = await restorer.checkEligibility();
+
+  // Another jmux process holds the lock — we cannot restore or capture.
+  // Skip Snapshotter construction entirely (lockedOut=true signals this to the caller).
+  if (!eligibility.ok && eligibility.reason === "locked") {
+    return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [], snapshotLock: null, lockedOut: true };
+  }
+
+  // For all other outcomes (ok or ineligible-but-not-locked) the lock IS held by the
+  // Restorer.  Transfer it to the caller so it can be handed to the Snapshotter.
+  const snapshotLock = restorer.takeLock();
+
   if (eligibility.ok) {
     process.stdout.write(
       `restoring ${eligibility.snapshot.sessions.length} sessions from ${eligibility.snapshot.capturedAt}...\n`,
@@ -462,10 +475,12 @@ async function performBoot(opts: {
       attachSessionName: restorer.attachTarget(),
       snapshotDir: dir,
       postRestoreActions,
+      snapshotLock,
+      lockedOut: false,
     };
   }
 
-  return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [] };
+  return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [], snapshotLock, lockedOut: false };
 }
 
 // Enter alternate screen, raw mode, enable mouse tracking
@@ -3429,7 +3444,8 @@ async function start(): Promise<void> {
   startupComplete = true;
 
   // --- Snapshotter wiring ---
-  if (configStore.config.snapshot?.enabled !== false) {
+  // Skip if snapshot is disabled OR if another jmux process owns the lock.
+  if (configStore.config.snapshot?.enabled !== false && !boot.lockedOut) {
     const {
       Snapshotter,
       SnapshotModel,
@@ -3450,6 +3466,7 @@ async function start(): Promise<void> {
       debounceMs: 200,
       scrollbackIntervalMs: configStore.config.snapshot?.scrollbackIntervalMs ?? 5000,
       scrollbackMaxBytes: configStore.config.snapshot?.scrollbackMaxBytes ?? 2 * 1024 * 1024,
+      lock: boot.snapshotLock ?? undefined,
     });
 
     await snapshotter.start();

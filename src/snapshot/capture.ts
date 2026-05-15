@@ -16,6 +16,7 @@ export interface SnapshotterOptions {
   debounceMs: number;
   scrollbackIntervalMs: number;
   scrollbackMaxBytes?: number;
+  lock?: Lock;
 }
 
 export class Snapshotter {
@@ -39,11 +40,16 @@ export class Snapshotter {
   }
 
   async start(): Promise<void> {
-    this.lock = await this.opts.fs.lock(`${this.opts.dir}/.lock`);
-    if (!this.lock) {
-      this.degraded = true;
-      this.degradedReason_ = "lock_held";
-      return;
+    if (this.opts.lock !== undefined) {
+      // Caller (Restorer) already holds the lock — take ownership without re-acquiring.
+      this.lock = this.opts.lock;
+    } else {
+      this.lock = await this.opts.fs.lock(`${this.opts.dir}/.lock`);
+      if (!this.lock) {
+        this.degraded = true;
+        this.degradedReason_ = "lock_held";
+        return;
+      }
     }
     this.scrollbackCancel = this.opts.clock.setInterval(
       () => void this.scrollbackTick(),
@@ -327,13 +333,31 @@ export class Snapshotter {
     const root = `${this.opts.dir}/scrollback`;
     const entries = await this.opts.fs.readDir(root);
     for (const dir of entries) {
-      if (live.has(dir)) continue;
-      const dead = `${root}/${dir}`;
-      const files = await this.opts.fs.readDir(dead);
-      for (const f of files) await this.opts.fs.unlink(`${dead}/${f}`);
-      // rmdir already ignores ENOENT/ENOTEMPTY; the outer catch keeps one
-      // permission-denied stale dir from aborting the whole scrollback tick.
-      await this.opts.fs.rmdir(dead).catch(() => undefined);
+      const sessionDir = `${root}/${dir}`;
+      if (!live.has(dir)) {
+        // Whole session gone — remove all its files + the dir.
+        const files = await this.opts.fs.readDir(sessionDir);
+        for (const f of files) await this.opts.fs.unlink(`${sessionDir}/${f}`);
+        // rmdir already ignores ENOENT/ENOTEMPTY; the outer catch keeps one
+        // permission-denied stale dir from aborting the whole scrollback tick.
+        await this.opts.fs.rmdir(sessionDir).catch(() => undefined);
+        continue;
+      }
+      // Session is live — prune .ansi files for panes that no longer exist.
+      const session = this.opts.model.getSession(dir);
+      if (!session) continue;
+      const liveFiles = new Set<string>();
+      for (const w of session.windows) {
+        for (const p of w.panes) {
+          liveFiles.add(`${w.index}-${p.index}.ansi`);
+        }
+      }
+      const files = await this.opts.fs.readDir(sessionDir);
+      for (const f of files) {
+        if (!liveFiles.has(f)) {
+          await this.opts.fs.unlink(`${sessionDir}/${f}`).catch(() => undefined);
+        }
+      }
     }
   }
 

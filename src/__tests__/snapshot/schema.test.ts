@@ -361,6 +361,23 @@ describe("snapshot schema", () => {
     expect(result.ok).toBe(true);
   });
 
+  test("validateSnapshot rejects otel with unknown lastError type string", () => {
+    const bad = JSON.parse(JSON.stringify(good));
+    bad.sessions[0].otel = {
+      costUsd: 0,
+      cacheWasHit: null,
+      lastRequestTime: null,
+      lastCompactionTime: null,
+      lastTool: null,
+      lastUserPromptTime: null,
+      lastError: "some_unknown_error",
+      failedMcpServers: [],
+    };
+    const result = validateSnapshot(bad);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("lastError");
+  });
+
   test("validateSnapshot accepts lastFocusedSession as null", () => {
     const variant = { ...good, lastFocusedSession: null };
     const result = validateSnapshot(variant);

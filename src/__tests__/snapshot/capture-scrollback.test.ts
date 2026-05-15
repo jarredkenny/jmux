@@ -192,6 +192,75 @@ describe("Snapshotter scrollback loop", () => {
     await s.stop();
   });
 
+  test("gcScrollback prunes orphan pane files within a live session", async () => {
+    const clock = new FakeClock();
+    const fs = new FakeFs();
+    const runner = new FakeRunner();
+
+    // "alpha" is live with panes 0-0 and 0-1
+    runner.setResponse("list-sessions -F #{session_name}", {
+      stdout: "alpha\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    runner.setResponse("list-windows -t alpha -F #{window_index}", {
+      stdout: "0\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    runner.setResponse("list-panes -t alpha:0 -F #{pane_index}", {
+      stdout: "0\n1\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    runner.setResponse("capture-pane -p -e -J -S - -t alpha:0.0", {
+      stdout: "pane0 content",
+      stderr: "",
+      exitCode: 0,
+    });
+    runner.setResponse("capture-pane -p -e -J -S - -t alpha:0.1", {
+      stdout: "pane1 content",
+      stderr: "",
+      exitCode: 0,
+    });
+
+    // Pre-populate: live panes 0-0 and 0-1 plus stale 0-2 that no longer exists
+    fs.files.set("/snap/scrollback/alpha/0-0.ansi", new Uint8Array([1]));
+    fs.files.set("/snap/scrollback/alpha/0-1.ansi", new Uint8Array([2]));
+    fs.files.set("/snap/scrollback/alpha/0-2.ansi", new Uint8Array([3]));
+
+    const model = new SnapshotModel("test");
+    model.upsertSession({
+      ...SnapshotModel.makeEmptySession("alpha", "/x"),
+      windows: [
+        SnapshotModel.makeEmptyWindow(0, "main", "L", true, [
+          SnapshotModel.makeEmptyPane(0, "/x", "zsh"),
+          SnapshotModel.makeEmptyPane(1, "/x", "zsh"),
+        ]),
+      ],
+    });
+
+    const s = new Snapshotter({
+      dir: "/snap",
+      model,
+      fs,
+      runner,
+      clock,
+      debounceMs: 200,
+      scrollbackIntervalMs: 1000,
+    });
+    await s.start();
+    clock.advance(1000);
+    await clock.flushMicrotasks();
+
+    // Live pane files survive
+    expect(fs.files.has("/snap/scrollback/alpha/0-0.ansi")).toBe(true);
+    expect(fs.files.has("/snap/scrollback/alpha/0-1.ansi")).toBe(true);
+    // Stale pane file for closed pane 0-2 is pruned
+    expect(fs.files.has("/snap/scrollback/alpha/0-2.ansi")).toBe(false);
+    await s.stop();
+  });
+
   test("gcScrollback removes files and dir for dead sessions", async () => {
     const clock = new FakeClock();
     const fs = new FakeFs();

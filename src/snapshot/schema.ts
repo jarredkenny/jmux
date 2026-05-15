@@ -16,7 +16,8 @@ export interface SnapshotOtel {
   lastCompactionTime: string | null;
   lastTool: string | null;
   lastUserPromptTime: string | null;
-  lastError: string | null;
+  // null or one of the known ErrorState types from src/types.ts
+  lastError: "api_error" | "api_retries_exhausted" | null;
   failedMcpServers: string[];
 }
 
@@ -115,6 +116,15 @@ function validateLink(v: unknown, path: string): string | null {
   return null;
 }
 
+// Valid values for ErrorState["type"] — keep in sync with src/types.ts ErrorState.
+// These are the only strings that otel-receiver.ts will ever store as lastError.
+const KNOWN_LAST_ERROR_TYPES = ["api_error", "api_retries_exhausted"] as const;
+type KnownLastErrorType = (typeof KNOWN_LAST_ERROR_TYPES)[number];
+
+function isKnownLastErrorType(v: unknown): v is KnownLastErrorType {
+  return KNOWN_LAST_ERROR_TYPES.includes(v as KnownLastErrorType);
+}
+
 function validateOtel(v: unknown, path: string): string | null {
   if (v === null) return null;
   if (!isRecord(v)) return `${path}: not an object or null`;
@@ -127,12 +137,15 @@ function validateOtel(v: unknown, path: string): string | null {
     "lastCompactionTime",
     "lastTool",
     "lastUserPromptTime",
-    "lastError",
   ] as const;
   for (const k of nullableStrings) {
     if (v[k] !== null && !isString(v[k])) {
       return `${path}.${k}: not string or null`;
     }
+  }
+  // lastError must be null or one of the known error type strings (see src/types.ts ErrorState).
+  if (v.lastError !== null && !isKnownLastErrorType(v.lastError)) {
+    return `${path}.lastError: not null or a known error type`;
   }
   if (!Array.isArray(v.failedMcpServers)) {
     return `${path}.failedMcpServers: not an array`;
