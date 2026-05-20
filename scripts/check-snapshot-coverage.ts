@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// Parses `bun test --coverage src/__tests__/snapshot/` output and fails if any
-// `src/snapshot/**` file drops below 95% line coverage.
+// Parses `bun test --coverage` output and fails if any `src/snapshot/**` file
+// or `src/agent-state.ts` drops below 95% line coverage.
 // (Bun reports % funcs and % lines, not branches — line coverage is the
 // closest proxy and is what we gate on.)
 
@@ -8,7 +8,7 @@ import { spawnSync } from "child_process";
 
 const res = spawnSync(
   "bun",
-  ["test", "--coverage", "src/__tests__/snapshot/"],
+  ["test", "--coverage", "src/__tests__/snapshot/", "src/__tests__/agent-state.test.ts"],
   { encoding: "utf8" },
 );
 const out = (res.stdout ?? "") + (res.stderr ?? "");
@@ -22,13 +22,17 @@ const failures: string[] = [];
 const THRESHOLD = 95;
 const matched: string[] = [];
 
+function isGatedFile(line: string): boolean {
+  return line.includes("src/snapshot/") || line.includes("src/agent-state.ts");
+}
+
 for (const line of lines) {
-  // Only inspect lines that mention a src/snapshot/ source file.
-  if (!line.includes("src/snapshot/")) continue;
+  // Only inspect lines that mention a gated source file.
+  if (!isGatedFile(line)) continue;
 
   const parts = line.split("|").map((p) => p.trim());
   // Find the cell that contains the file path.
-  const fileIdx = parts.findIndex((p) => p.includes("src/snapshot/"));
+  const fileIdx = parts.findIndex((p) => isGatedFile(p));
   if (fileIdx === -1) continue;
 
   // Collect the first two finite numbers after the file column.
@@ -53,7 +57,7 @@ for (const line of lines) {
 
 if (matched.length === 0) {
   console.error(
-    "\nCOVERAGE GATE ERROR: no src/snapshot/** files found in coverage output.",
+    "\nCOVERAGE GATE ERROR: no src/snapshot/** or src/agent-state.ts files found in coverage output.",
   );
   console.error("Ensure bun test --coverage is producing a table for these files.");
   process.exit(2);
@@ -66,7 +70,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `\nCoverage gate passed: all src/snapshot/** files >= ${THRESHOLD}% line coverage.`,
+  `\nCoverage gate passed: all gated files >= ${THRESHOLD}% line coverage.`,
 );
 console.log(`Files checked (${matched.length}):`);
 for (const m of matched) console.log(`  ${m}`);

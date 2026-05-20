@@ -3524,6 +3524,19 @@ async function start(): Promise<void> {
     // Seed the model with current live tmux state
     await snapshotter.onSessionsChanged();
 
+    // Seed the snapshot model with current agent-state records. fetchAgentState()
+    // ran before snapshotter existed, so its updates went through the optional
+    // chain (`snapshotter?.onAgentState(...)`) and were no-ops. Replay them now
+    // so a capture-then-restart-then-restore cycle preserves agent state.
+    for (const session of currentSessions) {
+      const record = agentStateTracker.getRecord(session.id);
+      if (!record) continue;
+      snapshotter.onAgentState(session.name, {
+        state: record.state,
+        since: new Date(record.since).toISOString(),
+      });
+    }
+
     // Subscribe to TmuxControl events that affect the model
     control.onEvent((e: ControlEvent) => {
       switch (e.type) {
