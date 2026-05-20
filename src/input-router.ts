@@ -86,9 +86,14 @@ export class InputRouter {
   private mainCols = 0;
   private panelTabsActive = false;
   private panelFilterActive = false;
+  private toolbarRows = 1;
   constructor(opts: InputRouterOptions, sidebarVisible: boolean) {
     this.opts = opts;
     this.sidebarVisible = sidebarVisible;
+  }
+
+  setToolbarRows(rows: number): void {
+    this.toolbarRows = rows;
   }
 
   setSidebarVisible(visible: boolean): void {
@@ -203,7 +208,7 @@ export class InputRouter {
         if (mouse.x <= this.opts.sidebarCols) {
           this.opts.onHover({ area: "sidebar", row: mouse.y - 1 });
         } else if (!this.modalOpen) {
-          if (mouse.y === 1) {
+          if (mouse.y <= this.toolbarRows) {
             this.opts.onHover({ area: "toolbar", col: mouse.x - this.opts.sidebarCols - 1 });
           } else {
             this.opts.onHover(null);
@@ -233,8 +238,8 @@ export class InputRouter {
         return;
       }
 
-      // Toolbar click — row 1 in main area
-      if (mouse.y === 1 && !mouse.release && !isMotion && !isWheel) {
+      // Toolbar click — rows 1..toolbarRows in main area
+      if (mouse.y <= this.toolbarRows && !mouse.release && !isMotion && !isWheel) {
         const mainCol = mouse.x - this.opts.sidebarCols - 1; // 0-indexed in main area
         this.opts.onToolbarClick?.(mainCol);
         return;
@@ -271,14 +276,14 @@ export class InputRouter {
           // Non-diff tab: wheel scrolls the view
           if (this.panelTabsActive && isWheel) {
             const delta = (mouse.button & 1) ? 3 : -3;
-            const panelRow = mouse.y - 2; // -1 for 1-indexed, -1 for toolbar
+            const panelRow = mouse.y - 1 - this.toolbarRows; // -1 for 1-indexed, -toolbarRows for toolbar
             this.opts.onPanelScroll?.(delta, panelRow);
             return;
           }
 
           // Non-diff tab: clicks in list area select items
           if (this.panelTabsActive && !mouse.release && !isMotion && !isWheel) {
-            const panelRow = mouse.y - 2; // -1 for 1-indexed, -1 for toolbar row
+            const panelRow = mouse.y - 1 - this.toolbarRows; // -1 for 1-indexed, -toolbarRows for toolbar
             if (panelRow >= 0) {
               this.opts.onPanelItemClick?.(panelRow); // main.ts bounds-checks against listRows
             }
@@ -286,7 +291,7 @@ export class InputRouter {
           }
 
           if (isMotion && (mouse.button & 0x03) === 3) return; // bare motion, skip
-          const translated = translateMouse(data, dividerX, 1);
+          const translated = translateMouse(data, dividerX, this.toolbarRows);
           if (translated) {
             this.opts.onDiffPanelData?.(translated);
           }
@@ -301,7 +306,7 @@ export class InputRouter {
       }
       // Don't forward bare motion events to PTY (too noisy)
       if (isMotion && (mouse.button & 0x03) === 3) return;
-      const mainTranslated = translateMouse(data, this.opts.sidebarCols + 1, 1);
+      const mainTranslated = translateMouse(data, this.opts.sidebarCols + 1, this.toolbarRows);
       if (mainTranslated) {
         this.opts.onPtyData(mainTranslated);
       }
