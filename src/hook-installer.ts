@@ -33,6 +33,10 @@ const SET_WAITING =
   "tmux set-option @jmux-agent-state waiting 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null || true";
 const SET_COMPLETE =
   "tmux set-option @jmux-agent-state complete 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null || true";
+// PreToolUse fires on EVERY tool invocation mid-task. Without this guard
+// every call would overwrite @jmux-agent-state-since, resetting the row-1
+// elapsed timer and making a stuck tool invisible. The other three hooks
+// fire at clean transition points and don't need the guard.
 const SET_RUNNING_IDEMPOTENT =
   "[ \"$(tmux show-option -qv @jmux-agent-state 2>/dev/null)\" = \"running\" ] || { tmux set-option @jmux-agent-state running 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null; } || true";
 
@@ -41,16 +45,12 @@ const TIMEOUT = 5;
 const HOOK_COMMANDS: Record<HookEvent, string> = {
   UserPromptSubmit: SET_RUNNING,
   PermissionRequest: SET_WAITING,
+  // Idempotent — see SET_RUNNING_IDEMPOTENT comment.
   PreToolUse: SET_RUNNING_IDEMPOTENT,
   Stop: SET_COMPLETE,
 };
 
-const HOOK_EVENTS: readonly HookEvent[] = [
-  "UserPromptSubmit",
-  "PermissionRequest",
-  "PreToolUse",
-  "Stop",
-];
+const HOOK_EVENTS = Object.keys(HOOK_COMMANDS) as readonly HookEvent[];
 
 export function buildHookBlock(): Record<HookEvent, HookEntry[]> {
   const out = {} as Record<HookEvent, HookEntry[]>;
@@ -105,7 +105,12 @@ function stripLegacyAndJmux(entries: HookEntry[] | undefined): HookEntry[] {
 
 export function installHooks(settings: ClaudeSettings): InstallOutcome {
   const detected = detectInstalledKind(settings);
-  if (detected === "current") return { kind: "noop", settings };
+  if (detected === "current") {
+    return {
+      kind: "noop",
+      settings: JSON.parse(JSON.stringify(settings)) as ClaudeSettings,
+    };
+  }
 
   // Deep-clone so callers can compare structurally and so we don't mutate the
   // caller's settings object.
