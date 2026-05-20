@@ -1,10 +1,14 @@
 import type { AgentState, AgentStateRecord } from "./types";
 
-const VALID_STATES: ReadonlySet<string> = new Set([
-  "running",
-  "waiting",
-  "complete",
-]);
+// Keep VALID_STATES in sync with the AgentState union: adding/removing a
+// member there must change the keys here, otherwise this object becomes a
+// type error.
+const VALID_STATES_KEYS: Record<AgentState, true> = {
+  running: true,
+  waiting: true,
+  complete: true,
+};
+const VALID_STATES: ReadonlySet<string> = new Set(Object.keys(VALID_STATES_KEYS));
 
 function isAgentState(v: string): v is AgentState {
   return VALID_STATES.has(v);
@@ -76,14 +80,11 @@ export class AgentStateTracker {
 
   pruneExcept(activeIds: string[]): void {
     const active = new Set(activeIds);
-    for (const id of this.records.keys()) {
-      if (!active.has(id)) {
-        this.records.delete(id);
-        // Intentionally no emit — pruning is a cleanup pass, not a
-        // semantic state change. The renderer will reconcile via the
-        // session list.
-      }
-    }
+    // Snapshot keys first, then delete — iterating while mutating a Map is
+    // legal but unidiomatic and trips readers. Pruning is a cleanup pass,
+    // not a semantic state change, so we intentionally do not emit.
+    const toDelete = [...this.records.keys()].filter((id) => !active.has(id));
+    for (const id of toDelete) this.records.delete(id);
   }
 
   private parseSinceMs(rawSince: string | null): number {

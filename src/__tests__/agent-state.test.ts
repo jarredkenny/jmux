@@ -50,6 +50,16 @@ describe("AgentStateTracker.apply", () => {
     expect(t.getState("$missing")).toBeNull();
     expect(t.getRecord("$missing")).toBeNull();
   });
+
+  test("default clock uses Date.now() when no nowMs is injected", () => {
+    const before = Date.now();
+    const t = new AgentStateTracker();
+    t.apply("$1", "running", null);
+    const after = Date.now();
+    const since = t.getRecord("$1")?.since ?? 0;
+    expect(since).toBeGreaterThanOrEqual(before);
+    expect(since).toBeLessThanOrEqual(after);
+  });
 });
 
 describe("AgentStateTracker.onChange", () => {
