@@ -9,7 +9,6 @@ export interface SessionEntry {
   activity: number;
   attached: boolean;
   windows: number;
-  attention: boolean;
   path: string;
 }
 
@@ -18,16 +17,15 @@ export function parseSessionListOutput(lines: string[]): SessionEntry[] {
     .filter((l) => l.length > 0)
     .map((line) => {
       const parts = line.split(":");
-      // Format: id:name:activity:attached:windows:attention:path...
-      // path may contain colons, so rejoin everything from index 6 onward
+      // Format: id:name:activity:attached:windows:path...
+      // path may contain colons, so rejoin everything from index 5 onward
       const id = parts[0];
       const name = parts[1];
       const activity = parseInt(parts[2], 10);
       const attached = parts[3] === "1";
       const windows = parseInt(parts[4], 10);
-      const attention = parts[5] === "1";
-      const path = parts.slice(6).join(":");
-      return { id, name, activity, attached, windows, attention, path };
+      const path = parts.slice(5).join(":");
+      return { id, name, activity, attached, windows, path };
     });
 }
 
@@ -54,7 +52,7 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
   switch (action) {
     case "list": {
       const result = runTmuxDirect(
-        ["list-sessions", "-F", "#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{@jmux-attention}:#{pane_current_path}"],
+        ["list-sessions", "-F", "#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{pane_current_path}"],
         ctx.socket,
       );
       // If no sessions exist, tmux exits non-zero — treat as empty list
@@ -95,7 +93,7 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       const target = flags.target;
 
       const sessionResult = runTmuxDirect(
-        ["list-sessions", "-F", "#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{@jmux-attention}:#{pane_current_path}", "-f", `#{==:#{session_name},${target}}`],
+        ["list-sessions", "-F", "#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{pane_current_path}", "-f", `#{==:#{session_name},${target}}`],
         ctx.socket,
       );
       tmuxOrThrow(sessionResult);

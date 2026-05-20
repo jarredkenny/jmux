@@ -4,13 +4,13 @@ import { parseSessionListOutput, validateSessionCreate } from "../../cli/session
 describe("parseSessionListOutput", () => {
   test("parses list-sessions format string output", () => {
     const lines = [
-      "$1:my-project:1712678400:1:3:0:/Users/jarred/Code/project",
-      "$2:other:1712678300:0:1:1:/Users/jarred/Code/other",
+      "$1:my-project:1712678400:1:3:/Users/jarred/Code/project",
+      "$2:other:1712678300:0:1:/Users/jarred/Code/other",
     ];
     const sessions = parseSessionListOutput(lines);
     expect(sessions).toEqual([
-      { id: "$1", name: "my-project", activity: 1712678400, attached: true, windows: 3, attention: false, path: "/Users/jarred/Code/project" },
-      { id: "$2", name: "other", activity: 1712678300, attached: false, windows: 1, attention: true, path: "/Users/jarred/Code/other" },
+      { id: "$1", name: "my-project", activity: 1712678400, attached: true, windows: 3, path: "/Users/jarred/Code/project" },
+      { id: "$2", name: "other", activity: 1712678300, attached: false, windows: 1, path: "/Users/jarred/Code/other" },
     ]);
   });
 
@@ -19,7 +19,7 @@ describe("parseSessionListOutput", () => {
   });
 
   test("handles path with colons", () => {
-    const lines = ["$1:test:100:1:1:0:C:\\Users\\test"];
+    const lines = ["$1:test:100:1:1:C:\\Users\\test"];
     const sessions = parseSessionListOutput(lines);
     expect(sessions[0].path).toBe("C:\\Users\\test");
   });

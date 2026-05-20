@@ -22,12 +22,10 @@ If not set, you're outside jmux and most commands require explicit `--session` f
 |---------|---------|
 | `jmux ctl session list` | List all sessions |
 | `jmux ctl session create --name N --dir PATH` | Create new session |
-| `jmux ctl session info --target NAME` | Session details + attention flag |
+| `jmux ctl session info --target NAME` | Session details |
 | `jmux ctl session kill --target NAME` | Kill a session |
 | `jmux ctl session rename --target NAME --name NEW` | Rename a session |
 | `jmux ctl session switch --target NAME` | Switch to a session |
-| `jmux ctl session set-attention --target NAME` | Flag for human review |
-| `jmux ctl session set-attention --target NAME --clear` | Clear attention flag |
 | `jmux ctl run-claude --name N --dir PATH --message "..."` | Launch Claude Code |
 | `jmux ctl window list` | List windows in current session |
 | `jmux ctl window create` | Create new window |
@@ -58,9 +56,9 @@ If not set, you're outside jmux and most commands require explicit `--session` f
 3. **Don't kill what you didn't create.** Only kill sessions/panes you spawned.
    Kill commands refuse to destroy your own session/pane without `--force`.
 
-4. **Check attention, don't poll capture.** Use `jmux ctl session info --target NAME`
-   and check the `attention` field to know when a Claude instance finished.
-   Only use `pane capture` when you need the actual screen content.
+4. **Check agent state, don't poll capture.** Use `jmux ctl session list` to monitor
+   sessions. Poll until the session you're watching no longer appears, or use
+   `pane capture` to check screen content when you need it.
 
 5. **Parse JSON.** All output is structured JSON. Don't regex it.
 
@@ -77,13 +75,13 @@ result2=$(jmux ctl run-claude --name task-tests --dir /repo --message "Add tests
 session1=$(echo "$result1" | jq -r .session)
 session2=$(echo "$result2" | jq -r .session)
 
-# Monitor — poll attention flags
+# Monitor — poll pane output to check for completion
 while true; do
-  info1=$(jmux ctl session info --target "$session1")
-  info2=$(jmux ctl session info --target "$session2")
-  attn1=$(echo "$info1" | jq .attention)
-  attn2=$(echo "$info2" | jq .attention)
-  if [ "$attn1" = "true" ] && [ "$attn2" = "true" ]; then
+  out1=$(jmux ctl pane capture --target "$(echo "$result1" | jq -r .pane)" --lines 5)
+  out2=$(jmux ctl pane capture --target "$(echo "$result2" | jq -r .pane)" --lines 5)
+  done1=$(echo "$out1" | jq -r .content | grep -c ">" || true)
+  done2=$(echo "$out2" | jq -r .content | grep -c ">" || true)
+  if [ "$done1" -gt 0 ] && [ "$done2" -gt 0 ]; then
     echo "Both agents finished"
     break
   fi
@@ -99,10 +97,10 @@ result=$(jmux ctl run-claude --name analyze --dir /repo --message "Analyze the a
 session=$(echo "$result" | jq -r .session)
 pane=$(echo "$result" | jq -r .pane)
 
-# Step 2: wait for completion
+# Step 2: wait for completion (poll pane for the shell prompt)
 while true; do
-  info=$(jmux ctl session info --target "$session")
-  if [ "$(echo "$info" | jq .attention)" = "true" ]; then break; fi
+  out=$(jmux ctl pane capture --target "$pane" --lines 5)
+  if echo "$out" | jq -r .content | grep -q ">"; then break; fi
   sleep 10
 done
 
@@ -141,7 +139,7 @@ jmux ctl pane capture --target %12 --raw
 
 ### session list
 ```json
-{"sessions": [{"id": "$1", "name": "my-project", "windows": 3, "attached": true, "activity": 1712678400, "attention": false, "path": "/path/to/project"}]}
+{"sessions": [{"id": "$1", "name": "my-project", "windows": 3, "attached": true, "activity": 1712678400, "path": "/path/to/project"}]}
 ```
 
 ### session create / run-claude
@@ -151,7 +149,7 @@ jmux ctl pane capture --target %12 --raw
 
 ### session info
 ```json
-{"id": "$1", "name": "my-project", "windows": 2, "attached": true, "attention": true, "path": "/path", "windows_detail": [{"id": "@1", "index": 0, "name": "claude", "active": true, "zoomed": false, "bell": false}]}
+{"id": "$1", "name": "my-project", "windows": 2, "attached": true, "path": "/path", "windows_detail": [{"id": "@1", "index": 0, "name": "claude", "active": true, "zoomed": false, "bell": false}]}
 ```
 
 ### pane capture

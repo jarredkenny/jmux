@@ -34,6 +34,7 @@ import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./ty
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { ConfigStore, sanitizeTmuxSessionName } from "./config";
 import { OtelReceiver } from "./otel-receiver";
+import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
 import { installHooks, type ClaudeSettings } from "./hook-installer";
 import { resolve, dirname } from "path";
@@ -406,6 +407,11 @@ async function performBoot(opts: {
   // Collect actions that require OtelReceiver (constructed after performBoot).
   const postRestoreActions: Array<() => void> = [];
 
+  // Mutable variable filled in after eligibility check; the agentStateSink
+  // closure is only ever called during restorer.run() which requires
+  // eligibility.ok === true, so capturedAt is always set by call time.
+  let restoreCapturedAt: string = "";
+
   const restorer = new Restorer({
     dir,
     fs,
@@ -422,11 +428,19 @@ async function performBoot(opts: {
         configStore.set("pinnedSessions", [...opts.pinnedSessions]);
       }
     },
-    attentionSink: (name, attention) => {
-      if (attention) {
-        // runner is a ProductionTmuxRunner — fire-and-forget is safe here.
-        void runner.run(["set-option", "-t", name, "@jmux-attention", "1"]);
-      }
+    agentStateSink: (name, agentState) => {
+      if (!agentState) return;
+      const TEN_MIN_MS = 10 * 60 * 1000;
+      const coerced = coerceStaleAgentState(
+        agentState,
+        restoreCapturedAt,
+        Date.now(),
+        TEN_MIN_MS,
+      );
+      if (!coerced) return;
+      const sinceEpoch = Math.floor(Date.parse(coerced.since) / 1000);
+      void runner.run(["set-option", "-t", name, "@jmux-agent-state", coerced.state]);
+      void runner.run(["set-option", "-t", name, "@jmux-agent-state-since", String(sinceEpoch)]);
     },
     permissionModeSink: (name, mode) => {
       postRestoreActions.push(() => {
@@ -454,6 +468,7 @@ async function performBoot(opts: {
   const snapshotLock = restorer.takeLock();
 
   if (eligibility.ok) {
+    restoreCapturedAt = eligibility.snapshot.capturedAt;
     process.stdout.write(
       `restoring ${eligibility.snapshot.sessions.length} sessions from ${eligibility.snapshot.capturedAt}...\n`,
     );
@@ -532,7 +547,33 @@ const pty = new TmuxPty({
 const bridge = new ScreenBridge(mainCols, ptyRows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, rows);
-const otelReceiver = new OtelReceiver({});
+const agentStateTracker = new AgentStateTracker();
+agentStateTracker.onChange((sessionId) => {
+  const record = agentStateTracker.getRecord(sessionId);
+  sidebar.setAgentStateRecord(sessionId, record);
+
+  // Mirror to snapshot if snapshotter is up.
+  const sessionName = currentSessions.find((s) => s.id === sessionId)?.name;
+  if (sessionName) {
+    const snapState = record
+      ? { state: record.state, since: new Date(record.since).toISOString() }
+      : null;
+    snapshotter?.onAgentState(sessionName, snapState);
+  }
+
+  scheduleRender();
+});
+const otelReceiver = new OtelReceiver({
+  onAgentResumeHint: (sessionName) => {
+    const id = currentSessions.find((s) => s.name === sessionName)?.id;
+    if (!id) return;
+    if (agentStateTracker.getState(id) !== "waiting") return;
+    void control.sendCommand(`set-option -t ${tq(id)} @jmux-agent-state running`).catch(() => {});
+    void control
+      .sendCommand(`set-option -t ${tq(id)} @jmux-agent-state-since ${String(Math.floor(Date.now() / 1000))}`)
+      .catch(() => {});
+  },
+});
 otelReceiverRef.current = otelReceiver;
 // Replay any restore actions that required OtelReceiver (permissionMode, otel state).
 for (const fn of boot.postRestoreActions) fn();
@@ -842,19 +883,19 @@ async function zoomDiffPanel(): Promise<void> {
 async function fetchSessions(): Promise<void> {
   try {
     const lines = await control.sendCommand(
-      "list-sessions -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{@jmux-attention}'",
+      "list-sessions -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}'",
     );
     const sessions: SessionInfo[] = lines
       .filter((l) => l.length > 0)
       .map((line) => {
-        const [id, name, activity, attached, windows, attn] = line.split(":");
+        const [id, name, activity, attached, windows] = line.split(":");
         const cached = sessionDetailsCache.get(id);
         return {
           id,
           name,
           activity: parseInt(activity, 10) || 0,
           attached: attached === "1",
-          attention: attn === "1",
+          attention: false,
           windowCount: parseInt(windows, 10) || 1,
           directory: cached?.directory,
           gitBranch: cached?.gitBranch,
@@ -1094,19 +1135,10 @@ function scheduleRender(): void {
 function clearSessionIndicators(): void {
   if (!currentSessionId) return;
   const id = currentSessionId;
-
-  // Only clear if there's something to clear
-  const needsActivityClear = sidebar.hasActivity(id);
-  const needsAttentionClear = sidebar.hasAttention(id);
-  if (!needsActivityClear && !needsAttentionClear) return;
-
+  if (!sidebar.hasActivity(id)) return;
   lastViewedTimestamps.set(id, Math.floor(Date.now() / 1000));
   sidebar.setActivity(id, false);
   scheduleRender();
-
-  if (needsAttentionClear) {
-    control.sendCommand(`set-option -t ${tq(id)} -u @jmux-attention`).catch(() => {});
-  }
 }
 
 function resolvePreselectedTeamId(): string | null {
@@ -3273,8 +3305,8 @@ control.onEvent((event: ControlEvent) => {
       break;
     case "subscription-changed":
       if (!startupComplete) break;
-      if (event.name === "attention") {
-        fetchSessions();
+      if (event.name === "agent-state" || event.name === "agent-state-since") {
+        void fetchAgentState();
       } else if (event.name === "windows") {
         fetchWindows();
       }
@@ -3366,6 +3398,26 @@ async function fetchWindows(): Promise<void> {
   }
 }
 
+async function fetchAgentState(): Promise<void> {
+  const result = await control.sendCommand(
+    "list-sessions -F '#{session_id}:#{@jmux-agent-state}:#{@jmux-agent-state-since}'",
+  );
+  const activeIds: string[] = [];
+  for (const line of result) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const colon1 = trimmed.indexOf(":");
+    const colon2 = trimmed.indexOf(":", colon1 + 1);
+    if (colon1 < 0 || colon2 < 0) continue;
+    const id = trimmed.slice(0, colon1);
+    const rawState = trimmed.slice(colon1 + 1, colon2);
+    const rawSince = trimmed.slice(colon2 + 1);
+    activeIds.push(id);
+    agentStateTracker.apply(id, rawState || null, rawSince || null);
+  }
+  agentStateTracker.pruneExcept(activeIds);
+}
+
 async function handleTabClick(windowId: string): Promise<void> {
   try {
     await control.sendCommand(`select-window -t ${windowId}`);
@@ -3428,6 +3480,18 @@ async function start(): Promise<void> {
   }
   await syncControlClient();
   await fetchWindows();
+  await fetchAgentState();
+
+  // One-shot cleanup: previous jmux versions wrote @jmux-attention=1 via a
+  // Stop hook. The hook will be replaced when the user re-runs
+  // --install-agent-hooks, but old stale flags may linger across sessions.
+  // Fire-and-forget; per-session failures are harmless.
+  for (const session of currentSessions) {
+    void control
+      .sendCommand(`set-option -t ${tq(session.id)} -u @jmux-attention`)
+      .catch(() => {});
+  }
+
   startupComplete = true;
 
   // --- Snapshotter wiring ---
@@ -3573,11 +3637,17 @@ async function start(): Promise<void> {
     openModal(welcomeModal, () => {});
   }
 
-  // Subscribe to @jmux-attention across all sessions
+  // Subscribe to per-session agent-state user options. Each subscription is a
+  // space-separated list of "<session_id>=<value>" pairs across all sessions.
   await control.registerSubscription(
-    "attention",
+    "agent-state",
     1,
-    "#{S:#{session_id}=#{@jmux-attention} }",
+    "#{S:#{session_id}=#{@jmux-agent-state} }",
+  );
+  await control.registerSubscription(
+    "agent-state-since",
+    1,
+    "#{S:#{session_id}=#{@jmux-agent-state-since} }",
   );
 
   // Subscribe to window count + active window + name — fires on add/remove/switch/rename
