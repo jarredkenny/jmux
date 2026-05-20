@@ -149,3 +149,73 @@ describe("AgentStateTracker.size", () => {
     expect(t.size).toBe(0);
   });
 });
+
+import { coerceStaleAgentState, type StoredAgentState } from "../agent-state";
+
+const TEN_MIN_MS = 10 * 60 * 1000;
+
+describe("coerceStaleAgentState", () => {
+  test("returns null unchanged", () => {
+    expect(
+      coerceStaleAgentState(null, "2026-05-20T12:00:00Z", Date.parse("2026-05-20T12:05:00Z"), TEN_MIN_MS),
+    ).toBeNull();
+  });
+
+  test("returns the input unchanged when within the threshold", () => {
+    const stored = { state: "running" as const, since: "2026-05-20T11:59:00Z" };
+    const out = coerceStaleAgentState(
+      stored,
+      "2026-05-20T12:00:00Z",
+      Date.parse("2026-05-20T12:05:00Z"),
+      TEN_MIN_MS,
+    );
+    expect(out).toEqual(stored);
+  });
+
+  test("coerces stale running to complete", () => {
+    const stored: StoredAgentState = { state: "running", since: "2026-05-20T10:00:00Z" };
+    const out = coerceStaleAgentState(
+      stored,
+      "2026-05-20T10:00:00Z",
+      Date.parse("2026-05-20T12:00:00Z"),
+      TEN_MIN_MS,
+    );
+    expect(out).toEqual({
+      state: "complete",
+      since: "2026-05-20T10:00:00Z",
+    });
+  });
+
+  test("coerces stale waiting to complete", () => {
+    const stored: StoredAgentState = { state: "waiting", since: "2026-05-20T10:00:00Z" };
+    const out = coerceStaleAgentState(
+      stored,
+      "2026-05-20T10:00:00Z",
+      Date.parse("2026-05-20T12:00:00Z"),
+      TEN_MIN_MS,
+    );
+    expect(out?.state).toBe("complete");
+  });
+
+  test("leaves stale complete unchanged", () => {
+    const stored = { state: "complete" as const, since: "2026-05-20T10:00:00Z" };
+    const out = coerceStaleAgentState(
+      stored,
+      "2026-05-20T10:00:00Z",
+      Date.parse("2026-05-20T12:00:00Z"),
+      TEN_MIN_MS,
+    );
+    expect(out).toEqual(stored);
+  });
+
+  test("malformed capturedAt is treated as stale (safest)", () => {
+    const stored: StoredAgentState = { state: "running", since: "2026-05-20T10:00:00Z" };
+    const out = coerceStaleAgentState(
+      stored,
+      "garbage",
+      Date.parse("2026-05-20T12:00:00Z"),
+      TEN_MIN_MS,
+    );
+    expect(out?.state).toBe("complete");
+  });
+});

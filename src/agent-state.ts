@@ -1,5 +1,51 @@
 import type { AgentState, AgentStateRecord } from "./types";
 
+/**
+ * Structural shape for a stored snapshot agent state. Task 3 will declare
+ * the canonical `SnapshotAgentState` type in `src/snapshot/schema.ts`
+ * with this exact shape — structural typing keeps these compatible
+ * without a cross-module import.
+ */
+export interface StoredAgentState {
+  state: AgentState;
+  /** ISO timestamp string. */
+  since: string;
+}
+
+/**
+ * If the snapshot is older than `thresholdMs` and the stored state is
+ * `running` or `waiting`, coerce it to `complete` — an agent that was
+ * running 10+ minutes ago without any subsequent hook fire is almost
+ * certainly dead. Used by the snapshot restore path.
+ *
+ * A malformed `capturedAt` is treated as stale (safest: we don't want
+ * to leave a bogus "RUNNING 4h" on the screen after a long suspend).
+ *
+ * The generic `<T extends StoredAgentState>` means callers can pass a
+ * richer type (e.g. SnapshotAgentState) and get it back unchanged when
+ * not coerced, preserving any extra fields.
+ */
+export function coerceStaleAgentState<T extends StoredAgentState>(
+  stored: T | null,
+  capturedAt: string,
+  nowMs: number,
+  thresholdMs: number,
+): T | null {
+  if (stored === null) return null;
+  if (stored.state === "complete") return stored;
+
+  const capturedMs = Date.parse(capturedAt);
+  const age = Number.isFinite(capturedMs)
+    ? nowMs - capturedMs
+    : Number.POSITIVE_INFINITY;
+
+  if (age <= thresholdMs) return stored;
+  // Cast through unknown: we're deliberately widening `state` from a
+  // narrower literal to "complete". The generic T is preserved for all
+  // other fields; only `state` is overwritten.
+  return { ...stored, state: "complete" } as unknown as T;
+}
+
 // Keep VALID_STATES in sync with the AgentState union: adding/removing a
 // member there must change the keys here, otherwise this object becomes a
 // type error.
