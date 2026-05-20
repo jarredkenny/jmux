@@ -439,8 +439,17 @@ async function performBoot(opts: {
       );
       if (!coerced) return;
       const sinceEpoch = Math.floor(Date.parse(coerced.since) / 1000);
-      void runner.run(["set-option", "-t", name, "@jmux-agent-state", coerced.state]);
-      void runner.run(["set-option", "-t", name, "@jmux-agent-state-since", String(sinceEpoch)]);
+      // Chain so a partial failure can't leave state set with stale-or-missing since.
+      // Fire-and-forget; failures on restore are harmless (the renderer falls back
+      // to the empty state via the row-1 timer chain).
+      void (async () => {
+        try {
+          await runner.run(["set-option", "-t", name, "@jmux-agent-state", coerced.state]);
+          await runner.run(["set-option", "-t", name, "@jmux-agent-state-since", String(sinceEpoch)]);
+        } catch {
+          // Best-effort: tmux runner failure during restore is non-fatal.
+        }
+      })();
     },
     permissionModeSink: (name, mode) => {
       postRestoreActions.push(() => {
