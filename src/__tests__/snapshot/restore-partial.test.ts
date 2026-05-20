@@ -121,14 +121,16 @@ describe("Restorer zero-pane window handling", () => {
     await r.run(snapshot);
 
     expect(r.outcomeFor("alpha")).toBe("restored");
-    // The first tmux command for the session must be new-session, not new-window
+    // The first tmux command for the session must be new-session, not
+    // new-window. The first new-session is prefixed with `-f <conf>` to seed
+    // base-index, so we look for the subcommand anywhere in the args.
     const sessionCmds = runner.invocations.filter(
-      (a) => a[0] === "new-session" || a[0] === "new-window",
+      (a) => a.includes("new-session") || a.includes("new-window"),
     );
-    expect(sessionCmds[0][0]).toBe("new-session");
+    expect(sessionCmds[0].includes("new-session")).toBe(true);
     expect(sessionCmds[0]).toContain("alpha");
     // new-window must NOT have been issued (only one non-empty window)
-    expect(runner.invocations.some((a) => a[0] === "new-window")).toBe(false);
+    expect(runner.invocations.some((a) => a.includes("new-window"))).toBe(false);
   });
 
   test("all windows zero-pane: session logged as skipped with no_restorable_windows", async () => {

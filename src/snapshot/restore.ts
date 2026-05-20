@@ -42,6 +42,11 @@ export class Restorer {
   protected outcomes = new Map<string, RestoreOutcome>();
   protected lastSnapshot: SnapshotFile | null = null;
   private heldLock: Lock | null = null;
+  // Tracks whether applyBaseIndexes has run for the current snapshot. We
+  // defer it until we're about to issue the first new-session call so that
+  // a restore where every session is skipped (e.g. missing cwds) still
+  // issues zero tmux commands — the original contract.
+  private baseIndexApplied = false;
 
   constructor(protected readonly opts: RestorerOptions) {
     this.log = new RestoreLog(opts.fs, `${opts.dir}/restore.log`);
@@ -139,9 +144,56 @@ export class Restorer {
 
   async run(snapshot: SnapshotFile): Promise<void> {
     this.lastSnapshot = snapshot;
+    this.baseIndexApplied = false;
     for (const session of snapshot.sessions) {
       await this.restoreSession(session, snapshot.capturedAt);
     }
+  }
+
+  /**
+   * Write a one-shot tmux config file that sets base-index and
+   * pane-base-index to match the snapshot's own conventions. Returns the
+   * path so the caller can pass it via `tmux -f <path>` on the first
+   * new-session of the restore.
+   *
+   * Why this matters: jmux's config/core.conf sets these via source-file
+   * in main startup, but that happens AFTER the Restorer has created
+   * sessions. Without this pre-set, a snapshot captured under base-index 1
+   * fails to restore on a fresh tmux server — new-session creates window 0,
+   * then every subsequent rename-window / split-window targeting window 1
+   * fails with "can't find window: 1".
+   *
+   * Why `tmux -f` and not `set-option`: tmux's `set-option` requires a
+   * running server, and `start-server` does not reliably start one on every
+   * platform (verified to no-op on macOS). `-f` is evaluated at server
+   * startup, so passing it on the first new-session bootstraps the server
+   * with the right defaults. The server inherits them for all subsequent
+   * new-sessions in the same restore, regardless of whether `-f` is
+   * repeated.
+   *
+   * We derive the index values from the snapshot itself, so the restore
+   * works regardless of which conventions were in effect at capture time.
+   */
+  protected async writeBootstrapConfig(snapshot: SnapshotFile): Promise<string> {
+    let lowestWindow = Number.POSITIVE_INFINITY;
+    let lowestPane = Number.POSITIVE_INFINITY;
+    for (const s of snapshot.sessions) {
+      for (const w of s.windows) {
+        if (Number.isFinite(w.index) && w.index < lowestWindow) lowestWindow = w.index;
+        for (const p of w.panes) {
+          if (Number.isFinite(p.index) && p.index < lowestPane) lowestPane = p.index;
+        }
+      }
+    }
+    // Fall back to 1 (matches jmux's defaults.conf) if no windows/panes were
+    // found across all sessions.
+    const baseIndex = Number.isFinite(lowestWindow) ? Math.max(0, lowestWindow) : 1;
+    const paneBaseIndex = Number.isFinite(lowestPane) ? Math.max(0, lowestPane) : 1;
+
+    const content = `set -g base-index ${baseIndex}\nset -g pane-base-index ${paneBaseIndex}\n`;
+    const path = `${this.opts.dir}/.bootstrap.conf`;
+    await this.opts.fs.writeAtomic(path, new TextEncoder().encode(content));
+    return path;
   }
 
   protected async restoreSession(
@@ -179,11 +231,29 @@ export class Restorer {
       });
 
       const isFirst = !sessionCreated;
+      // Bootstrap the tmux server with the snapshot's base-index conventions
+      // on the very first new-session of this restore. Doing it lazily here
+      // preserves the "no tmux calls when every session is skipped"
+      // invariant: if every session bails out at the cwdExists check above,
+      // this never fires.
+      //
+      // The -f flag is only honoured at server startup; once the server is
+      // running it's a no-op. So we pass it on the very first new-session
+      // of the entire restore (the one that actually starts the server) and
+      // omit it thereafter.
+      const isVeryFirstNewSession =
+        isFirst && !this.baseIndexApplied && this.lastSnapshot !== null;
+      let tmuxPreflightArgs: string[] = [];
+      if (isVeryFirstNewSession) {
+        const configPath = await this.writeBootstrapConfig(this.lastSnapshot!);
+        tmuxPreflightArgs = ["-f", configPath];
+        this.baseIndexApplied = true;
+      }
       const baseArgs = isFirst
         ? ["new-session", "-d", "-s", session.name, "-c", firstPane.cwd]
         : ["new-window", "-t", `${session.name}:${w.index}`, "-c", firstPane.cwd];
 
-      const r1 = await this.opts.runner.run([...baseArgs, ...painter]);
+      const r1 = await this.opts.runner.run([...tmuxPreflightArgs, ...baseArgs, ...painter]);
       if (r1.exitCode !== 0) {
         await this.failSession(
           session.name,
