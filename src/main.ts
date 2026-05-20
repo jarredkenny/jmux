@@ -35,6 +35,7 @@ import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache
 import { ConfigStore, sanitizeTmuxSessionName } from "./config";
 import { OtelReceiver } from "./otel-receiver";
 import { logError } from "./log";
+import { installHooks, type ClaudeSettings } from "./hook-installer";
 import { resolve, dirname } from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
@@ -136,13 +137,11 @@ function installAgentHooks(): void {
   const claudeDir = resolve(homedir(), ".claude");
   const settingsPath = resolve(claudeDir, "settings.json");
 
-  // Ensure .claude directory exists
   if (!existsSync(claudeDir)) {
     mkdirSync(claudeDir, { recursive: true });
   }
 
-  // Read existing settings or start fresh
-  let settings: Record<string, any> = {};
+  let settings: ClaudeSettings = {};
   if (existsSync(settingsPath)) {
     try {
       settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
@@ -152,37 +151,25 @@ function installAgentHooks(): void {
     }
   }
 
-  // Check if hook already exists
-  const stopHooks = settings.hooks?.Stop;
-  if (stopHooks) {
-    const alreadyInstalled = stopHooks.some((entry: any) =>
-      entry.hooks?.some((h: any) => h.command?.includes("@jmux-attention")),
-    );
-    if (alreadyInstalled) {
-      console.log("jmux agent hooks are already installed.");
-      return;
-    }
+  const outcome = installHooks(settings);
+
+  if (outcome.kind === "noop") {
+    console.log("jmux agent hooks are already installed.");
+    return;
   }
 
-  // Add the hook
-  if (!settings.hooks) settings.hooks = {};
-  if (!settings.hooks.Stop) settings.hooks.Stop = [];
+  writeFileSync(settingsPath, JSON.stringify(outcome.settings, null, 2) + "\n");
 
-  settings.hooks.Stop.push({
-    hooks: [
-      {
-        type: "command",
-        command: "tmux set-option @jmux-attention 1 2>/dev/null || true",
-        timeout: 5,
-      },
-    ],
-  });
-
-  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-  console.log("Installed jmux agent hooks in ~/.claude/settings.json");
-  console.log("");
-  console.log("When Claude Code finishes a response, your jmux sidebar");
-  console.log("will show an orange ! on that session.");
+  if (outcome.kind === "migrated") {
+    console.log("Migrated jmux Stop hook to the new agent-state hooks");
+    console.log("(UserPromptSubmit, PermissionRequest, PreToolUse, Stop).");
+    console.log("Restart Claude Code in any open session to pick them up.");
+  } else {
+    console.log("Installed jmux agent hooks in ~/.claude/settings.json");
+    console.log("");
+    console.log("Your jmux sidebar will now show RUNNING / WAITING / COMPLETE");
+    console.log("for each Claude Code session.");
+  }
 }
 
 // --- Bun version gate (TUI requires Bun.markdown.ansi) ---
