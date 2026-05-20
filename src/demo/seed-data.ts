@@ -20,7 +20,7 @@ export interface DemoSessionDef {
   project: string;
   branch: string;
   remote: string;
-  attention: boolean;
+  agentState?: "running" | "waiting" | "complete";
 }
 
 export const DEMO_SESSIONS: DemoSessionDef[] = [
@@ -30,7 +30,7 @@ export const DEMO_SESSIONS: DemoSessionDef[] = [
     project: "platform",
     branch: "feat/eng-1234-auth-refactor",
     remote: "git@gitlab.com:acme/platform.git",
-    attention: true,
+    agentState: "waiting",
   },
   {
     name: "api-pagination",
@@ -38,7 +38,6 @@ export const DEMO_SESSIONS: DemoSessionDef[] = [
     project: "platform",
     branch: "feat/eng-1241-cursor-pagination",
     remote: "git@gitlab.com:acme/platform.git",
-    attention: false,
   },
   {
     name: "hotfix-login",
@@ -46,7 +45,6 @@ export const DEMO_SESSIONS: DemoSessionDef[] = [
     project: "platform",
     branch: "fix/eng-1248-login-timeout",
     remote: "git@gitlab.com:acme/platform.git",
-    attention: false,
   },
   {
     name: "data-export",
@@ -54,7 +52,6 @@ export const DEMO_SESSIONS: DemoSessionDef[] = [
     project: "platform",
     branch: "feat/eng-1252-data-export",
     remote: "git@gitlab.com:acme/platform.git",
-    attention: false,
   },
   {
     name: "user-settings",
@@ -62,7 +59,6 @@ export const DEMO_SESSIONS: DemoSessionDef[] = [
     project: "dashboard",
     branch: "feat/dash-301-settings-redesign",
     remote: "git@gitlab.com:acme/dashboard.git",
-    attention: false,
   },
   {
     name: "chart-perf",
@@ -70,7 +66,6 @@ export const DEMO_SESSIONS: DemoSessionDef[] = [
     project: "dashboard",
     branch: "perf/dash-315-chart-rendering",
     remote: "git@gitlab.com:acme/dashboard.git",
-    attention: false,
   },
   {
     name: "onboarding-flow",
@@ -78,7 +73,7 @@ export const DEMO_SESSIONS: DemoSessionDef[] = [
     project: "dashboard",
     branch: "feat/dash-320-onboarding-wizard",
     remote: "git@gitlab.com:acme/dashboard.git",
-    attention: true,
+    agentState: "waiting",
   },
   {
     name: "terraform-modules",
@@ -86,7 +81,6 @@ export const DEMO_SESSIONS: DemoSessionDef[] = [
     project: "infra",
     branch: "refactor/ops-42-tf-modules",
     remote: "git@gitlab.com:acme/infra.git",
-    attention: false,
   },
   {
     name: "ci-pipeline",
@@ -94,7 +88,6 @@ export const DEMO_SESSIONS: DemoSessionDef[] = [
     project: "infra",
     branch: "feat/ops-51-ci-speed",
     remote: "git@gitlab.com:acme/infra.git",
-    attention: false,
   },
 ];
 

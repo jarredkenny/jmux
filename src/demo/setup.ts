@@ -81,12 +81,12 @@ export function setupDemo(): DemoContext {
     );
   }
 
-  // 5. Set agent-state for sessions that want the "waiting" indicator
+  // 5. Set agent-state for sessions that specify one
   const waitingSince = String(Math.floor(Date.now() / 1000));
   for (const session of DEMO_SESSIONS) {
-    if (session.attention) {
+    if (session.agentState !== undefined) {
       Bun.spawnSync(
-        ["tmux", "-L", socketName, "set-option", "-t", session.name, "@jmux-agent-state", "waiting"],
+        ["tmux", "-L", socketName, "set-option", "-t", session.name, "@jmux-agent-state", session.agentState],
         { stdout: "pipe", stderr: "pipe" },
       );
       Bun.spawnSync(
