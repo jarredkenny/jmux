@@ -404,4 +404,73 @@ describe("snapshot schema", () => {
     const result = validateSnapshot(variant);
     expect(result.ok).toBe(true);
   });
+
+  test("validateSnapshot accepts a session with agentState absent (v1 back-compat)", () => {
+    // `good` does not include agentState; this is the v1 back-compat case.
+    const result = validateSnapshot(good);
+    expect(result.ok).toBe(true);
+  });
+
+  test("validateSnapshot accepts agentState: null", () => {
+    const snap = { ...good, sessions: [{ ...good.sessions[0], agentState: null }] };
+    const result = validateSnapshot(snap);
+    expect(result.ok).toBe(true);
+  });
+
+  test("validateSnapshot accepts a well-formed agentState object", () => {
+    const snap = {
+      ...good,
+      sessions: [
+        {
+          ...good.sessions[0],
+          agentState: { state: "running", since: "2026-05-20T12:00:00.000Z" },
+        },
+      ],
+    };
+    const result = validateSnapshot(snap);
+    expect(result.ok).toBe(true);
+  });
+
+  test("validateSnapshot rejects an invalid agentState.state", () => {
+    const snap = {
+      ...good,
+      sessions: [
+        {
+          ...good.sessions[0],
+          agentState: { state: "bogus", since: "2026-05-20T12:00:00.000Z" },
+        },
+      ],
+    };
+    const result = validateSnapshot(snap);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("agentState");
+  });
+
+  test("validateSnapshot rejects an agentState with non-string since", () => {
+    const snap = {
+      ...good,
+      sessions: [
+        {
+          ...good.sessions[0],
+          agentState: { state: "running", since: 12345 },
+        },
+      ],
+    };
+    const result = validateSnapshot(snap);
+    expect(result.ok).toBe(false);
+  });
+
+  test("validateSnapshot rejects an agentState with non-ISO since", () => {
+    const snap = {
+      ...good,
+      sessions: [
+        {
+          ...good.sessions[0],
+          agentState: { state: "running", since: "not-an-iso-string" },
+        },
+      ],
+    };
+    const result = validateSnapshot(snap);
+    expect(result.ok).toBe(false);
+  });
 });

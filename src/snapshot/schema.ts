@@ -37,6 +37,14 @@ export interface SnapshotWindow {
   panes: SnapshotPane[];
 }
 
+export type SnapshotAgentStateName = "running" | "waiting" | "complete";
+
+export interface SnapshotAgentState {
+  state: SnapshotAgentStateName;
+  /** ISO timestamp, like other snapshot times. */
+  since: string;
+}
+
 export interface SnapshotSession {
   name: string;
   cwd: string;
@@ -48,6 +56,8 @@ export interface SnapshotSession {
   otel: SnapshotOtel | null;
   links: SessionLink[];
   windows: SnapshotWindow[];
+  /** Optional & nullable for v1 back-compat. Absent ⇒ "no agent signal seen yet". */
+  agentState?: SnapshotAgentState | null;
 }
 
 export interface SnapshotFile {
@@ -158,6 +168,24 @@ function validateOtel(v: unknown, path: string): string | null {
   return null;
 }
 
+const KNOWN_AGENT_STATES: ReadonlySet<string> = new Set([
+  "running",
+  "waiting",
+  "complete",
+]);
+
+function validateAgentState(v: unknown, path: string): string | null {
+  if (v === undefined || v === null) return null;
+  if (!isRecord(v)) return `${path}: not an object, null, or absent`;
+  if (typeof v.state !== "string" || !KNOWN_AGENT_STATES.has(v.state)) {
+    return `${path}.state: invalid`;
+  }
+  if (typeof v.since !== "string" || !ISO_RX.test(v.since)) {
+    return `${path}.since: not an ISO timestamp`;
+  }
+  return null;
+}
+
 function validateSession(v: unknown, path: string): string | null {
   if (!isRecord(v)) return `${path}: not an object`;
   if (!isString(v.name)) return `${path}.name: not a string`;
@@ -190,6 +218,8 @@ function validateSession(v: unknown, path: string): string | null {
     const err = validateWindow(v.windows[i], `${path}.windows[${i}]`);
     if (err) return err;
   }
+  const agentStateErr = validateAgentState(v.agentState, `${path}.agentState`);
+  if (agentStateErr) return agentStateErr;
   return null;
 }
 
