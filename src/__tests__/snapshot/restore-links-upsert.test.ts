@@ -64,6 +64,7 @@ const fullSnap: SnapshotFile = {
         lastError: null,
         failedMcpServers: [],
       },
+      agentState: { state: "running", since: "2026-05-20T11:58:00.000Z" },
       links: [{ type: "issue", id: "ENG-99" }],
       windows: [
         {
@@ -121,8 +122,8 @@ describe("Restorer links upsert", () => {
   });
 });
 
-describe("Restorer all five sinks", () => {
-  test("all five sinks fire for a fully-populated restored session", async () => {
+describe("Restorer — every sink dispatches", () => {
+  test("every sink fires for a fully-populated restored session", async () => {
     const events: string[] = [];
     const r = new Restorer({
       dir: "/snap",
@@ -138,9 +139,10 @@ describe("Restorer all five sinks", () => {
       otelSink: () => events.push("otel"),
       pinnedSink: () => events.push("pinned"),
       attentionSink: () => events.push("attention"),
+      agentStateSink: () => events.push("agentState"),
     });
     await r.run(fullSnap);
-    expect(events.sort()).toEqual(["attention", "links", "otel", "permissionMode", "pinned"]);
+    expect(events.sort()).toEqual(["agentState", "attention", "links", "otel", "permissionMode", "pinned"]);
   });
 
   test("no sinks fire for a skipped session", async () => {
@@ -159,6 +161,7 @@ describe("Restorer all five sinks", () => {
       otelSink: () => events.push("otel"),
       pinnedSink: () => events.push("pinned"),
       attentionSink: () => events.push("attention"),
+      agentStateSink: () => events.push("agentState"),
     });
     await r.run(fullSnap);
     expect(events).toEqual([]);
