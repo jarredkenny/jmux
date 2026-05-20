@@ -119,3 +119,11 @@ export type PaletteAction =
   | { type: "consumed" }
   | { type: "closed" }
   | { type: "result"; value: PaletteResult };
+
+export type AgentState = "running" | "waiting" | "complete";
+
+export interface AgentStateRecord {
+  state: AgentState;
+  /** Epoch milliseconds. Converted from the seconds the hook writes. */
+  since: number;
+}
