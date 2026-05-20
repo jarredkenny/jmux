@@ -260,4 +260,29 @@ describe("Restorer base-index bootstrap", () => {
     const bytes = await fs.readFile("/snap/.bootstrap.conf");
     expect(bytes).toBeNull();
   });
+
+  test("bootstrap config sources the jmux configFile when provided", async () => {
+    const fs = new FakeFs();
+    const runner = new FakeRunner();
+    const r = new Restorer({
+      dir: "/snap",
+      fs,
+      runner,
+      clock: new FakeClock(),
+      jmuxVersion: "test",
+      userShell: "/bin/zsh",
+      claudeCommand: "claude",
+      configFile: "/path/to/jmux/config/tmux.conf",
+      cwdExists: async () => true,
+    });
+    await r.run(snapshotWithBaseIndex(1));
+
+    const bytes = await fs.readFile("/snap/.bootstrap.conf");
+    expect(bytes).not.toBeNull();
+    const written = new TextDecoder().decode(bytes!);
+    // source-file MUST come first so base-index overrides take precedence.
+    expect(written.indexOf("source-file")).toBeLessThan(written.indexOf("base-index"));
+    expect(written).toContain('source-file "/path/to/jmux/config/tmux.conf"');
+    expect(written).toContain("set -g base-index 1");
+  });
 });

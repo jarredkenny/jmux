@@ -213,6 +213,12 @@ let hunkCommand = configStore.config.diffPanel?.hunkCommand ?? "hunk";
 // Resolve paths relative to source
 const jmuxDir = resolve(dirname(import.meta.dir));
 const configFile = resolve(jmuxDir, "config", "tmux.conf");
+// Export JMUX_DIR so every tmux subprocess (PTY, control, Restorer) inherits
+// it. The config file expands "$JMUX_DIR/config/defaults.conf", which is
+// resolved at config-load time against the tmux server's environment — which
+// is inherited from this process. Setting it here means we don't need to
+// `set-environment -g JMUX_DIR ...` after control-mode attaches.
+process.env.JMUX_DIR = jmuxDir;
 
 // Parse args: jmux [session] [--socket name] [--demo]
 let sessionName: string | undefined;
@@ -357,6 +363,7 @@ function makeToolbar(): ToolbarConfig {
 
 async function performBoot(opts: {
   socketName: string | undefined;
+  configFile: string;
   config: import("./config").JmuxConfig;
   sessionState: import("./session-state").SessionState;
   pinnedSessions: Set<string>;
@@ -420,6 +427,7 @@ async function performBoot(opts: {
     jmuxVersion: process.env.JMUX_VERSION ?? "dev",
     userShell: process.env.SHELL ?? "/bin/sh",
     claudeCommand: opts.config.claudeCommand ?? "claude",
+    configFile: opts.configFile,
     sessionLinksSink: (name, links) => opts.sessionState.upsertLinksForSession(name, links),
     pinnedSink: (name, pinned) => {
       if (pinned && !opts.pinnedSessions.has(name)) {
@@ -518,6 +526,7 @@ let boot: Awaited<ReturnType<typeof performBoot>>;
 try {
   boot = await performBoot({
     socketName,
+    configFile,
     config: configStore.config,
     sessionState,
     pinnedSessions,
@@ -3460,10 +3469,13 @@ async function start(): Promise<void> {
   // Start control mode
   await control.start({ socketName, configFile });
 
-  // Re-apply our config to the running server
-  await control.sendCommand(`set-environment -g JMUX_DIR ${jmuxDir}`);
+  // The tmux server has already loaded config at startup (TmuxPty and the
+  // Restorer both pass `-f <configFile>`), and JMUX_DIR is exported in
+  // process.env so tmux subprocesses inherit it. We do NOT source-file
+  // here — doing so via control mode causes its nested commands to emit
+  // many %begin/%end blocks asynchronously, which scrambles the FIFO
+  // pending-queue matching and corrupts subsequent command responses.
   await control.sendCommand("set-environment -g JMUX 1");
-  await control.sendCommand(`source-file ${configFile}`);
 
   // Start OTLP receiver and inject OTel env vars
   const otelPort = await otelReceiver.start();

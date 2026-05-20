@@ -29,6 +29,13 @@ export interface RestorerOptions {
     name: string,
     agentState: import("./schema").SnapshotAgentState | null,
   ) => void;
+  /**
+   * Absolute path to the jmux tmux config file. When provided, the
+   * Restorer's bootstrap.conf will `source-file` it so the server starts
+   * with the full jmux configuration loaded (mouse, prefix, status,
+   * keybindings, base-index, etc.). When omitted, only base-index is set.
+   */
+  configFile?: string;
 }
 
 export type EligibilityResult =
@@ -190,7 +197,15 @@ export class Restorer {
     const baseIndex = Number.isFinite(lowestWindow) ? Math.max(0, lowestWindow) : 1;
     const paneBaseIndex = Number.isFinite(lowestPane) ? Math.max(0, lowestPane) : 1;
 
-    const content = `set -g base-index ${baseIndex}\nset -g pane-base-index ${paneBaseIndex}\n`;
+    // If a configFile was supplied, source it first so the server boots with
+    // the full jmux config. The base-index lines come AFTER so they override
+    // any values the config may set, ensuring restore sees the indices the
+    // snapshot was captured with regardless of what jmux's defaults say.
+    const sourceLine = this.opts.configFile
+      ? `source-file "${this.opts.configFile}"\n`
+      : "";
+    const content =
+      `${sourceLine}set -g base-index ${baseIndex}\nset -g pane-base-index ${paneBaseIndex}\n`;
     const path = `${this.opts.dir}/.bootstrap.conf`;
     await this.opts.fs.writeAtomic(path, new TextEncoder().encode(content));
     return path;
