@@ -138,11 +138,10 @@ describe("Restorer — every sink dispatches", () => {
       permissionModeSink: () => events.push("permissionMode"),
       otelSink: () => events.push("otel"),
       pinnedSink: () => events.push("pinned"),
-      attentionSink: () => events.push("attention"),
       agentStateSink: () => events.push("agentState"),
     });
     await r.run(fullSnap);
-    expect(events.sort()).toEqual(["agentState", "attention", "links", "otel", "permissionMode", "pinned"]);
+    expect(events.sort()).toEqual(["agentState", "links", "otel", "permissionMode", "pinned"]);
   });
 
   test("no sinks fire for a skipped session", async () => {
@@ -160,7 +159,6 @@ describe("Restorer — every sink dispatches", () => {
       permissionModeSink: () => events.push("permissionMode"),
       otelSink: () => events.push("otel"),
       pinnedSink: () => events.push("pinned"),
-      attentionSink: () => events.push("attention"),
       agentStateSink: () => events.push("agentState"),
     });
     await r.run(fullSnap);

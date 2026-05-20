@@ -25,7 +25,6 @@ export interface RestorerOptions {
     otel: import("./schema").SnapshotOtel | null,
   ) => void;
   pinnedSink?: (name: string, pinned: boolean) => void;
-  attentionSink?: (name: string, attention: boolean) => void;
   agentStateSink?: (
     name: string,
     agentState: import("./schema").SnapshotAgentState | null,
@@ -271,7 +270,6 @@ export class Restorer {
     this.opts.permissionModeSink?.(session.name, session.permissionMode);
     this.opts.otelSink?.(session.name, session.otel);
     this.opts.pinnedSink?.(session.name, session.pinned);
-    this.opts.attentionSink?.(session.name, session.attention);
     this.opts.agentStateSink?.(session.name, session.agentState ?? null);
 
     this.outcomes.set(session.name, "restored");
