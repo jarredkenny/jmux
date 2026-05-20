@@ -3,6 +3,7 @@ import { buildSessionView, buildSessionRow3 } from "../session-view";
 import type { SessionInfo, SessionOtelState } from "../types";
 import { makeSessionOtelState } from "../types";
 import type { SessionContext, MergeRequest, LinkSource } from "../adapters/types";
+import type { AgentStateRecord } from "../types";
 
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
@@ -122,10 +123,11 @@ describe("buildSessionView", () => {
     expect(view.timerRemaining).toBe(240);
   });
 
-  test("timer shows 0:00 when expired", () => {
+  test("timer falls back to elapsed when cache expired", () => {
+    // Cache expired (400s > 300s TTL); no agentState → elapsed from lastRequestTime
     const timer: SessionOtelState = { ...makeSessionOtelState(), lastRequestTime: Date.now() - 400_000, cacheWasHit: true };
     const view = buildSessionView(makeSession(), undefined, timer, new Set());
-    expect(view.timerText).toBe("0:00");
+    expect(view.timerText).toBe("6m");
     expect(view.timerRemaining).toBe(0);
   });
 
@@ -242,5 +244,95 @@ describe("buildSessionRow3", () => {
 
   test("returns empty string when no fields apply", () => {
     expect(buildSessionRow3(baseState(), 26)).toBe("");
+  });
+});
+
+describe("buildSessionView — agent state", () => {
+  test("populates agentState and agentStateSince when record passed", () => {
+    const since = Date.now() - 5_000;
+    const view = buildSessionView(
+      makeSession(),
+      undefined,
+      undefined,
+      new Set(),
+      { state: "running", since },
+    );
+    expect(view.agentState).toBe("running");
+    expect(view.agentStateSince).toBe(since);
+  });
+
+  test("agentState is null when no record passed", () => {
+    const view = buildSessionView(makeSession(), undefined, undefined, new Set());
+    expect(view.agentState).toBeNull();
+    expect(view.agentStateSince).toBeNull();
+  });
+
+  test("explicit null record is equivalent to no record", () => {
+    const view = buildSessionView(
+      makeSession(),
+      undefined,
+      undefined,
+      new Set(),
+      null,
+    );
+    expect(view.agentState).toBeNull();
+    expect(view.agentStateSince).toBeNull();
+  });
+});
+
+describe("buildSessionView — row-1 timer fallback", () => {
+  test("cache countdown wins over agentState elapsed when cache is alive", () => {
+    const otel = makeSessionOtelState();
+    otel.lastRequestTime = Date.now() - 60_000;  // 240s remaining on 300s cache
+    const view = buildSessionView(
+      makeSession(),
+      undefined,
+      otel,
+      new Set(),
+      { state: "running", since: Date.now() - 8_000 },
+    );
+    // Cache TTL is 5 minutes (300s); 60s elapsed → ~240s remaining → "4:00"-ish
+    expect(view.timerText).toMatch(/^[0-9]:[0-5][0-9]$/);
+    expect(view.timerRemaining).toBeGreaterThan(0);
+  });
+
+  test("promoted session, cache expired → elapsed from agentStateSince", () => {
+    const otel = makeSessionOtelState();
+    otel.lastRequestTime = Date.now() - 10 * 60 * 1000;  // cache expired
+    otel.lastUserPromptTime = Date.now() - 10 * 60 * 1000;
+    const since = Date.now() - 90_000;  // 1m30s ago
+    const view = buildSessionView(
+      makeSession(),
+      undefined,
+      otel,
+      new Set(),
+      { state: "waiting", since },
+    );
+    expect(view.timerText).toBe("1m");
+    expect(view.timerRemaining).toBe(0);
+  });
+
+  test("non-promoted session with OTEL data → elapsed from latest OTEL event", () => {
+    const otel = makeSessionOtelState();
+    otel.lastRequestTime = Date.now() - 10 * 60 * 1000;
+    otel.lastUserPromptTime = Date.now() - 45_000;
+    const view = buildSessionView(makeSession(), undefined, otel, new Set());
+    expect(view.timerText).toBe("45s");
+  });
+
+  test("non-promoted session with no OTEL data → blank timer", () => {
+    const view = buildSessionView(makeSession(), undefined, undefined, new Set());
+    expect(view.timerText).toBeNull();
+  });
+
+  test("promoted COMPLETE state with no cache shows agentStateSince elapsed", () => {
+    const view = buildSessionView(
+      makeSession(),
+      undefined,
+      undefined,
+      new Set(),
+      { state: "complete", since: Date.now() - 30_000 },
+    );
+    expect(view.timerText).toBe("30s");
   });
 });

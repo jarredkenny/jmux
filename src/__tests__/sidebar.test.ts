@@ -522,7 +522,8 @@ describe("Sidebar", () => {
     expect(detailText).toContain("4:0");
   });
 
-  test("timer shows 0:00 when cache expired", () => {
+  test("timer shows elapsed text when cache expired", () => {
+    // Cache expired (360s > 300s TTL) → falls back to elapsed from lastRequestTime
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
     sidebar.setSessionOtelState("$0", {
@@ -535,7 +536,7 @@ describe("Sidebar", () => {
       { length: SIDEBAR_WIDTH },
       (_, i) => grid.cells[3][i].char,
     ).join("");
-    expect(detailText).toContain("0:00");
+    expect(detailText).toContain("6m");
   });
 
   test("no timer rendered when cache timer state is null", () => {
@@ -614,7 +615,8 @@ describe("Sidebar", () => {
     expect(row[timerColStart].fg).toBe(1);
   });
 
-  test("timer uses dim when expired at 0:00", () => {
+  test("timer uses dim when cache expired (elapsed fallback)", () => {
+    // Cache expired (400s > 300s TTL) → elapsed text "6m" rendered with dim styling
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
     sidebar.setSessionOtelState("$0", {
@@ -624,9 +626,10 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
     const row = grid.cells[3];
+    // Find the "m" of "6m" from the right edge
     let timerColStart = -1;
     for (let c = SIDEBAR_WIDTH - 1; c >= 0; c--) {
-      if (row[c].char === ":") {
+      if (row[c].char === "m" && c > 0 && /\d/.test(row[c - 1].char)) {
         timerColStart = c - 1;
         break;
       }

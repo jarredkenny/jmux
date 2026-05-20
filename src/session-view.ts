@@ -32,12 +32,24 @@ export interface SessionView {
   // Row 2, right-aligned
   mrId: string | null;
   pipelineState: string | null;
+
+  agentState: import("./types").AgentState | null;
+  agentStateSince: number | null;
 }
 
 function formatTimer(remaining: number): string {
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const m = Math.floor(totalSeconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h`;
 }
 
 /** Extract the MR iid (e.g. "42") from compound id "project:42" */
@@ -51,6 +63,7 @@ export function buildSessionView(
   ctx: SessionContext | undefined,
   timerState: SessionOtelState | undefined,
   activitySet: Set<string>,
+  agentStateRecord: import("./types").AgentStateRecord | null = null,
 ): SessionView {
   // Linear ID: first issue identifier
   const linearId = ctx?.issues[0]?.identifier ?? null;
@@ -71,13 +84,34 @@ export function buildSessionView(
   const mrId = selectedMr ? `!${extractMrIid(selectedMr.id)}` : null;
   const pipelineState = selectedMr?.pipeline?.state ?? null;
 
-  // Timer
+  // Row-1 unified timer fallback chain (see spec §"Row 1 unified timer"):
+  //   1) cache countdown while alive (lastRequestTime within CACHE_TIMER_TTL)
+  //   2) promoted session → elapsed since agentStateSince
+  //   3) non-promoted with OTEL data → elapsed since latest OTEL event
+  //   4) blank
   let timerText: string | null = null;
   let timerRemaining = 0;
+  const now = Date.now();
   if (timerState && timerState.lastRequestTime > 0) {
-    const elapsed = Math.floor((Date.now() - timerState.lastRequestTime) / 1000);
-    timerRemaining = Math.max(0, CACHE_TIMER_TTL - elapsed);
-    timerText = formatTimer(timerRemaining);
+    const elapsedS = Math.floor((now - timerState.lastRequestTime) / 1000);
+    timerRemaining = Math.max(0, CACHE_TIMER_TTL - elapsedS);
+    if (timerRemaining > 0) {
+      timerText = formatTimer(timerRemaining);
+    }
+  }
+  if (timerText === null) {
+    if (agentStateRecord) {
+      timerText = formatElapsed(now - agentStateRecord.since);
+    } else if (timerState) {
+      const candidates = [
+        timerState.lastRequestTime,
+        timerState.lastUserPromptTime ?? 0,
+        timerState.lastTool?.timestamp ?? 0,
+      ].filter((t) => t > 0);
+      if (candidates.length > 0) {
+        timerText = formatElapsed(now - Math.max(...candidates));
+      }
+    }
   }
 
   // Col-1 indicator priority: error > mcp-down > attention > activity.
@@ -116,6 +150,8 @@ export function buildSessionView(
     timerRemaining,
     mrId,
     pipelineState,
+    agentState: agentStateRecord?.state ?? null,
+    agentStateSince: agentStateRecord?.since ?? null,
   };
 }
 
