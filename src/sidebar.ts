@@ -751,7 +751,7 @@ export class Sidebar {
       if (otel) {
         // Pass the budget that buildSessionRow3 will treat as its full usable
         // width. We start writing at col 3, so usable budget = this.width - 3.
-        const text = buildSessionRow3(otel, this.width - 3);
+        const text = buildSessionRow3(otel, this.width - 3, null);
         if (text.length > 0) {
           const row3Attrs: CellAttrs = isActive
             ? ACTIVE_DETAIL_ATTRS

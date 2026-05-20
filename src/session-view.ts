@@ -172,7 +172,17 @@ function formatIdle(ms: number): string {
 
 const ROW3_GAP = "  ";
 
-export function buildSessionRow3(state: SessionOtelState, width: number): string {
+const STATE_LABEL: Record<AgentState, string> = {
+  running: "RUNNING",
+  waiting: "WAITING",
+  complete: "COMPLETE",
+};
+
+export function buildSessionRow3(
+  state: SessionOtelState,
+  width: number,
+  agentState: AgentState | null,
+): string {
   const costText = state.costUsd > 0 ? `$${state.costUsd.toFixed(2)}` : null;
   const toolText = state.lastTool
     ? `${state.lastTool.name} ${formatToolDuration(state.lastTool.durationMs)}`
@@ -183,7 +193,36 @@ export function buildSessionRow3(state: SessionOtelState, width: number): string
 
   const usable = Math.max(0, width);
 
-  // Drop priority: try (cost+tool+idle), then (cost+tool), then (cost+idle), then (tool+idle), then singles.
+  // Promoted session: state label is the right-anchored sentinel. Drop priority:
+  // tool → cost; state stays. Idle is replaced by the row-1 unified timer and
+  // never appears here for promoted sessions.
+  if (agentState !== null) {
+    const stateText = STATE_LABEL[agentState];
+    const candidates: Array<Array<{ text: string; align: "left" | "right" }>> = [];
+    if (costText && toolText) {
+      candidates.push([
+        { text: costText, align: "left" },
+        { text: toolText, align: "left" },
+        { text: stateText, align: "right" },
+      ]);
+    }
+    if (costText) {
+      candidates.push([
+        { text: costText, align: "left" },
+        { text: stateText, align: "right" },
+      ]);
+    }
+    candidates.push([{ text: stateText, align: "right" }]);
+
+    for (const fields of candidates) {
+      const totalLen = fields.reduce((s, f) => s + f.text.length, 0)
+        + Math.max(0, fields.length - 1) * ROW3_GAP.length;
+      if (totalLen <= usable) return layoutRow3(fields, usable);
+    }
+    return stateText.slice(0, usable);
+  }
+
+  // Non-promoted: keep existing cost/tool/idle behavior unchanged.
   const candidates: Array<Array<{ text: string; align: "left" | "right" }>> = [];
   if (costText && toolText && idleText) {
     candidates.push([
