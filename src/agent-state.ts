@@ -5,11 +5,15 @@ import type { AgentState, AgentStateRecord } from "./types";
  * the canonical `SnapshotAgentState` type in `src/snapshot/schema.ts`
  * with this exact shape — structural typing keeps these compatible
  * without a cross-module import.
+ *
+ * Note: this is intentionally distinct from `AgentStateRecord` in
+ * `types.ts`. Snapshots serialise timestamps as ISO strings; the runtime
+ * record uses epoch milliseconds.
  */
 interface StoredAgentState {
-  state: AgentState;
+  readonly state: AgentState;
   /** ISO timestamp string. */
-  since: string;
+  readonly since: string;
 }
 
 /**

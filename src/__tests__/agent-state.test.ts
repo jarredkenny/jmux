@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { AgentStateTracker } from "../agent-state";
+import { AgentStateTracker, coerceStaleAgentState } from "../agent-state";
 
 describe("AgentStateTracker.apply", () => {
   test("stores a valid (state, since) pair", () => {
@@ -150,8 +150,6 @@ describe("AgentStateTracker.size", () => {
   });
 });
 
-import { coerceStaleAgentState } from "../agent-state";
-
 const TEN_MIN_MS = 10 * 60 * 1000;
 
 describe("coerceStaleAgentState", () => {
@@ -194,7 +192,10 @@ describe("coerceStaleAgentState", () => {
       Date.parse("2026-05-20T12:00:00Z"),
       TEN_MIN_MS,
     );
-    expect(out?.state).toBe("complete");
+    expect(out).toEqual({
+      state: "complete",
+      since: "2026-05-20T10:00:00Z",
+    });
   });
 
   test("leaves stale complete unchanged", () => {
@@ -217,5 +218,13 @@ describe("coerceStaleAgentState", () => {
       TEN_MIN_MS,
     );
     expect(out?.state).toBe("complete");
+  });
+
+  test("age exactly equal to threshold is treated as fresh", () => {
+    const capturedAt = "2026-05-20T12:00:00.000Z";
+    const stored = { state: "running" as const, since: capturedAt };
+    const exactlyTenMinLater = Date.parse(capturedAt) + TEN_MIN_MS;
+    const out = coerceStaleAgentState(stored, capturedAt, exactlyTenMinLater, TEN_MIN_MS);
+    expect(out).toEqual(stored);
   });
 });
