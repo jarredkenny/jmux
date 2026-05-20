@@ -1,4 +1,4 @@
-import type { SessionInfo, SessionOtelState } from "./types";
+import type { SessionInfo, SessionOtelState, AgentState, AgentStateRecord } from "./types";
 import type { SessionContext } from "./adapters/types";
 
 const CACHE_TIMER_TTL = 300; // seconds
@@ -33,7 +33,7 @@ export interface SessionView {
   mrId: string | null;
   pipelineState: string | null;
 
-  agentState: import("./types").AgentState | null;
+  agentState: AgentState | null;
   agentStateSince: number | null;
 }
 
@@ -63,7 +63,7 @@ export function buildSessionView(
   ctx: SessionContext | undefined,
   timerState: SessionOtelState | undefined,
   activitySet: Set<string>,
-  agentStateRecord: import("./types").AgentStateRecord | null = null,
+  agentStateRecord?: AgentStateRecord | null,
 ): SessionView {
   // Linear ID: first issue identifier
   const linearId = ctx?.issues[0]?.identifier ?? null;
@@ -167,12 +167,7 @@ function formatToolDuration(ms: number): string {
 }
 
 function formatIdle(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
-  if (totalSeconds < 60) return `${totalSeconds}s idle`;
-  const m = Math.floor(totalSeconds / 60);
-  if (m < 60) return `${m}m idle`;
-  const h = Math.floor(m / 60);
-  return `${h}h idle`;
+  return `${formatElapsed(ms)} idle`;
 }
 
 const ROW3_GAP = "  ";

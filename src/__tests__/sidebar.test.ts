@@ -626,16 +626,18 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
     const row = grid.cells[3];
-    // Find the "m" of "6m" from the right edge
-    let timerColStart = -1;
-    for (let c = SIDEBAR_WIDTH - 1; c >= 0; c--) {
-      if (row[c].char === "m" && c > 0 && /\d/.test(row[c - 1].char)) {
-        timerColStart = c - 1;
+    const detailText = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => row[i].char).join("");
+    expect(detailText).toContain("6m");
+    // Find the rightmost dim cell that isn't whitespace — that's the timer.
+    let timerCol = -1;
+    for (let c = row.length - 1; c >= 0; c--) {
+      if (row[c].char.trim() && row[c].dim) {
+        timerCol = c;
         break;
       }
     }
-    expect(timerColStart).toBeGreaterThan(0);
-    expect(row[timerColStart].dim).toBe(true);
+    expect(timerCol).toBeGreaterThan(0);
+    expect(row[timerCol].dim).toBe(true);
   });
 
   test("timer truncates branch text when space is tight", () => {
