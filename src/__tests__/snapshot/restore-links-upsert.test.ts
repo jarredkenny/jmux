@@ -164,3 +164,98 @@ describe("Restorer all five sinks", () => {
     expect(events).toEqual([]);
   });
 });
+
+describe("Restorer agentStateSink", () => {
+  const twoSessionSnap: SnapshotFile = {
+    formatVersion: 1,
+    jmuxVersion: "test",
+    capturedAt: "2026-05-12T00:00:00.000Z",
+    tmuxSocket: "",
+    lastFocusedSession: "alpha",
+    sessions: [
+      {
+        name: "alpha",
+        cwd: "/ok",
+        worktreePath: null,
+        projectGroup: null,
+        pinned: false,
+        attention: false,
+        permissionMode: null,
+        otel: null,
+        agentState: { state: "running", since: "2026-05-20T11:58:00.000Z" },
+        links: [],
+        windows: [
+          {
+            index: 0,
+            name: "main",
+            layout: "L",
+            active: true,
+            panes: [
+              { index: 0, cwd: "/ok", command: "zsh", kind: "shell", scrollbackFile: null },
+            ],
+          },
+        ],
+      },
+      {
+        name: "beta",
+        cwd: "/ok",
+        worktreePath: null,
+        projectGroup: null,
+        pinned: false,
+        attention: false,
+        permissionMode: null,
+        otel: null,
+        agentState: null,
+        links: [],
+        windows: [
+          {
+            index: 0,
+            name: "main",
+            layout: "L",
+            active: true,
+            panes: [
+              { index: 0, cwd: "/ok", command: "zsh", kind: "shell", scrollbackFile: null },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  test("agentStateSink fires for each eligible session with the stored value", async () => {
+    const calls: Array<{ name: string; state: import("../../snapshot/schema").SnapshotAgentState | null }> = [];
+    const r = new Restorer({
+      dir: "/snap",
+      fs: new FakeFs(),
+      runner: new FakeRunner(),
+      clock: new FakeClock(),
+      jmuxVersion: "test",
+      userShell: "/bin/zsh",
+      claudeCommand: "claude",
+      cwdExists: async () => true,
+      agentStateSink: (name, state) => calls.push({ name, state }),
+    });
+    await r.run(twoSessionSnap);
+    expect(calls).toEqual([
+      { name: "alpha", state: { state: "running", since: "2026-05-20T11:58:00.000Z" } },
+      { name: "beta", state: null },
+    ]);
+  });
+
+  test("agentStateSink is not fired for skipped sessions", async () => {
+    const calls: Array<{ name: string }> = [];
+    const r = new Restorer({
+      dir: "/snap",
+      fs: new FakeFs(),
+      runner: new FakeRunner(),
+      clock: new FakeClock(),
+      jmuxVersion: "test",
+      userShell: "/bin/zsh",
+      claudeCommand: "claude",
+      cwdExists: async () => false,
+      agentStateSink: (name) => calls.push({ name }),
+    });
+    await r.run(twoSessionSnap);
+    expect(calls).toEqual([]);
+  });
+});
