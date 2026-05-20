@@ -2,6 +2,7 @@ import type { Clock, FileSystem, Lock, TmuxRunner } from "./deps";
 import { SnapshotModel } from "./model";
 import { detectPaneKind } from "./painter";
 import type {
+  SnapshotAgentState,
   SnapshotOtel,
   SnapshotPane,
   SnapshotWindow,
@@ -187,6 +188,14 @@ export class Snapshotter {
 
   onAttention(name: string, attention: boolean): void {
     this.opts.model.setAttention(name, attention);
+    this.markDirty();
+  }
+
+  onAgentState(
+    name: string,
+    agentState: SnapshotAgentState | null,
+  ): void {
+    this.opts.model.setAgentState(name, agentState);
     this.markDirty();
   }
 

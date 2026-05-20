@@ -125,6 +125,51 @@ describe("SnapshotModel.renameSession", () => {
   });
 });
 
+describe("SnapshotModel.setAgentState", () => {
+  test("upserts the agentState for an existing session", () => {
+    const m = new SnapshotModel("0.0.0");
+    m.upsertSession(SnapshotModel.makeEmptySession("foo", "/tmp"));
+    m.setAgentState("foo", {
+      state: "running",
+      since: "2026-05-20T12:00:00.000Z",
+    });
+    expect(m.getSession("foo")?.agentState).toEqual({
+      state: "running",
+      since: "2026-05-20T12:00:00.000Z",
+    });
+  });
+
+  test("setting null clears the agentState", () => {
+    const m = new SnapshotModel("0.0.0");
+    m.upsertSession(SnapshotModel.makeEmptySession("foo", "/tmp"));
+    m.setAgentState("foo", { state: "running", since: "2026-05-20T12:00:00.000Z" });
+    m.setAgentState("foo", null);
+    expect(m.getSession("foo")?.agentState).toBeNull();
+  });
+
+  test("setting on an unknown session is a no-op", () => {
+    const m = new SnapshotModel("0.0.0");
+    m.setAgentState("missing", { state: "running", since: "2026-05-20T12:00:00.000Z" });
+    expect(m.getSession("missing")).toBeUndefined();
+  });
+
+  test("makeEmptySession initialises agentState to null", () => {
+    const s = SnapshotModel.makeEmptySession("foo", "/tmp");
+    expect(s.agentState).toBeNull();
+  });
+
+  test("toFile preserves agentState", () => {
+    const m = new SnapshotModel("0.0.0");
+    m.upsertSession(SnapshotModel.makeEmptySession("foo", "/tmp"));
+    m.setAgentState("foo", { state: "waiting", since: "2026-05-20T12:00:00.000Z" });
+    const file = m.toFile("2026-05-20T12:01:00.000Z");
+    expect(file.sessions[0].agentState).toEqual({
+      state: "waiting",
+      since: "2026-05-20T12:00:00.000Z",
+    });
+  });
+});
+
 describe("SnapshotModel.toFile", () => {
   test("serialises socket set via setSocket", () => {
     const m = makeModel();

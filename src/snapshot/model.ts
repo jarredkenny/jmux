@@ -5,6 +5,7 @@ import type {
   SnapshotWindow,
   SnapshotPane,
   SnapshotOtel,
+  SnapshotAgentState,
   SessionLink,
   SnapshotPermissionMode,
 } from "./schema";
@@ -74,6 +75,14 @@ export class SnapshotModel {
   setOtel(sessionName: string, otel: SnapshotOtel | null): void {
     const s = this.sessions.get(sessionName);
     if (s) s.otel = otel;
+  }
+
+  setAgentState(
+    sessionName: string,
+    agentState: SnapshotAgentState | null,
+  ): void {
+    const s = this.sessions.get(sessionName);
+    if (s) s.agentState = agentState;
   }
 
   setPermissionMode(
@@ -163,6 +172,7 @@ export class SnapshotModel {
       otel: null,
       links: [],
       windows: [],
+      agentState: null,
     };
   }
 }
