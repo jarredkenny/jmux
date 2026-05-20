@@ -17,8 +17,7 @@ look the same until you tab in.
 This design introduces an explicit per-session **agent state**:
 
 - `running` — the agent is actively working
-- `waiting` — the agent is paused awaiting user input (permission prompt or
-  notification)
+- `waiting` — the agent is paused awaiting user input (permission prompt)
 - `complete` — the agent's turn has ended
 
 State is detected by a small set of Claude Code hooks, stored on the tmux
@@ -60,9 +59,16 @@ N seconds" creates flapping; inferring `waiting` from idle gaps would
 miss the actual permission-prompt case entirely.
 
 Claude Code's hook system fires synchronously at the exact state
-transitions we need: `UserPromptSubmit` (start of a turn), `Notification`
-(permission/idle wait), `PreToolUse` (tool execution begins), `Stop`
-(turn ends). Hooks are the right source.
+transitions we need: `UserPromptSubmit` (start of a turn),
+`PermissionRequest` (permission dialog appears), `PreToolUse` (tool
+execution begins), `Stop` (turn ends). Hooks are the right source.
+
+We deliberately do **not** use `Notification`. Per the Claude Code
+docs, `Notification` is a general observability hook for any
+notification Claude Code sends; it is not specific to permission
+prompts. `PermissionRequest` is the precise signal — it "fires when a
+permission dialog appears." Using `Notification` would mis-flag
+unrelated notifications as `waiting`.
 
 ### Storage: tmux user options, not in-process
 
@@ -84,7 +90,7 @@ This mirrors the existing `@jmux-attention` mechanism. Benefits:
 
 ### Resuming from WAITING
 
-After a `Notification`-driven WAITING, the user answers the permission
+After a `PermissionRequest`-driven WAITING, the user answers the
 prompt in the pane and Claude resumes — but no hook fires for that
 transition (the user response is not a `UserPromptSubmit`). To detect
 "back to RUNNING" we use two complementary signals:
@@ -108,17 +114,24 @@ text. After review, we kept 3 rows and folded state into the existing
 layout:
 
 - Row 0 col-1 indicator becomes color-coded by state.
-- Row 1 timer is unified: cache countdown while active, otherwise
-  elapsed since the most recent OTEL event. This absorbs the "X idle"
-  text that today lives on row 2.
+- Row 1 timer is unified with a three-way fallback:
+  1. cache countdown while active,
+  2. else elapsed since `agentStateSince` if the session has been
+     promoted (has a state),
+  3. else elapsed since the most recent OTEL event for non-promoted
+     sessions.
+  This absorbs the "X idle" text that today lives on row 2.
 - Row 2 right side gains a state text label (`RUNNING` / `WAITING` /
   `COMPLETE`), replacing the now-redundant idle text.
 - Everything else (mode badge, MR id, pipeline glyph, cost, last tool)
   stays.
 
-The user can read the *state* from the col-1 glyph color and the state
-label, and *how long it's been in that state* from the unified row-1
-timer. No separate "elapsed in state" field is needed.
+For a promoted session, the row-1 timer answers *how long it's been in
+this state* — because state transitions come from hooks (and the
+WAITING→RUNNING safety net), `agentStateSince` is the right anchor.
+Using "most recent OTEL event" as the anchor for promoted sessions
+would be wrong for `waiting` and `complete`, whose transitions don't
+come from OTEL.
 
 ## State model
 
@@ -127,7 +140,7 @@ timer. No separate "elapsed in state" field is needed.
 | Trigger | New state | Rewrites `since`? |
 |---|---|---|
 | `UserPromptSubmit` hook | `running` | yes |
-| `Notification` hook | `waiting` | yes |
+| `PermissionRequest` hook | `waiting` | yes |
 | `PreToolUse` hook | `running` (if not already) | only if state changed |
 | `Stop` hook | `complete` | yes |
 | OTEL `api_request` while `waiting` | `running` | yes |
@@ -154,6 +167,37 @@ state is `running` or `waiting`, coerce to `complete` on the way in.
 An agent that was running 10+ minutes ago without any further hook
 fire is dead. This prevents a stuck "RUNNING 4h" display.
 
+### Snapshot schema: additive change, no version bump
+
+The current snapshot system (`src/snapshot/schema.ts`,
+`src/snapshot/restore.ts`) is at `SNAPSHOT_FORMAT_VERSION = 1`.
+`validateSnapshot` is called *directly* from `restore.ts`; the
+existing `MigrationRegistry` is exported but is **not** wired into
+restore. That means any non-additive schema change today would
+invalidate every existing snapshot on disk.
+
+This design avoids that pitfall by making the new field strictly
+additive and nullable:
+
+```ts
+// SnapshotSession gains:
+agentState?: SnapshotAgentState | null;
+```
+
+where `SnapshotAgentState` is `{ state: AgentState; since: string }`.
+`validateSession` accepts the field as absent, `null`, or a valid
+object. A v1 snapshot written by an older jmux loads cleanly: the
+field is absent and treated as `null` (= no agent signal seen,
+indistinguishable from a fresh session). No version bump, no
+migrator needed.
+
+**Out of scope for this design:** wiring `MigrationRegistry` into the
+restore pipeline. That's a real piece of tech debt — the registry
+exists but is unused, so any *non-additive* future schema change
+would be blocked on fixing it first. We surface it here so it can be
+addressed as a separate, isolated change. We do not need it for this
+feature, and bundling it would expand scope and risk.
+
 ## Detection pipeline
 
 ### Hook installer (`jmux --install-agent-hooks`)
@@ -173,7 +217,7 @@ pane).
         "timeout": 5
       }]
     }],
-    "Notification": [{
+    "PermissionRequest": [{
       "hooks": [{
         "type": "command",
         "command": "tmux set-option @jmux-agent-state waiting 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null || true",
@@ -222,20 +266,62 @@ Each update event flows through a new `AgentStateTracker` module that
 owns the per-session state map and emits a change event when state or
 `since` actually changes.
 
-### OTEL safety-net writes
+### OTEL safety-net writes — explicit seam
 
-`OtelReceiver` gains a `tmuxRunner` (the same one used elsewhere in
-`main.ts`). On `api_request` and `tool_result` events, after applying
-the existing OTEL-state updates, if it observes that the session's
-current `@jmux-agent-state` is `waiting`, it issues:
+`OtelReceiver` operates entirely in **session-name** space — every
+OTLP record carries a `tmux_session_name` resource attribute, and
+its internal `state` map is keyed by that name. tmux user-option
+writes, on the other hand, need a session **id** (`$N`), and the
+name→id resolution lives in `main.ts` alongside the tmux runner and
+session-details cache. The OtelReceiver should not learn about
+tmux.
 
+To avoid polluting `OtelReceiver` with tmux concerns, we wire the
+safety-net as a single injected callback:
+
+```ts
+// src/otel-receiver.ts
+export type AgentResumeHint = (sessionName: string) => void;
+
+export class OtelReceiver {
+  constructor(/* ... */, private readonly onAgentResumeHint: AgentResumeHint = () => {}) {}
+  // ...
+}
 ```
-tmux set-option -t <session_id> @jmux-agent-state running
-tmux set-option -t <session_id> @jmux-agent-state-since <now_epoch>
+
+`OtelReceiver` calls `this.onAgentResumeHint(sessionName)` after
+processing each `api_request` and `tool_result` event. That's its
+entire responsibility — it doesn't read state, doesn't touch tmux,
+doesn't know whether the hint will actually result in a write.
+
+`main.ts` owns the implementation of the callback:
+
+```ts
+// in main.ts wiring (sketch)
+const otel = new OtelReceiver(/* ... */, (sessionName) => {
+  const id = sessionIdByName.get(sessionName);
+  if (!id) return;                                    // unknown session
+  if (agentStateTracker.getState(id) !== "waiting") return;  // not in waiting
+  void runner.run(["set-option", "-t", id, "@jmux-agent-state", "running"]);
+  void runner.run(["set-option", "-t", id, "@jmux-agent-state-since", String(Math.floor(Date.now() / 1000))]);
+});
 ```
 
-The current state is read from `AgentStateTracker`, not directly from
-tmux, to avoid a round-trip.
+Properties of this seam:
+
+- `OtelReceiver` stays in session-name space; no tmux knowledge.
+- All `AgentStateTracker` and tmux interaction lives in `main.ts`,
+  next to the other consumers of those subsystems.
+- The "is current state `waiting`?" check is read from
+  `AgentStateTracker`, not via a round-trip through tmux.
+- The write goes through the tmux runner the same way other
+  `set-option` calls do, and the resulting `@jmux-agent-state`
+  change re-enters via the control-channel subscription — the
+  single source of truth.
+- Unit-testable on both sides: `OtelReceiver` tests inject a fake
+  callback and assert it's called with the right name; the `main.ts`
+  glue is testable by exercising the closure directly in a smaller
+  helper extracted for the purpose.
 
 ### Legacy `@jmux-attention` cleanup
 
@@ -277,9 +363,15 @@ Priority order: `error > mcp-down > agent-state > activity`.
 
 ```
 if (cacheTimersEnabled and cacheTimerRemaining > 0):
+    # cache countdown wins while alive
     show "M:SS" cache countdown with existing color ramp
         green > 3min, orange ≤ 3min, red ≤ 30s
+else if (agentState is not null):
+    # promoted session — report time in current state
+    elapsed = now - agentStateSince
+    show "Xs" / "Xm" / "Xh", dim
 else if (any OTEL event has been seen for this session):
+    # non-promoted session that has prior OTEL data
     elapsed = now - max(lastRequestTime, lastUserPromptTime,
                         lastTool.timestamp)
     show "Xs" / "Xm" / "Xh", dim
@@ -287,8 +379,11 @@ else:
     blank
 ```
 
-This replaces both the cache-timer-only behavior and the row-2 "X idle"
-text.
+For a promoted session the elapsed reading is anchored to
+`agentStateSince`, not to the latest OTEL event — because `waiting`
+and `complete` are hook-driven and don't necessarily correspond to a
+recent OTEL event. This replaces both the cache-timer-only behavior
+and the row-2 "X idle" text.
 
 ### Row 2 layout
 
@@ -343,21 +438,32 @@ Modified files:
   - Remove `clearSessionIndicators`'s `@jmux-attention` unset call.
   - Update `list-sessions` format strings.
   - Hook up `AgentStateTracker` to the renderer.
+  - Provide the `onAgentResumeHint(sessionName)` callback to
+    `OtelReceiver`. The callback resolves name → id, checks
+    `AgentStateTracker.getState(id) === "waiting"`, and writes the
+    tmux options.
   - Update the `--install-agent-hooks` subcommand to install the new
     four-hook block and migrate the legacy entry.
-- `src/otel-receiver.ts` — add `tmuxRunner` injection; on
-  `api_request` / `tool_result` while session state is `waiting`,
-  write the tmux options.
+- `src/otel-receiver.ts` — accept an optional
+  `onAgentResumeHint: (sessionName: string) => void` in the
+  constructor; call it after processing each `api_request` and
+  `tool_result` event. No tmux dependency, no name→id resolution
+  inside the receiver.
 - `src/session-view.ts` — `buildSessionView` populates `agentState`
   and `agentStateSince`. `buildSessionRow3` (renamed conceptually
   to "row 2 builder") includes state in the right-side slot with the
   new drop-priority.
 - `src/sidebar.ts` — col-1 glyph selection consults agent state; row 2
   renderer places state label on the right.
-- `src/snapshot/schema.ts` — add per-session `agentState` field
-  (`{ state, since } | null`).
-- `src/snapshot/` writer & restore — write current state on shutdown;
-  restore on boot with the 10-minute stale-state coercion rule.
+- `src/snapshot/schema.ts` — add optional, nullable per-session
+  `agentState?: SnapshotAgentState | null` field and its validator
+  (accepts absent / null / well-formed object). No version bump.
+- `src/snapshot/model.ts` and the capture path — populate
+  `agentState` from `AgentStateTracker` at snapshot-write time.
+- `src/snapshot/restore.ts` and the boot phase — on restore, write
+  the snapshot's `agentState` back onto the recreated session via
+  `set-option @jmux-agent-state` / `@jmux-agent-state-since`, with
+  the 10-minute stale-state coercion rule applied first.
 - `src/cli/session.ts` — update `list-sessions` format strings and any
   consumers that surface attention.
 
@@ -431,7 +537,7 @@ This is a behavior-change release for users who already have
 3. The user runs `jmux --install-agent-hooks`. Installer detects the
    legacy hook, replaces it with the new four-hook block, and prints:
    *"Migrated jmux Stop hook to the new agent-state hooks
-   (UserPromptSubmit, Notification, PreToolUse, Stop). Restart Claude
+   (UserPromptSubmit, PermissionRequest, PreToolUse, Stop). Restart Claude
    Code in any open session to pick them up."*
 4. State indicators start working in any Claude Code session opened
    after the migration.
