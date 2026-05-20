@@ -97,6 +97,13 @@ const GROUP_HEADER_ATTRS: CellAttrs = {
   bold: true,
 };
 
+// Singleton empty OTEL state for promoted sessions that have no OTEL data
+// yet. Reused per render frame to avoid allocating a fresh blank object.
+// Frozen so accidental mutation is a runtime error rather than a silent bug.
+// Note: Object.freeze only freezes direct properties; the failedMcpServers
+// Set is readable but never mutated by buildSessionRow3, so shallow freeze suffices.
+const EMPTY_OTEL_STATE: SessionOtelState = Object.freeze(makeSessionOtelState()) as SessionOtelState;
+
 // --- Pipeline glyph constants ---
 const PIPELINE_GLYPH_MAP: Record<string, string> = {
   passed: "✓", running: "⟳", failed: "✗", pending: "○", canceled: "—",
@@ -770,12 +777,12 @@ export class Sidebar {
       }
     }
 
-    // Row 3: cost / tool / idle from the OTEL state.
+    // Row 3: cost / tool / state (or cost / tool / idle for non-promoted sessions).
     if (row3 < this.height) {
       this.paintRowChrome(grid, row3, isActive, isHovered);
       this.rowToSessionIndex.set(row3, sessionIdx);
 
-      const otel = this.otelStates.get(session.id) ?? (agentStateRecord ? makeSessionOtelState() : undefined);
+      const otel = this.otelStates.get(session.id) ?? (agentStateRecord ? EMPTY_OTEL_STATE : undefined);
       if (otel) {
         // Pass the budget that buildSessionRow3 will treat as its full usable
         // width. We start writing at col 3, so usable budget = this.width - 3.

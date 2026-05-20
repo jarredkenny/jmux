@@ -568,10 +568,18 @@ const otelReceiver = new OtelReceiver({
     const id = currentSessions.find((s) => s.name === sessionName)?.id;
     if (!id) return;
     if (agentStateTracker.getState(id) !== "waiting") return;
-    void control.sendCommand(`set-option -t ${tq(id)} @jmux-agent-state running`).catch(() => {});
-    void control
-      .sendCommand(`set-option -t ${tq(id)} @jmux-agent-state-since ${String(Math.floor(Date.now() / 1000))}`)
-      .catch(() => {});
+    // Chain the two writes so we never leave the session with state=running
+    // and since=stale-from-waiting. Fire-and-forget; failures are harmless.
+    void (async () => {
+      try {
+        await control.sendCommand(`set-option -t ${tq(id)} @jmux-agent-state running`);
+        await control.sendCommand(
+          `set-option -t ${tq(id)} @jmux-agent-state-since ${Math.floor(Date.now() / 1000)}`,
+        );
+      } catch {
+        // Best-effort: control-channel failure leaves the previous state intact.
+      }
+    })();
   },
 });
 otelReceiverRef.current = otelReceiver;

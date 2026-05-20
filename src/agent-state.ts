@@ -1,10 +1,10 @@
 import type { AgentState, AgentStateRecord } from "./types";
 
 /**
- * Structural shape for a stored snapshot agent state. Task 3 will declare
- * the canonical `SnapshotAgentState` type in `src/snapshot/schema.ts`
- * with this exact shape — structural typing keeps these compatible
- * without a cross-module import.
+ * Structural shape for a stored snapshot agent state. The canonical
+ * `SnapshotAgentState` type in `src/snapshot/schema.ts` has this exact
+ * shape — structural typing keeps these compatible without a
+ * cross-module import.
  *
  * Note: this is intentionally distinct from `AgentStateRecord` in
  * `types.ts`. Snapshots serialise timestamps as ISO strings; the runtime
