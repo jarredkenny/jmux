@@ -733,4 +733,98 @@ describe("OtelReceiver change events", () => {
     const snap = receiver.getSessionSnapshot("no-events");
     expect(snap).toBeNull();
   });
+
+  describe("onAgentResumeHint callback", () => {
+    test("fires on api_request with the session name", async () => {
+      const seen: string[] = [];
+      const recv = new OtelReceiver({
+        onAgentResumeHint: (name) => seen.push(name),
+      });
+      const port = await recv.start();
+      try {
+        await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+          method: "POST",
+          body: JSON.stringify(makeOtlpPayload({ sessionName: "foo", eventName: "api_request" })),
+        });
+      } finally {
+        recv.stop();
+      }
+      expect(seen).toEqual(["foo"]);
+    });
+
+    test("fires on tool_result with the session name", async () => {
+      const seen: string[] = [];
+      const recv = new OtelReceiver({
+        onAgentResumeHint: (name) => seen.push(name),
+      });
+      const port = await recv.start();
+      try {
+        await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+          method: "POST",
+          body: JSON.stringify(
+            makeOtlpPayload({
+              sessionName: "bar",
+              eventName: "tool_result",
+              attributes: [
+                { key: "tool_name", value: { stringValue: "Edit" } },
+                { key: "duration_ms", value: { stringValue: "12" } },
+                { key: "success", value: { boolValue: true } },
+              ],
+            }),
+          ),
+        });
+      } finally {
+        recv.stop();
+      }
+      expect(seen).toEqual(["bar"]);
+    });
+
+    test("does NOT fire on user_prompt", async () => {
+      const seen: string[] = [];
+      const recv = new OtelReceiver({
+        onAgentResumeHint: (name) => seen.push(name),
+      });
+      const port = await recv.start();
+      try {
+        await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+          method: "POST",
+          body: JSON.stringify(makeOtlpPayload({ sessionName: "foo", eventName: "user_prompt" })),
+        });
+      } finally {
+        recv.stop();
+      }
+      expect(seen).toEqual([]);
+    });
+
+    test("does NOT fire on api_error", async () => {
+      const seen: string[] = [];
+      const recv = new OtelReceiver({
+        onAgentResumeHint: (name) => seen.push(name),
+      });
+      const port = await recv.start();
+      try {
+        await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+          method: "POST",
+          body: JSON.stringify(makeOtlpPayload({ sessionName: "foo", eventName: "api_error" })),
+        });
+      } finally {
+        recv.stop();
+      }
+      expect(seen).toEqual([]);
+    });
+
+    test("missing callback is fine (no throw)", async () => {
+      const recv = new OtelReceiver();
+      const port = await recv.start();
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+          method: "POST",
+          body: JSON.stringify(makeOtlpPayload({ eventName: "api_request" })),
+        });
+        expect(res.status).toBe(200);
+      } finally {
+        recv.stop();
+      }
+    });
+  });
 });

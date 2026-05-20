@@ -8,11 +8,27 @@ function toIso(value: number | string | null | undefined): string | null {
   return null;
 }
 
+export interface OtelReceiverOptions {
+  /**
+   * Called once per api_request and tool_result event with the OTLP resource
+   * attribute `tmux_session_name`. Used by main.ts to close the
+   * WAITING→RUNNING gap when Claude resumes after a permission grant
+   * without firing UserPromptSubmit. OtelReceiver itself holds no tmux
+   * dependency and does not read state.
+   */
+  onAgentResumeHint?: (sessionName: string) => void;
+}
+
 export class OtelReceiver {
   private server: ReturnType<typeof Bun.serve> | null = null;
   private state = new Map<string, SessionOtelState>();
   onUpdate: ((sessionName: string) => void) | null = null;
   private sessionUpdateListeners: Array<(name: string) => void> = [];
+  private readonly onAgentResumeHint: (sessionName: string) => void;
+
+  constructor(opts: OtelReceiverOptions = {}) {
+    this.onAgentResumeHint = opts.onAgentResumeHint ?? (() => {});
+  }
 
   onSessionUpdate(fn: (name: string) => void): void {
     this.sessionUpdateListeners.push(fn);
@@ -163,6 +179,7 @@ export class OtelReceiver {
 
       this.onUpdate?.(sessionName);
       this.emitSessionUpdate(sessionName);
+      this.onAgentResumeHint(sessionName);
       return;
     }
 
@@ -245,6 +262,7 @@ export class OtelReceiver {
       this.state.set(sessionName, existing);
       this.onUpdate?.(sessionName);
       this.emitSessionUpdate(sessionName);
+      this.onAgentResumeHint(sessionName);
       return;
     }
   }

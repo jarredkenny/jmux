@@ -545,7 +545,7 @@ const pty = new TmuxPty({
 const bridge = new ScreenBridge(mainCols, ptyRows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, rows);
-const otelReceiver = new OtelReceiver();
+const otelReceiver = new OtelReceiver({});
 otelReceiverRef.current = otelReceiver;
 // Replay any restore actions that required OtelReceiver (permissionMode, otel state).
 for (const fn of boot.postRestoreActions) fn();
