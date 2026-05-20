@@ -172,42 +172,42 @@ describe("buildSessionRow3", () => {
   test("formats cost as $1.23", () => {
     const state = baseState();
     state.costUsd = 1.234;
-    const out = buildSessionRow3(state, 26, null);
+    const out = buildSessionRow3(state, 26, null).text;
     expect(out).toContain("$1.23");
   });
 
   test("formats tool with seconds duration", () => {
     const state = baseState();
     state.lastTool = { name: "Edit", durationMs: 1234, success: true, timestamp: Date.now() };
-    const out = buildSessionRow3(state, 26, null);
+    const out = buildSessionRow3(state, 26, null).text;
     expect(out).toContain("Edit 1.2s");
   });
 
   test("formats tool with minute+second duration", () => {
     const state = baseState();
     state.lastTool = { name: "Bash", durationMs: 80_000, success: true, timestamp: Date.now() };
-    const out = buildSessionRow3(state, 26, null);
+    const out = buildSessionRow3(state, 26, null).text;
     expect(out).toContain("Bash 1m20s");
   });
 
   test("formats idle as 3m idle", () => {
     const state = baseState();
     state.lastUserPromptTime = Date.now() - 3 * 60 * 1000;
-    const out = buildSessionRow3(state, 26, null);
+    const out = buildSessionRow3(state, 26, null).text;
     expect(out).toContain("3m idle");
   });
 
   test("omits cost when zero", () => {
     const state = baseState();
     state.lastTool = { name: "Edit", durationMs: 100, success: true, timestamp: Date.now() };
-    const out = buildSessionRow3(state, 26, null);
+    const out = buildSessionRow3(state, 26, null).text;
     expect(out).not.toContain("$");
   });
 
   test("omits last tool when null", () => {
     const state = baseState();
     state.costUsd = 1.0;
-    const out = buildSessionRow3(state, 26, null);
+    const out = buildSessionRow3(state, 26, null).text;
     expect(out).not.toContain("Edit");
     expect(out).not.toContain("Bash");
   });
@@ -215,7 +215,7 @@ describe("buildSessionRow3", () => {
   test("omits idle when no user_prompt seen", () => {
     const state = baseState();
     state.costUsd = 1.0;
-    const out = buildSessionRow3(state, 26, null);
+    const out = buildSessionRow3(state, 26, null).text;
     expect(out).not.toContain("idle");
   });
 
@@ -225,7 +225,7 @@ describe("buildSessionRow3", () => {
     state.costUsd = 1.0;
     state.lastTool = { name: "Edit", durationMs: 1000, success: true, timestamp: Date.now() };
     state.lastUserPromptTime = Date.now() - 60_000;
-    const out = buildSessionRow3(state, 16, null);
+    const out = buildSessionRow3(state, 16, null).text;
     expect(out).toContain("$1.00");
     expect(out).toContain("Edit");
     expect(out).not.toContain("idle");
@@ -236,14 +236,14 @@ describe("buildSessionRow3", () => {
     state.costUsd = 1.0;
     state.lastTool = { name: "Edit", durationMs: 1000, success: true, timestamp: Date.now() };
     state.lastUserPromptTime = Date.now() - 60_000;
-    const out = buildSessionRow3(state, 8, null);
+    const out = buildSessionRow3(state, 8, null).text;
     expect(out).toContain("$1.00");
     expect(out).not.toContain("Edit");
     expect(out).not.toContain("idle");
   });
 
   test("returns empty string when no fields apply", () => {
-    expect(buildSessionRow3(baseState(), 26, null)).toBe("");
+    expect(buildSessionRow3(baseState(), 26, null).text).toBe("");
   });
 });
 
@@ -346,7 +346,7 @@ function rowWithState(
   otel.costUsd = 0.42;
   otel.lastTool = { name: "Edit", durationMs: 2_100, success: true, timestamp: Date.now() };
   Object.assign(otel, otelOverrides);
-  return buildSessionRow3(otel, width, state);
+  return buildSessionRow3(otel, width, state).text;
 }
 
 describe("buildSessionRow3 — promoted session with state label", () => {
@@ -381,14 +381,32 @@ describe("buildSessionRow3 — non-promoted session preserves existing behavior"
     const otel = makeSessionOtelState();
     otel.costUsd = 0.42;
     otel.lastUserPromptTime = Date.now() - 60_000;
-    const text = buildSessionRow3(otel, 26, null);
-    expect(text).toContain("$0.42");
-    expect(text).toMatch(/idle/);
+    const result = buildSessionRow3(otel, 26, null);
+    expect(result.text).toContain("$0.42");
+    expect(result.text).toMatch(/idle/);
+    expect(result.labelCol).toBe(-1);
   });
 
   test("null state with no data → empty string", () => {
     const otel = makeSessionOtelState();
-    const text = buildSessionRow3(otel, 26, null);
-    expect(text).toBe("");
+    const result = buildSessionRow3(otel, 26, null);
+    expect(result.text).toBe("");
+    expect(result.labelCol).toBe(-1);
+  });
+
+  test("returns labelCol pointing to the state label position", () => {
+    const otel = makeSessionOtelState();
+    otel.costUsd = 0.42;
+    otel.lastTool = { name: "Edit", durationMs: 2_100, success: true, timestamp: Date.now() };
+    const result = buildSessionRow3(otel, 26, "running");
+    expect(result.labelCol).toBeGreaterThanOrEqual(0);
+    expect(result.text.slice(result.labelCol)).toBe("RUNNING");
+  });
+
+  test("labelCol is -1 for non-promoted sessions", () => {
+    const otel = makeSessionOtelState();
+    otel.costUsd = 0.42;
+    const result = buildSessionRow3(otel, 26, null);
+    expect(result.labelCol).toBe(-1);
   });
 });

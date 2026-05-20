@@ -187,11 +187,17 @@ const STATE_LABEL: Record<AgentState, string> = {
   complete: "COMPLETE",
 };
 
+export interface SessionRow3Result {
+  text: string;
+  /** 0-based column offset into `text` where the state label begins, or -1 if no label was rendered. */
+  labelCol: number;
+}
+
 export function buildSessionRow3(
   state: SessionOtelState,
   width: number,
   agentState: AgentState | null,
-): string {
+): SessionRow3Result {
   const costText = state.costUsd > 0 ? `$${state.costUsd.toFixed(2)}` : null;
   const toolText = state.lastTool
     ? `${state.lastTool.name} ${formatToolDuration(state.lastTool.durationMs)}`
@@ -226,9 +232,16 @@ export function buildSessionRow3(
     for (const fields of candidates) {
       const totalLen = fields.reduce((s, f) => s + f.text.length, 0)
         + Math.max(0, fields.length - 1) * ROW3_GAP.length;
-      if (totalLen <= usable) return layoutRow3(fields, usable);
+      if (totalLen <= usable) {
+        const text = layoutRow3(fields, usable);
+        const labelCol = text.length >= stateText.length
+          ? text.length - stateText.length
+          : 0;
+        return { text, labelCol };
+      }
     }
-    return stateText.slice(0, usable);
+    const text = stateText.slice(0, usable);
+    return { text, labelCol: 0 };
   }
 
   // Non-promoted: keep existing cost/tool/idle behavior unchanged.
@@ -266,13 +279,13 @@ export function buildSessionRow3(
     const totalLen = fields.reduce((s, f) => s + f.text.length, 0)
       + Math.max(0, fields.length - 1) * ROW3_GAP.length;
     if (totalLen <= usable) {
-      return layoutRow3(fields, usable);
+      return { text: layoutRow3(fields, usable), labelCol: -1 };
     }
   }
 
   // Last resort: cost truncated
-  if (costText) return costText.slice(0, usable);
-  return "";
+  if (costText) return { text: costText.slice(0, usable), labelCol: -1 };
+  return { text: "", labelCol: -1 };
 }
 
 function layoutRow3(

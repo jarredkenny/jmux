@@ -1268,4 +1268,26 @@ describe("Sidebar — agent state rendering", () => {
     }
     expect(found).toBe("RUNNING");
   });
+
+  test("row-2 state label preserves the active-row background", () => {
+    const sb = new Sidebar(26, 24);
+    const session: SessionInfo = {
+      id: "$1", name: "alpha", attached: false, activity: 0,
+      attention: false, windowCount: 1,
+    };
+    sb.updateSessions([session]);
+    sb.setActiveSession("$1");
+    sb.setAgentStateRecord("$1", { state: "running", since: Date.now() });
+
+    const grid = sb.getGrid();
+    // Row 2 of the session (nameRow + 2) is at grid row 4 (header is rows 0+1).
+    const row = grid.cells[4];
+    // Find a cell that has fg=2 (green) — that's a RUNNING label cell.
+    const labelCell = row.find((cell) => cell.fg === 2 && cell.char !== " ");
+    expect(labelCell).toBeDefined();
+    if (labelCell) {
+      // Active background is 0x1e2a35 packed as RGB.
+      expect(labelCell.bg).toBe((0x1e << 16) | (0x2a << 8) | 0x35);
+    }
+  });
 });

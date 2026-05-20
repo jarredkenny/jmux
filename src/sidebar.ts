@@ -1,4 +1,4 @@
-import type { SessionOtelState, CellGrid, SessionInfo } from "./types";
+import type { SessionOtelState, CellGrid, SessionInfo, AgentState, AgentStateRecord } from "./types";
 import { ColorMode, makeSessionOtelState } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { SessionContext } from "./adapters/types";
@@ -57,6 +57,11 @@ const MODE_ACCEPT_EDITS_ATTRS: CellAttrs = {
   fgMode: ColorMode.Palette,
 };
 const MODE_COMPACTION_ATTRS: CellAttrs = { dim: true };
+const LABEL_BY_STATE: Record<AgentState, { text: string; attrs: CellAttrs }> = {
+  running: { text: "RUNNING", attrs: AGENT_STATE_RUNNING_ATTRS },
+  waiting: { text: "WAITING", attrs: AGENT_STATE_WAITING_ATTRS },
+  complete: { text: "COMPLETE", attrs: AGENT_STATE_COMPLETE_ATTRS },
+};
 const ACTIVE_NAME_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
@@ -306,7 +311,7 @@ export class Sidebar {
   private currentVersion: string = "";
   private latestVersion: string | null = null;
   private otelStates = new Map<string, SessionOtelState>();
-  private agentStateRecords = new Map<string, import("./types").AgentStateRecord>();
+  private agentStateRecords = new Map<string, AgentStateRecord>();
   cacheTimersEnabled: boolean = true;
   private sessionContexts = new Map<string, SessionContext>();
 
@@ -385,7 +390,7 @@ export class Sidebar {
 
   setAgentStateRecord(
     sessionId: string,
-    record: import("./types").AgentStateRecord | null,
+    record: AgentStateRecord | null,
   ): void {
     if (record === null) this.agentStateRecords.delete(sessionId);
     else this.agentStateRecords.set(sessionId, record);
@@ -779,37 +784,26 @@ export class Sidebar {
       if (otel) {
         // Pass the budget that buildSessionRow3 will treat as its full usable
         // width. We start writing at col 3, so usable budget = this.width - 3.
-        const text = buildSessionRow3(otel, this.width - 3, agentStateRecord?.state ?? null);
-        if (text.length > 0) {
+        const result = buildSessionRow3(otel, this.width - 3, agentStateRecord?.state ?? null);
+        if (result.text.length > 0) {
           const row3Attrs: CellAttrs = isActive
             ? ACTIVE_DETAIL_ATTRS
             : isHovered
               ? HOVER_DETAIL_ATTRS
               : DIM_ATTRS;
-          writeString(grid, row3, 3, text, row3Attrs);
+          writeString(grid, row3, 3, result.text, row3Attrs);
 
           // Repaint the state label in its specific color so it stands out
           // from the dim row-3 background attrs.
-          if (agentStateRecord) {
-            const LABEL_BY_STATE: Record<
-              import("./types").AgentState,
-              { text: string; attrs: CellAttrs }
-            > = {
-              running: { text: "RUNNING", attrs: AGENT_STATE_RUNNING_ATTRS },
-              waiting: { text: "WAITING", attrs: AGENT_STATE_WAITING_ATTRS },
-              complete: { text: "COMPLETE", attrs: AGENT_STATE_COMPLETE_ATTRS },
-            };
-            const { text: labelText, attrs: labelAttrs } = LABEL_BY_STATE[agentStateRecord.state];
-            const idx = text.lastIndexOf(labelText);
-            if (idx >= 0) {
-              const col = 3 + idx;
-              const bgAttrs: CellAttrs = isActive
-                ? { bg: ACTIVE_BG, bgMode: ColorMode.RGB }
-                : isHovered
-                  ? { bg: HOVER_BG, bgMode: ColorMode.RGB }
-                  : {};
-              writeString(grid, row3, col, labelText, { ...labelAttrs, ...bgAttrs });
-            }
+          if (agentStateRecord && result.labelCol >= 0) {
+            const labelDef = LABEL_BY_STATE[agentStateRecord.state];
+            const col = 3 + result.labelCol;
+            const bgAttrs: CellAttrs = isActive
+              ? { bg: ACTIVE_BG, bgMode: ColorMode.RGB }
+              : isHovered
+                ? { bg: HOVER_BG, bgMode: ColorMode.RGB }
+                : {};
+            writeString(grid, row3, col, labelDef.text, { ...labelDef.attrs, ...bgAttrs });
           }
         }
       }
