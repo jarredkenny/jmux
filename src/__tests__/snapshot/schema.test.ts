@@ -443,7 +443,7 @@ describe("snapshot schema", () => {
     };
     const result = validateSnapshot(snap);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain("agentState");
+    if (!result.ok) expect(result.error).toContain("agentState.state");
   });
 
   test("validateSnapshot rejects an agentState with non-string since", () => {
@@ -472,5 +472,20 @@ describe("snapshot schema", () => {
     };
     const result = validateSnapshot(snap);
     expect(result.ok).toBe(false);
+  });
+
+  test("validateSnapshot rejects an agentState with since: null", () => {
+    const snap = {
+      ...good,
+      sessions: [
+        {
+          ...good.sessions[0],
+          agentState: { state: "running", since: null },
+        },
+      ],
+    };
+    const result = validateSnapshot(snap as unknown);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("agentState.since");
   });
 });

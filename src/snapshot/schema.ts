@@ -168,16 +168,16 @@ function validateOtel(v: unknown, path: string): string | null {
   return null;
 }
 
-const KNOWN_AGENT_STATES: ReadonlySet<string> = new Set([
-  "running",
-  "waiting",
-  "complete",
-]);
+// Single source of truth for snapshot agent-state names. The `satisfies` clause
+// ties the array to the SnapshotAgentStateName union — adding a value to one
+// without updating the other is a compile error.
+const KNOWN_AGENT_STATES = ["running", "waiting", "complete"] as const satisfies readonly SnapshotAgentStateName[];
+const KNOWN_AGENT_STATES_SET: ReadonlySet<string> = new Set(KNOWN_AGENT_STATES);
 
 function validateAgentState(v: unknown, path: string): string | null {
   if (v === undefined || v === null) return null;
   if (!isRecord(v)) return `${path}: not an object, null, or absent`;
-  if (typeof v.state !== "string" || !KNOWN_AGENT_STATES.has(v.state)) {
+  if (typeof v.state !== "string" || !KNOWN_AGENT_STATES_SET.has(v.state)) {
     return `${path}.state: invalid`;
   }
   if (typeof v.since !== "string" || !ISO_RX.test(v.since)) {
