@@ -115,6 +115,18 @@ describe("AgentStateTracker.pruneExcept", () => {
     expect(t.getState("$2")).toBeNull();
     expect(t.getState("$3")).toBe("complete");
   });
+
+  test("does NOT emit change events for pruned records", () => {
+    const t = new AgentStateTracker();
+    t.apply("$1", "running", "1717000000");
+    t.apply("$2", "waiting", "1717000010");
+
+    const seen: string[] = [];
+    t.onChange((id) => seen.push(id));
+
+    t.pruneExcept(["$1"]);
+    expect(seen).toEqual([]);
+  });
 });
 
 describe("AgentStateTracker.size", () => {
