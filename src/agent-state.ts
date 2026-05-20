@@ -6,7 +6,7 @@ import type { AgentState, AgentStateRecord } from "./types";
  * with this exact shape — structural typing keeps these compatible
  * without a cross-module import.
  */
-export interface StoredAgentState {
+interface StoredAgentState {
   state: AgentState;
   /** ISO timestamp string. */
   since: string;
@@ -20,17 +20,13 @@ export interface StoredAgentState {
  *
  * A malformed `capturedAt` is treated as stale (safest: we don't want
  * to leave a bogus "RUNNING 4h" on the screen after a long suspend).
- *
- * The generic `<T extends StoredAgentState>` means callers can pass a
- * richer type (e.g. SnapshotAgentState) and get it back unchanged when
- * not coerced, preserving any extra fields.
  */
-export function coerceStaleAgentState<T extends StoredAgentState>(
-  stored: T | null,
+export function coerceStaleAgentState(
+  stored: StoredAgentState | null,
   capturedAt: string,
   nowMs: number,
   thresholdMs: number,
-): T | null {
+): StoredAgentState | null {
   if (stored === null) return null;
   if (stored.state === "complete") return stored;
 
@@ -40,10 +36,7 @@ export function coerceStaleAgentState<T extends StoredAgentState>(
     : Number.POSITIVE_INFINITY;
 
   if (age <= thresholdMs) return stored;
-  // Cast through unknown: we're deliberately widening `state` from a
-  // narrower literal to "complete". The generic T is preserved for all
-  // other fields; only `state` is overwritten.
-  return { ...stored, state: "complete" } as unknown as T;
+  return { state: "complete", since: stored.since };
 }
 
 // Keep VALID_STATES in sync with the AgentState union: adding/removing a

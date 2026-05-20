@@ -150,7 +150,7 @@ describe("AgentStateTracker.size", () => {
   });
 });
 
-import { coerceStaleAgentState, type StoredAgentState } from "../agent-state";
+import { coerceStaleAgentState } from "../agent-state";
 
 const TEN_MIN_MS = 10 * 60 * 1000;
 
@@ -173,7 +173,7 @@ describe("coerceStaleAgentState", () => {
   });
 
   test("coerces stale running to complete", () => {
-    const stored: StoredAgentState = { state: "running", since: "2026-05-20T10:00:00Z" };
+    const stored = { state: "running" as const, since: "2026-05-20T10:00:00Z" };
     const out = coerceStaleAgentState(
       stored,
       "2026-05-20T10:00:00Z",
@@ -187,7 +187,7 @@ describe("coerceStaleAgentState", () => {
   });
 
   test("coerces stale waiting to complete", () => {
-    const stored: StoredAgentState = { state: "waiting", since: "2026-05-20T10:00:00Z" };
+    const stored = { state: "waiting" as const, since: "2026-05-20T10:00:00Z" };
     const out = coerceStaleAgentState(
       stored,
       "2026-05-20T10:00:00Z",
@@ -209,7 +209,7 @@ describe("coerceStaleAgentState", () => {
   });
 
   test("malformed capturedAt is treated as stale (safest)", () => {
-    const stored: StoredAgentState = { state: "running", since: "2026-05-20T10:00:00Z" };
+    const stored = { state: "running" as const, since: "2026-05-20T10:00:00Z" };
     const out = coerceStaleAgentState(
       stored,
       "garbage",
