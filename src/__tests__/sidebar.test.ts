@@ -8,14 +8,13 @@ const SIDEBAR_WIDTH = 24;
 const makeBlankOtelState = makeSessionOtelState;
 
 function makeSessions(
-  entries: Array<{ name: string; directory?: string; gitBranch?: string; project?: string; attention?: boolean }>,
+  entries: Array<{ name: string; directory?: string; gitBranch?: string; project?: string }>,
 ): SessionInfo[] {
   return entries.map((e, i) => ({
     id: `$${i}`,
     name: e.name,
     attached: i === 0,
     activity: 0,
-    attention: e.attention ?? false,
     windowCount: 1,
     directory: e.directory,
     gitBranch: e.gitBranch,
@@ -1170,7 +1169,7 @@ describe("Sidebar — agent state rendering", () => {
     const sb = new Sidebar(26, 24);
     const session: SessionInfo = {
       id: "$1", name: "alpha", attached: false, activity: 0,
-      attention: false, windowCount: 1,
+      windowCount: 1,
     };
     sb.updateSessions([session]);
     sb.setAgentStateRecord("$1", { state, since: Date.now() });
@@ -1208,7 +1207,7 @@ describe("Sidebar — agent state rendering", () => {
     const sb = new Sidebar(26, 24);
     const session: SessionInfo = {
       id: "$1", name: "alpha", attached: false, activity: 0,
-      attention: false, windowCount: 1,
+      windowCount: 1,
     };
     sb.updateSessions([session]);
     sb.setAgentStateRecord("$1", { state: "running", since: Date.now() });
@@ -1223,7 +1222,7 @@ describe("Sidebar — agent state rendering", () => {
     const sb = new Sidebar(26, 24);
     const session: SessionInfo = {
       id: "$1", name: "alpha", attached: false, activity: 0,
-      attention: false, windowCount: 1,
+      windowCount: 1,
     };
     sb.updateSessions([session]);
     sb.setAgentStateRecord("$1", { state: "complete", since: Date.now() });
@@ -1246,7 +1245,7 @@ describe("Sidebar — agent state rendering", () => {
     // Indirect assertion: no error, and re-adding the session doesn't show the old state.
     const session: SessionInfo = {
       id: "$1", name: "alpha", attached: false, activity: 0,
-      attention: false, windowCount: 1,
+      windowCount: 1,
     };
     sb.updateSessions([session]);
     const grid = sb.getGrid();
@@ -1273,7 +1272,7 @@ describe("Sidebar — agent state rendering", () => {
     const sb = new Sidebar(26, 24);
     const session: SessionInfo = {
       id: "$1", name: "alpha", attached: false, activity: 0,
-      attention: false, windowCount: 1,
+      windowCount: 1,
     };
     sb.updateSessions([session]);
     sb.setActiveSession("$1");

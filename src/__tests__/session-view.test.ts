@@ -11,7 +11,6 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     name: "test-session",
     attached: false,
     activity: 0,
-    attention: false,
     windowCount: 1,
     ...overrides,
   };
@@ -56,7 +55,6 @@ describe("buildSessionView", () => {
     expect(view.pipelineState).toBeNull();
     expect(view.timerText).toBeNull();
     expect(view.hasActivity).toBe(false);
-    expect(view.hasAttention).toBe(false);
   });
 
   test("uses gitBranch from session", () => {
@@ -150,11 +148,6 @@ describe("buildSessionView", () => {
   test("sets hasActivity from activitySet", () => {
     const view = buildSessionView(makeSession(), undefined, undefined, new Set(["$0"]));
     expect(view.hasActivity).toBe(true);
-  });
-
-  test("sets hasAttention from session", () => {
-    const view = buildSessionView(makeSession({ attention: true }), undefined, undefined, new Set());
-    expect(view.hasAttention).toBe(true);
   });
 
   test("MR id extracts iid from compound id", () => {

@@ -895,7 +895,6 @@ async function fetchSessions(): Promise<void> {
           name,
           activity: parseInt(activity, 10) || 0,
           attached: attached === "1",
-          attention: false,
           windowCount: parseInt(windows, 10) || 1,
           directory: cached?.directory,
           gitBranch: cached?.gitBranch,

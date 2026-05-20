@@ -168,6 +168,13 @@ describe("snapshot schema", () => {
     if (!result.ok) expect(result.error).toContain("attention");
   });
 
+  test("validateSnapshot accepts session with attention omitted", () => {
+    const noAttention = JSON.parse(JSON.stringify(good));
+    delete noAttention.sessions[0].attention;
+    const result = validateSnapshot(noAttention);
+    expect(result.ok).toBe(true);
+  });
+
   test("validateSnapshot rejects session with invalid permissionMode", () => {
     const bad = JSON.parse(JSON.stringify(good));
     bad.sessions[0].permissionMode = "superuser";

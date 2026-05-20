@@ -97,6 +97,7 @@ describe("Snapshotter structural events", () => {
     s.onPinned("ghost", true);
     s.onLinks("ghost", [{ type: "issue", id: "ENG-1" }]);
     s.onOtel("ghost", null);
+    s.onAgentState("ghost", { state: "running", since: new Date().toISOString() });
     await s.flushNow();
     const written = fs.files.get("/snap/state.json");
     expect(written).not.toBeUndefined();

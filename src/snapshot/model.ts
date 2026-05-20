@@ -162,7 +162,6 @@ export class SnapshotModel {
       worktreePath: null,
       projectGroup: null,
       pinned: false,
-      attention: false,
       permissionMode: null,
       otel: null,
       links: [],

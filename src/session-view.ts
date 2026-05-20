@@ -20,7 +20,6 @@ export interface SessionView {
   sessionName: string;
 
   hasActivity: boolean;
-  hasAttention: boolean;
   indicatorKind: IndicatorKind;
 
   // Row 1, between name and Linear ID
@@ -150,7 +149,6 @@ export function buildSessionView(
     sessionId: session.id,
     sessionName: session.name,
     hasActivity: activitySet.has(session.id),
-    hasAttention: session.attention,
     indicatorKind,
     modeBadge,
     linearId,

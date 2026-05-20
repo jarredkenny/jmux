@@ -51,7 +51,7 @@ export interface SnapshotSession {
   worktreePath: string | null;
   projectGroup: string | null;
   pinned: boolean;
-  attention: boolean;
+  attention?: boolean;
   permissionMode: SnapshotPermissionMode;
   otel: SnapshotOtel | null;
   links: SessionLink[];
@@ -197,7 +197,7 @@ function validateSession(v: unknown, path: string): string | null {
     return `${path}.projectGroup: not string or null`;
   }
   if (!isBoolean(v.pinned)) return `${path}.pinned: not a boolean`;
-  if (!isBoolean(v.attention)) return `${path}.attention: not a boolean`;
+  if (v.attention !== undefined && !isBoolean(v.attention)) return `${path}.attention: not a boolean`;
   if (
     v.permissionMode !== null &&
     v.permissionMode !== "default" &&
