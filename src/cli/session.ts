@@ -177,24 +177,9 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       return { renamed: newName, from: target };
     }
 
-    case "set-attention": {
-      if (!flags.target || typeof flags.target !== "string") {
-        throw new CliError("--target is required");
-      }
-      const target = flags.target;
-
-      if (flags.clear) {
-        tmuxOrThrow(runTmuxDirect(["set-option", "-t", target, "-u", "@jmux-attention"], ctx.socket));
-        return { target, attention: false };
-      } else {
-        tmuxOrThrow(runTmuxDirect(["set-option", "-t", target, "@jmux-attention", "1"], ctx.socket));
-        return { target, attention: true };
-      }
-    }
-
     default:
       throw new CliError(
-        `Unknown session action "${action}". Known actions: list, create, info, switch, kill, rename, set-attention`,
+        `Unknown session action "${action}". Known actions: list, create, info, switch, kill, rename`,
       );
   }
 }

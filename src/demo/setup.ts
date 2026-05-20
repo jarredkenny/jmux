@@ -81,11 +81,16 @@ export function setupDemo(): DemoContext {
     );
   }
 
-  // 5. Set attention flags for sessions that need them
+  // 5. Set agent-state for sessions that want the "waiting" indicator
+  const waitingSince = String(Math.floor(Date.now() / 1000));
   for (const session of DEMO_SESSIONS) {
     if (session.attention) {
       Bun.spawnSync(
-        ["tmux", "-L", socketName, "set-option", "-t", session.name, "@jmux-attention", "1"],
+        ["tmux", "-L", socketName, "set-option", "-t", session.name, "@jmux-agent-state", "waiting"],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+      Bun.spawnSync(
+        ["tmux", "-L", socketName, "set-option", "-t", session.name, "@jmux-agent-state-since", waitingSince],
         { stdout: "pipe", stderr: "pipe" },
       );
     }

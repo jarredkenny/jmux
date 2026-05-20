@@ -95,7 +95,6 @@ describe("Snapshotter structural events", () => {
     // No session in the model. These should not throw or pollute the snapshot.
     s.onPermissionMode("ghost", "plan");
     s.onPinned("ghost", true);
-    s.onAttention("ghost", true);
     s.onLinks("ghost", [{ type: "issue", id: "ENG-1" }]);
     s.onOtel("ghost", null);
     await s.flushNow();

@@ -186,11 +186,6 @@ export class Snapshotter {
     this.markDirty();
   }
 
-  onAttention(name: string, attention: boolean): void {
-    this.opts.model.setAttention(name, attention);
-    this.markDirty();
-  }
-
   onAgentState(
     name: string,
     agentState: SnapshotAgentState | null,

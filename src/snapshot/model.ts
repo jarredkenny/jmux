@@ -98,11 +98,6 @@ export class SnapshotModel {
     if (s) s.pinned = pinned;
   }
 
-  setAttention(sessionName: string, attention: boolean): void {
-    const s = this.sessions.get(sessionName);
-    if (s) s.attention = attention;
-  }
-
   setLinks(sessionName: string, links: SessionLink[]): void {
     const s = this.sessions.get(sessionName);
     if (s) s.links = [...links];
