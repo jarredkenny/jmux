@@ -1,5 +1,5 @@
 import type { SessionOtelState, CellGrid, SessionInfo } from "./types";
-import { ColorMode } from "./types";
+import { ColorMode, makeSessionOtelState } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { SessionContext } from "./adapters/types";
 import { buildSessionView, buildSessionRow3 } from "./session-view";
@@ -24,10 +24,19 @@ const ACTIVITY_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
 };
-const ATTENTION_ATTRS: CellAttrs = {
+const AGENT_STATE_RUNNING_ATTRS: CellAttrs = {
+  fg: 2,
+  fgMode: ColorMode.Palette,
+};
+const AGENT_STATE_WAITING_ATTRS: CellAttrs = {
   fg: 3,
   fgMode: ColorMode.Palette,
   bold: true,
+};
+const AGENT_STATE_COMPLETE_ATTRS: CellAttrs = {
+  fg: 4,
+  fgMode: ColorMode.Palette,
+  dim: true,
 };
 const ERROR_ATTRS: CellAttrs = {
   fg: 1,
@@ -297,6 +306,7 @@ export class Sidebar {
   private currentVersion: string = "";
   private latestVersion: string | null = null;
   private otelStates = new Map<string, SessionOtelState>();
+  private agentStateRecords = new Map<string, import("./types").AgentStateRecord>();
   cacheTimersEnabled: boolean = true;
   private sessionContexts = new Map<string, SessionContext>();
 
@@ -307,10 +317,13 @@ export class Sidebar {
 
   updateSessions(sessions: SessionInfo[]): void {
     this.sessions = sessions;
-    // Prune otelStates for sessions that no longer exist
+    // Prune otelStates and agentStateRecords for sessions that no longer exist
     const activeIds = new Set(sessions.map((s) => s.id));
     for (const id of this.otelStates.keys()) {
       if (!activeIds.has(id)) this.otelStates.delete(id);
+    }
+    for (const id of this.agentStateRecords.keys()) {
+      if (!activeIds.has(id)) this.agentStateRecords.delete(id);
     }
     this.rebuildPlan();
   }
@@ -368,6 +381,14 @@ export class Sidebar {
   /** Test-only: number of otelStates entries currently held. */
   _otelStateCount(): number {
     return this.otelStates.size;
+  }
+
+  setAgentStateRecord(
+    sessionId: string,
+    record: import("./types").AgentStateRecord | null,
+  ): void {
+    if (record === null) this.agentStateRecords.delete(sessionId);
+    else this.agentStateRecords.set(sessionId, record);
   }
 
   setSessionContexts(contexts: Map<string, SessionContext>): void {
@@ -608,7 +629,8 @@ export class Sidebar {
     // Build the view
     const ctx = this.sessionContexts.get(session.name);
     const timerState = this.cacheTimersEnabled ? this.otelStates.get(session.id) ?? undefined : undefined;
-    const view = buildSessionView(session, ctx, timerState, this.activitySet);
+    const agentStateRecord = this.agentStateRecords.get(session.id) ?? null;
+    const view = buildSessionView(session, ctx, timerState, this.activitySet, agentStateRecord);
 
     // Map rows to session for click handling
     this.rowToSessionIndex.set(nameRow, sessionIdx);
@@ -628,8 +650,14 @@ export class Sidebar {
       case "mcp-down":
         writeString(grid, nameRow, 1, "\u2298", MCP_DOWN_ATTRS);
         break;
-      case "attention":
-        writeString(grid, nameRow, 1, "!", ATTENTION_ATTRS);
+      case "agent-running":
+        writeString(grid, nameRow, 1, "\u23F5", AGENT_STATE_RUNNING_ATTRS);
+        break;
+      case "agent-waiting":
+        writeString(grid, nameRow, 1, "!", AGENT_STATE_WAITING_ATTRS);
+        break;
+      case "agent-complete":
+        writeString(grid, nameRow, 1, "\u2713", AGENT_STATE_COMPLETE_ATTRS);
         break;
       case "activity":
         writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
@@ -747,11 +775,11 @@ export class Sidebar {
       this.paintRowChrome(grid, row3, isActive, isHovered);
       this.rowToSessionIndex.set(row3, sessionIdx);
 
-      const otel = this.otelStates.get(session.id);
+      const otel = this.otelStates.get(session.id) ?? (agentStateRecord ? makeSessionOtelState() : undefined);
       if (otel) {
         // Pass the budget that buildSessionRow3 will treat as its full usable
         // width. We start writing at col 3, so usable budget = this.width - 3.
-        const text = buildSessionRow3(otel, this.width - 3, null);
+        const text = buildSessionRow3(otel, this.width - 3, agentStateRecord?.state ?? null);
         if (text.length > 0) {
           const row3Attrs: CellAttrs = isActive
             ? ACTIVE_DETAIL_ATTRS
@@ -759,6 +787,30 @@ export class Sidebar {
               ? HOVER_DETAIL_ATTRS
               : DIM_ATTRS;
           writeString(grid, row3, 3, text, row3Attrs);
+
+          // Repaint the state label in its specific color so it stands out
+          // from the dim row-3 background attrs.
+          if (agentStateRecord) {
+            const LABEL_BY_STATE: Record<
+              import("./types").AgentState,
+              { text: string; attrs: CellAttrs }
+            > = {
+              running: { text: "RUNNING", attrs: AGENT_STATE_RUNNING_ATTRS },
+              waiting: { text: "WAITING", attrs: AGENT_STATE_WAITING_ATTRS },
+              complete: { text: "COMPLETE", attrs: AGENT_STATE_COMPLETE_ATTRS },
+            };
+            const { text: labelText, attrs: labelAttrs } = LABEL_BY_STATE[agentStateRecord.state];
+            const idx = text.lastIndexOf(labelText);
+            if (idx >= 0) {
+              const col = 3 + idx;
+              const bgAttrs: CellAttrs = isActive
+                ? { bg: ACTIVE_BG, bgMode: ColorMode.RGB }
+                : isHovered
+                  ? { bg: HOVER_BG, bgMode: ColorMode.RGB }
+                  : {};
+              writeString(grid, row3, col, labelText, { ...labelAttrs, ...bgAttrs });
+            }
+          }
         }
       }
     }

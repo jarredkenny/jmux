@@ -4,7 +4,14 @@ import type { SessionContext } from "./adapters/types";
 const CACHE_TIMER_TTL = 300; // seconds
 const COMPACTION_FLASH_MS = 30_000;
 
-export type IndicatorKind = "error" | "mcp-down" | "attention" | "activity" | null;
+export type IndicatorKind =
+  | "error"
+  | "mcp-down"
+  | "agent-running"
+  | "agent-waiting"
+  | "agent-complete"
+  | "activity"
+  | null;
 
 export type ModeBadge = "P" | "A" | "compaction" | null;
 
@@ -114,11 +121,13 @@ export function buildSessionView(
     }
   }
 
-  // Col-1 indicator priority: error > mcp-down > attention > activity.
+  // Col-1 indicator priority: error > mcp-down > agent-state > activity.
   let indicatorKind: IndicatorKind = null;
   if (timerState?.lastError) indicatorKind = "error";
   else if ((timerState?.failedMcpServers.size ?? 0) > 0) indicatorKind = "mcp-down";
-  else if (session.attention) indicatorKind = "attention";
+  else if (agentStateRecord?.state === "running") indicatorKind = "agent-running";
+  else if (agentStateRecord?.state === "waiting") indicatorKind = "agent-waiting";
+  else if (agentStateRecord?.state === "complete") indicatorKind = "agent-complete";
   else if (activitySet.has(session.id)) indicatorKind = "activity";
 
   // Mode badge: P for plan, A for accept-edits. Compaction marker (⊕) shows

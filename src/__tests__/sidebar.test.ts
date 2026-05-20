@@ -168,11 +168,11 @@ describe("Sidebar", () => {
     expect(foundDot).toBe(true);
   });
 
-  test("shows attention flag", () => {
+  test("shows waiting glyph when agent state is waiting", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     const sessions = makeSessions([{ name: "main" }]);
-    sessions[0].attention = true;
     sidebar.updateSessions(sessions);
+    sidebar.setAgentStateRecord("$0", { state: "waiting", since: Date.now() });
     const grid = sidebar.getGrid();
     let foundBang = false;
     for (let r = 2; r < 20; r++) {
@@ -184,9 +184,10 @@ describe("Sidebar", () => {
     expect(foundBang).toBe(true);
   });
 
-  test("renders red error glyph when lastError is set, overriding attention/activity", () => {
+  test("renders red error glyph when lastError is set, overriding agent-state/activity", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
-    sidebar.updateSessions(makeSessions([{ name: "main", attention: true }]));
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setAgentStateRecord("$0", { state: "waiting", since: Date.now() });
     sidebar.setActivity("$0", true);
     sidebar.setSessionOtelState("$0", {
       ...makeBlankOtelState(),
@@ -199,9 +200,10 @@ describe("Sidebar", () => {
     expect(grid.cells[2][1].bold).toBe(true);
   });
 
-  test("renders MCP-down glyph when failedMcpServers is non-empty", () => {
+  test("renders MCP-down glyph when failedMcpServers is non-empty, overriding agent-state", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
-    sidebar.updateSessions(makeSessions([{ name: "main", attention: true }]));
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setAgentStateRecord("$0", { state: "running", since: Date.now() });
     sidebar.setSessionOtelState("$0", {
       ...makeBlankOtelState(),
       failedMcpServers: new Set(["linear"]),
@@ -1160,5 +1162,110 @@ describe("Sidebar inline link data", () => {
     // Row 2: api name, Row 3: api detail, Row 4: api row3, Row 5: spacer, Row 6: other name
     const row6text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[6][i].char).join("");
     expect(row6text).toContain("other");
+  });
+});
+
+describe("Sidebar — agent state rendering", () => {
+  function makeSidebarWithAgentState(state: "running" | "waiting" | "complete"): Sidebar {
+    const sb = new Sidebar(26, 24);
+    const session: SessionInfo = {
+      id: "$1", name: "alpha", attached: false, activity: 0,
+      attention: false, windowCount: 1,
+    };
+    sb.updateSessions([session]);
+    sb.setAgentStateRecord("$1", { state, since: Date.now() });
+    return sb;
+  }
+
+  test("col-1 glyph for running is ⏵ in palette green", () => {
+    const sb = makeSidebarWithAgentState("running");
+    const grid = sb.getGrid();
+    // Header takes rows 0+1; first session's nameRow is row 2.
+    const cell = grid.cells[2][1];
+    expect(cell.char).toBe("⏵");
+    expect(cell.fg).toBe(2);
+  });
+
+  test("col-1 glyph for waiting is ! in orange bold", () => {
+    const sb = makeSidebarWithAgentState("waiting");
+    const grid = sb.getGrid();
+    const cell = grid.cells[2][1];
+    expect(cell.char).toBe("!");
+    expect(cell.fg).toBe(3);
+    expect(cell.bold).toBe(true);
+  });
+
+  test("col-1 glyph for complete is ✓ in dim blue", () => {
+    const sb = makeSidebarWithAgentState("complete");
+    const grid = sb.getGrid();
+    const cell = grid.cells[2][1];
+    expect(cell.char).toBe("✓");
+    expect(cell.fg).toBe(4);
+    expect(cell.dim).toBe(true);
+  });
+
+  test("indicator priority: mcp-down wins over agent-state", () => {
+    const sb = new Sidebar(26, 24);
+    const session: SessionInfo = {
+      id: "$1", name: "alpha", attached: false, activity: 0,
+      attention: false, windowCount: 1,
+    };
+    sb.updateSessions([session]);
+    sb.setAgentStateRecord("$1", { state: "running", since: Date.now() });
+    const otel = makeSessionOtelState();
+    otel.failedMcpServers = new Set(["server-a"]);
+    sb.setSessionOtelState("$1", otel);
+    const grid = sb.getGrid();
+    expect(grid.cells[2][1].char).toBe("⊘");
+  });
+
+  test("indicator priority: agent-state wins over activity", () => {
+    const sb = new Sidebar(26, 24);
+    const session: SessionInfo = {
+      id: "$1", name: "alpha", attached: false, activity: 0,
+      attention: false, windowCount: 1,
+    };
+    sb.updateSessions([session]);
+    sb.setAgentStateRecord("$1", { state: "complete", since: Date.now() });
+    sb.setActivity("$1", true);
+    const grid = sb.getGrid();
+    expect(grid.cells[2][1].char).toBe("✓");  // not the activity dot
+  });
+
+  test("setAgentStateRecord(id, null) clears the record", () => {
+    const sb = makeSidebarWithAgentState("running");
+    sb.setAgentStateRecord("$1", null);
+    sb.setActivity("$1", true);
+    const grid = sb.getGrid();
+    expect(grid.cells[2][1].char).toBe("●");  // falls back to activity dot
+  });
+
+  test("updateSessions prunes orphaned agent-state records", () => {
+    const sb = makeSidebarWithAgentState("running");
+    sb.updateSessions([]);  // remove the session
+    // Indirect assertion: no error, and re-adding the session doesn't show the old state.
+    const session: SessionInfo = {
+      id: "$1", name: "alpha", attached: false, activity: 0,
+      attention: false, windowCount: 1,
+    };
+    sb.updateSessions([session]);
+    const grid = sb.getGrid();
+    // No agent state and no activity → indicator column should be empty (space).
+    expect(grid.cells[2][1].char).toBe(" ");
+  });
+
+  test("row-2 state label appears with the matching color", () => {
+    const sb = makeSidebarWithAgentState("running");
+    sb.setSessionOtelState("$1", makeSessionOtelState());
+    const grid = sb.getGrid();
+    // Row 2's row-2 text lives at nameRow + 2 = row 4.
+    // Find the "RUNNING" label by scanning the row for the first non-space cell
+    // that has fg=2 (palette green).
+    const row = grid.cells[4];
+    let found = "";
+    for (const cell of row) {
+      if (cell.char !== " " && cell.fg === 2) found += cell.char;
+    }
+    expect(found).toBe("RUNNING");
   });
 });
