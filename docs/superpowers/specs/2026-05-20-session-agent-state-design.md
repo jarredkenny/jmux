@@ -99,13 +99,18 @@ transition (the user response is not a `UserPromptSubmit`). To detect
    run the *next* tool after the user grants permission. Sub-100ms,
    precise.
 2. **OTEL `api_request` / `tool_result`** — `OtelReceiver`, on these
-   events, checks the session's current state and if it's `waiting`,
-   issues `tmux set-option @jmux-agent-state running` itself. Safety
-   net for cases where the `PreToolUse` hook is somehow missed or
-   delayed.
+   events, emits an `onAgentResumeHint(sessionName)` callback.
+   `main.ts` owns that callback: it resolves the name to a tmux id,
+   checks `AgentStateTracker.getState(id) === "waiting"`, and if so
+   issues `tmux set-option @jmux-agent-state running`. Safety net for
+   cases where the `PreToolUse` hook is somehow missed or delayed.
+   `OtelReceiver` itself holds no tmux dependency and does not read
+   state — see "OTEL safety-net writes — explicit seam" below for
+   the wiring.
 
-Both writers go through the same tmux option, so jmux sees one event on
-the control channel either way — no in-process shortcut, no race.
+Both resume paths ultimately update the same tmux option, so jmux
+sees one event on the control channel either way — no in-process
+shortcut, no race.
 
 ### Display: keep 3 rows, retain existing info, replace "idle"
 
@@ -495,9 +500,17 @@ Modified files:
 
 **`session-view.test.ts` (extend):**
 
-- Unified row-1 timer: cache-countdown while active, then elapsed when
-  expired, then blank if no OTEL data.
-- `agentState` and `agentStateSince` populated correctly.
+- Unified row-1 timer fallback chain:
+  - cache countdown while `cacheTimerRemaining > 0`
+  - **promoted session, cache expired** → elapsed anchored to
+    `agentStateSince`, not to the latest OTEL event (covers the
+    `waiting` and `complete` cases where hooks, not OTEL, set the
+    timestamp)
+  - non-promoted session with prior OTEL data → elapsed from latest
+    OTEL event
+  - non-promoted session with no OTEL data → blank
+- `agentState` and `agentStateSince` populated correctly from a
+  `SessionInfo` carrying both fields.
 
 **`hook-installer.test.ts` (new):**
 
