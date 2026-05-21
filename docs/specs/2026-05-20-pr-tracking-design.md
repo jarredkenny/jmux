@@ -1,338 +1,269 @@
-# PR / MR tracking and CI status per session
+# GitHub PR support + open-MR hotkey
 
-**Status:** Design draft
-**Date:** 2026-05-20
+**Status:** Design draft (v2 — reframed after code review)
+**Date:** 2026-05-20 (revised 2026-05-21)
 
 ## Summary
 
-Track the most-recently-opened pull request or merge request per jmux session,
-poll its CI state, and surface both in the sidebar with a hotkey to open the
-URL. Detection is hook-driven and works for both Claude Code and Codex with no
-agent cooperation required for the common path.
+Make jmux's existing per-session MR display work for GitHub repositories, and
+add a hotkey to open the focused session's MR in a browser. This is the
+smallest change that delivers the user's actual goal — "I want to see and
+quickly open the MR jmux opened for a session, on either forge."
 
-## Motivation
+## Motivation and reframe
 
-When working multiple parallel coding agents, the user loses track of which
-sessions have shipped PRs and which of those PRs are passing CI. The current
-sidebar shows agent state (running / waiting / complete) but says nothing
-about merge-readiness. The goal is a low-cost, bullet-proof feedback loop:
-agent opens a PR → jmux notices → sidebar shows a badge → CI state colors the
-badge → `Ctrl-a o` opens it in the browser.
+A first design draft proposed a parallel PR-tracking subsystem: a PostToolUse
+hook that scraped `gh pr create` / `glab mr create` output, wrote URLs to new
+`@jmux-last-pr*` tmux options, and added a separate sidebar badge with its
+own CI poller. Code review found this duplicated infrastructure that already
+exists in jmux:
+
+- `src/adapters/types.ts` already defines `MergeRequest` with
+  `pipeline: PipelineStatus | null` (states:
+  `running | passed | failed | pending | canceled`) and a
+  `CodeHostAdapter` interface for forge integrations.
+- `src/adapters/poll-coordinator.ts` already polls MRs per session on an
+  active (20 s) / background (180 s) cadence and feeds the result into
+  `SessionContext.mrs`.
+- `src/sidebar.ts` already renders MR ID + pipeline glyph on row 2 of each
+  session entry, driven by `view.mrId` and `view.pipelineState` from
+  `src/session-view.ts`.
+- The adapter registry in `src/adapters/registry.ts` has an explicit
+  `codeHost` slot. Today the switch only wires `gitlab`. The "github"
+  hostname is already mapped in `src/adapters/context-resolver.ts:17`.
+
+Detection is **branch-based**, not URL-based: the resolver reads the
+session's working dir, gets `git remote -v` and the current branch, then
+calls `codeHost.getMergeRequest(remote, branch)`. When an agent runs
+`gh pr create` (or `glab mr create`) on a branch, the next poll picks up
+the new MR automatically. No hook needed.
+
+So the actual gaps relative to the user's goal are:
+
+1. **No GitHub adapter.** GitLab works end-to-end, GitHub doesn't work at
+   all.
+2. **No session-focused open hotkey.** `openInBrowser` is invoked at
+   `src/main.ts:1812` inside a panel-view handler for the global MR list,
+   but there is no global "open the focused session's MR" binding.
+3. **Pipeline glyph is hard-coded to GitLab vocabulary.** MR ID is rendered
+   as `!123` (GitLab IID convention) regardless of host (see
+   `session-view.ts:90`).
+
+This spec addresses those three gaps. Nothing else.
 
 ## Non-goals
 
-- Tracking PR history. Only the most recent URL per session is retained.
-- Tracking review state, mergeability, or merge events. CI state only.
-- Posting to PRs, requesting reviews, or any write operation.
-- Detection inside arbitrary commands. Only the standard `gh pr` / `glab mr`
-  CLIs are recognised by the hook. API-based flows use the explicit
-  `jmux ctl pr set` escape hatch.
+- **No hook integration in v1.** Branch-based polling catches new MRs
+  within 20 s. If that feels slow in practice we can revisit. Deferring
+  also moots the prior round's reviewer concerns about Codex hook contract
+  fidelity and `from-hook` error handling.
+- **No new tmux user options.** No `@jmux-last-pr*` fields. State lives in
+  the existing PollCoordinator's in-memory `SessionContext`.
+- **No PR-history tracking.** The existing system already shows "the
+  current MR for this branch"; that is the right primitive.
+- **No GitHub Enterprise auto-discovery.** v1 supports `github.com` and
+  any host configured via `codeHost.type = "github"` with a
+  `baseUrl` config field. (Matches GitLab adapter pattern.)
+- **No write operations beyond what GitLabAdapter offers.** `approve` and
+  `markReady` map to GitHub equivalents, but we don't add new verbs.
 
 ## Architecture
 
-```
-Claude Code / Codex (in a tmux pane)
-        │  runs `gh pr create` (or similar)
-        ▼
-PostToolUse hook fires with Bash matcher
-        │  pipes hook JSON on stdin to:
-        ▼
-jmux ctl pr from-hook
-        │  parses JSON → command gate → URL extraction → host classification
-        ▼
-tmux set-option -t <session> @jmux-last-pr <url>
-        │  (and clears @jmux-last-pr-ci-state)
-        ▼
-jmux main process: PrTracker mirrors the option into a per-session record
-        │
-        ├── CiPoller: schedules `gh pr view` / `glab mr view` polls
-        │            writes @jmux-last-pr-ci-state + @jmux-last-pr-ci-checked-at
-        │
-        └── Sidebar: renders a glyph + colored dot after the session name
-                     (hotkey Ctrl-a o opens the focused session's URL;
-                      mouse click on the badge opens that row's URL)
-```
+No new modules. Three files change; one new file is added.
 
-Three roles, three files:
+| File | Change |
+|------|--------|
+| `src/adapters/github.ts` *(new)* | `GitHubAdapter implements CodeHostAdapter`. Mirrors `GitLabAdapter` shape (~228 lines). |
+| `src/adapters/registry.ts` | Add `case "github": result.codeHost = new GitHubAdapter(...)`. |
+| `src/main.ts` | Register a soft-prefix intercept for `Ctrl-a o` → open the focused session's MR via `pollCoordinator.getContext(name).mrs` selection. |
+| `src/session-view.ts` | Make the MR ID prefix (`!` vs `#`) depend on host type instead of being hard-coded. |
 
-| File | Responsibility |
-|------|----------------|
-| `src/cli/pr.ts` | The only place URL extraction and CLI commands live. Pure parser, testable. |
-| `src/pr-tracker.ts` | Runtime mirror of `@jmux-last-pr*` options. Analog of `AgentStateTracker`. |
-| `src/pr-ci-poller.ts` | Tick-driven poller; spawns `gh` / `glab`; writes CI state back into tmux options. |
+The CodeHostAdapter interface (see `src/adapters/types.ts:69`) is the
+contract. GitHubAdapter must satisfy it; nothing else needs to know which
+forge is in use.
 
-Existing files touched:
-- `src/hook-installer.ts` — generalised over two targets (Claude, Codex) and adds a `PostToolUse` event.
-- `src/main.ts` — wires PrTracker and CiPoller into startup, subscribes to control-channel option changes.
-- `src/sidebar.ts` — renders the badge in the session row.
-- `src/input-router.ts` — `Ctrl-a o` soft-prefix intercept; badge click handler.
-- `src/cli.ts` — registers the `pr` subcommand.
+## GitHub adapter
 
-## Hook installer
+### Authentication
 
-### Targets
+Follow the GitLab pattern (`src/adapters/gitlab.ts:35-49`):
 
-Today the installer writes to `~/.claude/settings.json` only. Generalise to a
-list of targets:
+1. Read `$GITHUB_TOKEN` from env.
+2. If not set, run `gh auth token` (single short-lived spawn) and parse
+   its stdout — `gh auth token` prints the token to stdout when
+   authenticated, exits non-zero when not.
+3. If neither yields a token, set `authState = "failed"`. The
+   `authHint` string is `"$GITHUB_TOKEN or gh auth login"`.
+
+The adapter stores the token in memory only. It does **not** modify
+`gh`'s credential store.
+
+### Configuration
 
 ```ts
-interface HookTarget {
-  label: "claude" | "codex";
-  path: string; // e.g. ~/.claude/settings.json
-}
+new GitHubAdapter({ url?: string }) // url defaults to "https://api.github.com"
 ```
 
-`--install-agent-hooks` iterates targets in parallel. Per-target outcome is
-one of `installed | migrated | noop | skipped` (skipped when the parent
-directory does not exist — user does not have that agent installed).
+A user with a self-hosted GitHub Enterprise instance sets
+`codeHost = { type: "github", url: "https://github.acme.corp/api/v3" }`
+in their jmux config. Same shape as GitLab.
 
-### Events
+### HTTP layer
 
-Add `PostToolUse` as a fourth managed event alongside the existing three
-(`UserPromptSubmit`, `PermissionRequest`, `PreToolUse`, `Stop`). The managed
-PostToolUse entry is:
+Reuse the same `fetch` wrapper pattern as `GitLabAdapter` (private method
+that sets `Authorization: Bearer <token>` and a `User-Agent: jmux/<version>`
+header — GitHub rejects requests without UA). Same `handleErrorStatus`
+rate-limit handling.
 
-```jsonc
-{
-  "matcher": "Bash",
-  "hooks": [
-    { "type": "command",
-      "command": "jmux ctl pr from-hook",
-      "timeout": 5 }
-  ]
-}
-```
+### Method-by-method mapping
 
-Codex matches PostToolUse only for shell commands regardless of the
-`matcher` field, which is the behaviour we want. The same JSON works on both
-targets without conditional logic.
+| Interface method | GitHub implementation |
+|------------------|----------------------|
+| `getMergeRequest(remote, branch)` | `extractOwnerRepo(remote)` → `GET /repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open&per_page=1`. Map first result. |
+| `pollMergeRequest(mrId)` | `mrId` format `"<owner>/<repo>#<number>"`. `GET /repos/{owner}/{repo}/pulls/{number}`. |
+| `pollAllMergeRequests(remotes)` | Group `remotes` by `<owner>/<repo>`. For each: `GET /repos/{owner}/{repo}/pulls?state=open&per_page=100`. Match by `head.ref === bc.branch` (mirrors GitLabAdapter — cross-fork PR matching is not supported by either adapter today). |
+| `openInBrowser(mrId)` | Build URL from `mrId`: `https://github.com/{owner}/{repo}/pull/{number}` (or self-hosted base host swapped in). |
+| `markReady(mrId)` | `PATCH /repos/{owner}/{repo}/pulls/{number}` with `{ draft: false }`. |
+| `approve(mrId)` | `POST /repos/{owner}/{repo}/pulls/{number}/reviews` with `{ event: "APPROVE" }`. |
+| `searchMergeRequests(query)` | `GET /search/issues?q={query}+type:pr+state:open`. |
+| `parseMrUrl(url)` | Regex against `https://(api\.)?github(\.com\|enterprise host)/[^/]+/[^/]+/pull/\d+`. Return `"<owner>/<repo>#<number>"` or null. |
+| `pollMergeRequestsByIds(ids)` | One `GET` per id, executed sequentially with the existing rate-limit guard (matches GitLab adapter behavior for parity). |
+| `getMyMergeRequests()` | `GET /search/issues?q=author:@me+type:pr+state:open`. |
+| `getMrsAwaitingMyReview()` | `GET /search/issues?q=review-requested:@me+type:pr+state:open`. |
 
-### Detection & migration
+### Pipeline state mapping
 
-`detectInstalledKind` already keys off the string `@jmux-agent-state` in the
-managed event commands. Extend the detection to also recognise the substring
-`jmux ctl pr from-hook`. Migration semantics are unchanged: strip any prior
-jmux-owned entries for managed events and prepend the canonical block.
+GitHub does not expose a single "pipeline" object per PR. Instead each
+commit has check-runs (Actions, third-party CI) and a legacy status API.
+For v1, query the head SHA's combined status + check runs:
 
-## `jmux ctl pr` subcommand
+`GET /repos/{owner}/{repo}/commits/{head_sha}/check-runs`
 
-New file `src/cli/pr.ts`. All subcommands emit JSON to stdout on success
-(matching the rest of `jmux ctl`).
+Combine results into a single `PipelineStatus`:
 
-### `jmux ctl pr from-hook`
+| Check states present | → `PipelineStatus.state` |
+|----------------------|--------------------------|
+| any `conclusion ∈ {failure, timed_out, action_required}` | `failed` |
+| any `conclusion = cancelled` and no failures | `canceled` |
+| any `status ∈ {queued, in_progress, waiting, pending}` | `running` |
+| all `conclusion = success` (or `neutral` / `skipped`) | `passed` |
+| empty list | `null` (no pipeline, render no glyph) |
 
-Hook entry point. Reads JSON from stdin to EOF, capped at 256 KiB; anything
-larger is discarded and the command exits 0 (the hook must never raise an
-error or it will spam every Bash invocation).
+`PipelineStatus.webUrl` is `pr.html_url + "/checks"`.
 
-Algorithm:
+This calls one extra endpoint per MR poll. Acceptable: PollCoordinator's
+20 s active cadence and 100-MR background list both already make ~one
+call per session; doubling to two is well within GitHub's 5000 req/hour
+authenticated limit. Skip the call when the PR has zero check runs (cache
+the empty result on the MR object for the polling interval).
 
-1. Parse stdin as JSON. On any failure, exit 0.
-2. Defensively read `command` from `tool_input.command` (Claude shape) or
-   the Codex-equivalent path. Read `stdout` from `tool_response.stdout` (or
-   Codex equivalent). Both fields must be strings.
-3. **Command gate**: the command must match one of these regexes (anchored
-   loosely to survive sudo, env-var prefixes, etc.):
-   - `\bgh\s+pr\s+(create|view|checkout|merge|comment)\b`
-   - `\bglab\s+mr\s+(create|view|show|checkout|merge|comment)\b`
-   Otherwise exit 0. This gate prevents harvesting URLs from unrelated
-   commands.
-4. **URL extraction**: scan stdout with this regex and take the *last*
-   match (PR-create CLIs print the URL on the final line):
-   ```
-   https://(github\.com|gitlab\.com|[a-z0-9.-]+)/[\w./-]+/(pull|-/merge_requests)/\d+
-   ```
-   Host classification: literal `github.com` → `github`; literal
-   `gitlab.com` or path containing `/-/merge_requests/` → `gitlab`; else
-   `other`. (`other` skips CI polling — we know we can open the URL but
-   not how to query its CI.)
-5. Resolve current tmux socket + session via `src/cli/context.ts`.
-6. Read the current `@jmux-last-pr` for the session. If it equals the
-   extracted URL, exit 0 (nothing to do — re-polling will happen on its
-   own cadence). Otherwise `tmux set-option -t <session> @jmux-last-pr
-   <url>` and clear `@jmux-last-pr-ci-state` / `@jmux-last-pr-ci-checked-at`
-   so the poller re-polls immediately for the new URL. The
-   read-compare-write avoids resetting CI state every time the agent runs
-   `gh pr view` for the same PR.
-7. Exit 0.
+### MR ID format
 
-### Other `pr` subcommands
+`<owner>/<repo>#<number>` — three pieces of data needed to round-trip
+to/from the API. Mirrors GitLab's `<encoded_project>:<iid>` shape.
 
-| Command | Behaviour |
-|---------|-----------|
-| `jmux ctl pr set <url>` | Manual escape hatch for API-based flows. Validates the URL via the same regex; writes the same three options. |
-| `jmux ctl pr get [--session <name>]` | Prints `{url, host, ciState, ciCheckedAt}` JSON, or `{url: null}` if untracked. |
-| `jmux ctl pr clear [--session <name>]` | `set-option -u` for all three options. |
-| `jmux ctl pr open [--session <name>]` | Spawns `open` (macOS) or `xdg-open` (Linux) with the URL. Exits non-zero with an error message if no URL is tracked. |
+## Display: per-host MR ID prefix
 
-## `PrTracker` (runtime mirror)
-
-`src/pr-tracker.ts`. Direct analog of `AgentStateTracker`. Three tmux user
-options drive it; the tracker is the single source of truth in-process.
+`src/session-view.ts:90` currently builds:
 
 ```ts
-type CiState = "pending" | "success" | "failure" | "unknown";
+const mrId = selectedMr ? `!${extractMrIid(selectedMr.id)}` : null;
+```
 
-interface PrRecord {
-  url: string;
-  host: "github" | "gitlab" | "other";
-  ciState: CiState;
-  ciCheckedAt: number; // ms epoch, 0 when never polled
-}
+Change to derive the prefix from the host type:
 
-class PrTracker {
-  apply(sessionId, rawUrl, rawCiState, rawCheckedAt): void;
-  get(sessionId): PrRecord | null;
-  pruneExcept(activeIds): void;
-  onChange(fn: (sessionId: string) => void): void;
+```ts
+const mrId = selectedMr ? formatMrId(selectedMr) : null;
+
+function formatMrId(mr: MergeRequest): string {
+  // mr.id encodes the host: "owner/repo#N" → GitHub; "<encoded>:<iid>" → GitLab
+  if (mr.id.includes("#")) return `#${mr.id.split("#")[1]}`;
+  return `!${extractMrIid(mr.id)}`;
 }
 ```
 
-Wiring matches the existing agent-state pattern:
-- `list-sessions -F` includes the three options in the periodic snapshot.
-- Control-channel `%session-options-changed` events feed incremental updates
-  through `apply()`.
-- `apply()` validates strictly: unknown `ciState` strings are ignored, a
-  blank URL clears the record, a URL that does not match the regex is
-  ignored.
-- Idempotent re-apply does not emit changes.
+This keeps the rendering pure (no adapter dependency in the view layer)
+and uses the id shape itself as the discriminant.
 
-## CI poller
+`PIPELINE_GLYPH_MAP` in `sidebar.ts` already covers all five state values
+the GitLab adapter emits, and the GitHub mapping above only emits those
+same values. No sidebar change needed beyond the prefix tweak above.
 
-`src/pr-ci-poller.ts`. Single timer in the main process; one poll job per
-session at a time; concurrency cap of 4 in-flight polls process-wide.
+## Hotkey: `Ctrl-a o`
 
-### State machine
+Add to `src/input-router.ts` alongside the existing `Ctrl-a p|n|i` soft
+prefix intercepts:
 
-```
-unknown ── first poll ──▶ pending ── CI completes ──▶ success | failure
-   ▲                         │                            │
-   │                     30s tick                     300s tick
-   └──── 30 min with no state change ──▶ idle (no further polls)
-```
+- `Ctrl-a o` → call `onOpenSessionMr()`.
+- `main.ts` provides the callback: resolve the focused session's name,
+  call `pollCoordinator.getContext(name)`, run the same MR selection
+  logic as `session-view.ts:78-88` (latest by `createdAt`, fallback to
+  last), and call `adapters.codeHost.openInBrowser(selectedMr.id)`.
+- If no MR is tracked for the session, call `tmux display-message` with
+  `"No MR tracked for this session"`. This is the lowest-friction toast
+  surface jmux already has access to.
 
-`nextDueMs(record, now)` is a pure function:
-- `state ∈ {unknown, pending}` → due 30 s after last check
-- `state ∈ {success, failure}` → due 300 s after last check
-- `now - ciCheckedAt > 30 min` and state has not changed → `null` (don't
-  schedule). A new URL via the hook resets `ciCheckedAt` to 0 so polling
-  resumes.
+Update the help-screen keybind list in `main.ts:3653-3662` to include
+`Ctrl-a o`.
 
-### Tick loop
+### Conflict check
 
-Every 5 s the poller walks the tracker, computes `nextDueMs` for each
-record, and enqueues any whose due time has passed. The work queue respects
-the global cap of 4 concurrent polls.
-
-### Poll job
-
-Per record, spawn the appropriate CLI with a 10 s timeout:
-
-- `host === "github"`:
-  `gh pr view <url> --json statusCheckRollup -q '[.statusCheckRollup[].conclusion // .statusCheckRollup[].status]'`
-- `host === "gitlab"`:
-  `glab mr view <url> --output json` then parse `head_pipeline.status`
-- `host === "other"`: skip — never polled.
-
-Map CLI output to a single CiState with pure parser functions
-(`parseGhStatusOutput`, `parseGlabPipelineOutput`):
-- Any `FAILURE` / `failed` / `canceled` → `failure`
-- All `SUCCESS` / `success` → `success`
-- Anything else (running, pending, queued, in-progress) → `pending`
-- Empty array (no checks configured) → `success` (vacuously green)
-
-Write the result back through `tmux set-option`. PrTracker picks it up on
-the next options-changed event — the poller never mutates the tracker
-directly.
-
-### Backoff and failure handling
-
-On exit ≠ 0 or timeout:
-- Do **not** change `ciState` (treat the poll as "no observation").
-- Push back the next poll: 30 s → 60 s → 120 s → cap at 300 s.
-- After 5 consecutive failures for a given session, drop the cadence to
-  the steady-state interval (300 s) and log once.
-
-On detected `gh: command not found` or auth failure: log once globally and
-stop scheduling github polls until jmux is restarted. Same for `glab`.
-This prevents the poller from spamming the user when CLIs aren't set up.
-
-## Sidebar badge
-
-Render in `src/sidebar.ts` immediately after the session name. Layout:
-
-```
- ● my-session ⇧·
- ▲             ▲▲
- │             │└ status dot (1 cell, color = CI state)
- │             └ "PR tracked" glyph (1 cell, dim)
- └ existing agent state dot
-```
-
-Two cells total, fixed width when present, omitted when no PR. Colors:
-
-| CiState | Dot color |
-|---------|-----------|
-| `unknown` | dim grey |
-| `pending` | yellow |
-| `success` | green |
-| `failure` | red |
-
-Truncation rule: the badge wins. If session-name length + badge would
-overflow `sidebarCols`, drop trailing characters from the session name
-first. The badge is the same width regardless of state, so existing column
-math doesn't need to change beyond reserving 2 cells when `PrTracker.get()`
-returns non-null.
-
-Mouse: clicking either of the two cells routes to `pr open` for that
-session via the existing sidebar click dispatcher.
-
-## Hotkey
-
-Extend the soft-prefix intercept in `src/input-router.ts`. After `Ctrl-a`,
-if the next byte within the intercept window is `o`, swallow it (don't
-forward to tmux) and call `pr open` for the focused session.
-
-If no PR is tracked, surface a transient status — investigate during
-implementation whether existing modal-status infrastructure can hold a 2 s
-toast. Worst case, fall back to a tmux `display-message` call.
-
-## Persistence
-
-Tmux user options only. Three options per session:
-- `@jmux-last-pr` (string URL)
-- `@jmux-last-pr-ci-state` (`pending|success|failure|unknown`)
-- `@jmux-last-pr-ci-checked-at` (epoch seconds)
-
-Survives jmux restart while the tmux server is alive. Lost on tmux server
-death — acceptable: the next `gh pr create` re-establishes state, and CI
-state is cheap to re-poll. No snapshot schema changes for v1.
+`o` is currently used as a key inside the global panel-view handler at
+`main.ts:1810-1817` for "open selected MR/issue in panel". That handler
+runs only when a panel view is focused, so a `Ctrl-a o` soft prefix
+binding does not collide — the soft prefix only fires after `Ctrl-a`.
+Verified against `input-router.ts:144-187`.
 
 ## Testing
 
-Unit tests live in `src/__tests__/`. No integration tests against real
-`gh` / `glab` / tmux.
+Unit tests in `src/__tests__/adapters/github.test.ts` mirror the existing
+`gitlab.test.ts` patterns:
 
-| Module | Test surface |
-|--------|--------------|
-| `src/cli/pr.ts` | `extractPrUrl({command, stdout})` covering: gh pr create happy, glab mr create happy, `gh pr view --json url`, enterprise github host, multiple URLs in output (last wins), unrelated command containing a PR URL (ignored), malformed JSON stdin (returns null), command-gate rejections. |
-| `src/hook-installer.ts` | Add cases for: PostToolUse entry installed for Claude, PostToolUse entry installed for Codex, target skipped when parent dir missing, migration from "current minus PostToolUse" to "current including PostToolUse", PostToolUse strip-and-prepend on re-install. |
-| `src/pr-tracker.ts` | Mirror existing AgentStateTracker test patterns: apply / unknown-state ignored / blank clears / idempotent no-emit / pruneExcept. |
-| `src/pr-ci-poller.ts` | `nextDueMs(record, now)` pure function across all states and the 30-min idle cutoff. `parseGhStatusOutput(stdout)` and `parseGlabPipelineOutput(stdout)` for all five output shapes. Poller orchestration with a fake clock + fake spawn for: concurrency cap, backoff schedule, CLI-missing handling. |
-| `src/sidebar.ts` | Render plan test: badge renders when tracker has a record, omitted when not, truncation favours badge over name. |
+| Surface | Test cases |
+|---------|------------|
+| `extractOwnerRepo` | https URLs, ssh URLs, `.git` suffix stripping, malformed → null. |
+| `parseMrUrl` | github.com PR URL, enterprise host PR URL, non-PR URL → null, issue URL → null. |
+| `mapMergeRequest` | Full PR JSON → MergeRequest including: status mapping (`draft`/`open`/`merged`/`closed`), approvals from `requested_reviewers` + review count, pipeline derivation from check-runs (one happy case per state), `webUrl` preserved. |
+| `pipeline state mapping` | Pure helper `derivePipelineState(checkRuns)` covering each row of the mapping table above. |
+| `auth fallback` | `$GITHUB_TOKEN` present → uses env; absent + `gh auth token` succeeds → uses gh token; both absent → `authState = "failed"`. |
+| Network calls | Use `fetch` interception (matches GitLab adapter test setup) for happy path of each method; one 404 case; one 401 case (sets `authState = "failed"`). |
 
-## Edge cases and open questions
+Sidebar test addition in `src/__tests__/sidebar.test.ts`:
 
-- **Multiple PRs in one stdout** (e.g. `gh pr list` output) — gated out
-  because the command must be a `pr create|view|...` invocation, not
-  `pr list`. List output never reaches the URL extractor.
-- **`gh` / `glab` print URLs to stderr in some versions** — defensive:
-  scan both `stdout` and `stderr` (concatenated) when looking for the URL.
-- **PR gets merged / closed** — badge stays until the agent opens another
-  PR or the user calls `jmux ctl pr clear`. CI state may continue to
-  reflect the last seen value. Acceptable for v1.
-- **Session renamed** — tmux user options are keyed by session id, not
-  name, so rename is transparent.
-- **Worktree sessions across multiple jmux instances** — out of scope; the
-  hook resolves session via `TMUX` env which the calling agent inherited
-  from its pane. No cross-instance coordination needed.
+| Test | Assertion |
+|------|-----------|
+| Render with GitHub MR id `"acme/repo#42"` | `view.mrId === "#42"`. |
+| Render with GitLab MR id `"acme%2Frepo:42"` | `view.mrId === "!42"` (regression). |
+
+Input-router test in `src/__tests__/input-router.test.ts`:
+
+| Test | Assertion |
+|------|-----------|
+| `Ctrl-a o` within soft-prefix window | calls `onOpenSessionMr`, does not forward `o` to PTY. |
+| `Ctrl-a o` outside soft-prefix window | forwards `o` to PTY normally. |
+
+## Documentation
+
+Two existing user-facing docs need touch-ups:
+
+- `docs/getting-started.md` — keybind reference: add `Ctrl-a o`.
+- `docs/configuration.md` — adapter config: add the `codeHost.type =
+  "github"` entry with example.
+
+## Out-of-scope follow-ups
+
+These are intentionally deferred and tracked as separate work, not
+because they're hard but because they're not the bottleneck:
+
+1. **Optimization hook**: `jmux ctl session refresh-mr` invoked from a
+   Claude PostToolUse `Bash` hook to nudge the PollCoordinator
+   immediately when `gh pr create` runs. Adds ~immediate visibility for
+   the freshly-opened MR instead of the 20 s active poll wait. Defer
+   until we observe whether 20 s feels slow in practice. (If pursued:
+   no new options or state — just a one-shot poll trigger.)
+2. **Codex hook support**: requires verified Codex stdin payload
+   contract with fixtures.
+3. **Open MR for an unfocused session via the sidebar**: clicking the MR
+   ID / pipeline glyph in a non-focused session row could open in
+   browser. Trivial follow-up once `Ctrl-a o` lands and the click
+   handlers are clear.
