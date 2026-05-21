@@ -101,12 +101,26 @@ The adapter stores the token in memory only. It does **not** modify
 ### Configuration
 
 ```ts
-new GitHubAdapter({ url?: string }) // url defaults to "https://api.github.com"
+new GitHubAdapter({ url?: string; webUrl?: string })
+// url    defaults to "https://api.github.com"
+// webUrl defaults derived from url (see below)
 ```
 
 A user with a self-hosted GitHub Enterprise instance sets
 `codeHost = { type: "github", url: "https://github.acme.corp/api/v3" }`
 in their jmux config. Same shape as GitLab.
+
+**Web URL derivation** (`deriveWebOrigin(apiUrl): string`, pure helper):
+
+| API URL pattern | Web origin |
+|-----------------|-----------|
+| `https://api.github.com` | `https://github.com` |
+| `https://<host>/api/v3` (Enterprise Server) | `https://<host>` |
+| anything else | fall back to `apiUrl` origin; user can override via `webUrl` |
+
+`webUrl` config field is an explicit override for any exotic setup. The
+helper is pure and unit-tested — the only place that reconstructs web
+URLs from the API URL.
 
 ### HTTP layer
 
@@ -122,20 +136,47 @@ rate-limit handling.
 | `getMergeRequest(remote, branch)` | `extractOwnerRepo(remote)` → `GET /repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open&per_page=1`. Map first result. |
 | `pollMergeRequest(mrId)` | `mrId` format `"<owner>/<repo>#<number>"`. `GET /repos/{owner}/{repo}/pulls/{number}`. |
 | `pollAllMergeRequests(remotes)` | Group `remotes` by `<owner>/<repo>`. For each: `GET /repos/{owner}/{repo}/pulls?state=open&per_page=100`. Match by `head.ref === bc.branch` (mirrors GitLabAdapter — cross-fork PR matching is not supported by either adapter today). |
-| `openInBrowser(mrId)` | Build URL from `mrId`: `https://github.com/{owner}/{repo}/pull/{number}` (or self-hosted base host swapped in). |
+| `openInBrowser(mrId)` | `Bun.spawn(["open", `${webOrigin}/${owner}/${repo}/pull/${number}`])`. `webOrigin` from `deriveWebOrigin` or explicit `webUrl` config. |
 | `markReady(mrId)` | `PATCH /repos/{owner}/{repo}/pulls/{number}` with `{ draft: false }`. |
 | `approve(mrId)` | `POST /repos/{owner}/{repo}/pulls/{number}/reviews` with `{ event: "APPROVE" }`. |
-| `searchMergeRequests(query)` | `GET /search/issues?q={query}+type:pr+state:open`. |
+| `searchMergeRequests(query)` | `/search/issues?q={query}+type:pr+state:open`, then hydrate (see "Search hydration"). |
 | `parseMrUrl(url)` | Regex against `https://(api\.)?github(\.com\|enterprise host)/[^/]+/[^/]+/pull/\d+`. Return `"<owner>/<repo>#<number>"` or null. |
 | `pollMergeRequestsByIds(ids)` | One `GET` per id, executed sequentially with the existing rate-limit guard (matches GitLab adapter behavior for parity). |
-| `getMyMergeRequests()` | `GET /search/issues?q=author:@me+type:pr+state:open`. |
-| `getMrsAwaitingMyReview()` | `GET /search/issues?q=review-requested:@me+type:pr+state:open`. |
+| `getMyMergeRequests()` | `/search/issues?q=author:@me+type:pr+state:open`, then hydrate. |
+| `getMrsAwaitingMyReview()` | `/search/issues?q=user-review-requested:@me+type:pr+state:open`, then hydrate. (Per GitHub docs, `user-review-requested` is the qualifier for *direct* review requests; `review-requested` matches team-owned requests too.) |
+
+### Search hydration
+
+`/search/issues` returns issue-shaped objects, not full PR objects. They
+lack `head.ref`, `base.ref`, `mergeable`, `requested_reviewers`, and
+review state — fields jmux's `MergeRequest` model requires
+(`src/adapters/types.ts:6`, consumed by `src/panel-view-renderer.ts:498`).
+
+The three search-backed methods (`searchMergeRequests`,
+`getMyMergeRequests`, `getMrsAwaitingMyReview`) hydrate every result:
+
+1. Run the `/search/issues` query, capped at 30 results per page
+   (`per_page=30`). The 30-cap is a deliberate budget brake — the
+   existing panel views show a finite list and pagination is out of
+   scope for v1.
+2. Each result includes `pull_request.url` (a full
+   `/repos/{owner}/{repo}/pulls/{n}` URL). Fan out with `Promise.all` to
+   `GET` each, mapped via the shared `mapMergeRequest()`.
+3. **Hydrated MRs do not populate `pipeline`.** They keep
+   `pipeline: null`. Rationale and budget detail in "Rate budget" below.
+
+`pollMergeRequestsByIds` already returns full PR objects with pipeline
+hydration, so callers that need pipeline state for global-list items can
+re-poll a specific id after selection.
 
 ### Pipeline state mapping
 
-GitHub does not expose a single "pipeline" object per PR. Instead each
-commit has check-runs (Actions, third-party CI) and a legacy status API.
-For v1, query the head SHA's combined status + check runs:
+GitHub exposes CI state across two separate surfaces — the Checks API
+(GitHub Actions and modern third-party integrations) and the legacy
+Statuses API (older CI/CD tools like CircleCI's pre-Checks integration,
+some bots). **v1 is scoped to the Checks API only.** Modern projects use
+Actions/Checks; the Statuses fallback is a documented gap (see
+"Out-of-scope follow-ups").
 
 `GET /repos/{owner}/{repo}/commits/{head_sha}/check-runs`
 
@@ -146,16 +187,45 @@ Combine results into a single `PipelineStatus`:
 | any `conclusion ∈ {failure, timed_out, action_required}` | `failed` |
 | any `conclusion = cancelled` and no failures | `canceled` |
 | any `status ∈ {queued, in_progress, waiting, pending}` | `running` |
-| all `conclusion = success` (or `neutral` / `skipped`) | `passed` |
-| empty list | `null` (no pipeline, render no glyph) |
+| all `conclusion ∈ {success, neutral, skipped}` | `passed` |
+| empty list | `null` (no pipeline, no glyph) |
 
-`PipelineStatus.webUrl` is `pr.html_url + "/checks"`.
+`PipelineStatus.webUrl` is `${pr.html_url}/checks`.
 
-This calls one extra endpoint per MR poll. Acceptable: PollCoordinator's
-20 s active cadence and 100-MR background list both already make ~one
-call per session; doubling to two is well within GitHub's 5000 req/hour
-authenticated limit. Skip the call when the PR has zero check runs (cache
-the empty result on the MR object for the polling interval).
+Caveat: a project that uses *only* legacy commit statuses (no Actions, no
+Checks-API-emitting CI) will display no pipeline glyph in v1. The
+Statuses API hit (`GET /commits/{sha}/status`) is a one-line addition;
+deferred because the rate-budget implication needs deliberate sign-off,
+not because it's hard.
+
+### Rate budget
+
+GitHub's authenticated rate limit is 5000 requests/hour (15000/hour for
+GitHub Apps). The cadences below are the ones PollCoordinator already
+runs (`src/adapters/poll-coordinator.ts:15-18`).
+
+| Trigger | Calls per cycle |
+|---------|-----------------|
+| Session active poll (20 s) | 1 list call per repo + 1 check-runs call **per matched MR** (typically 0–3 per repo). |
+| Session background poll (180 s) | Same shape, different cadence. |
+| Single MR poll (`pollMergeRequest`) | 1 PR call + 1 check-runs call = 2. |
+| Global lists (`getMyMergeRequests`, etc.) | 1 search + ≤30 PR-hydration calls. No pipeline (see "Search hydration"). |
+
+The critical constraint: **`pollAllMergeRequests` MUST NOT hydrate
+pipeline state for unmatched PRs.** Order of operations is:
+
+1. `GET /repos/{owner}/{repo}/pulls?state=open&per_page=100` — one call.
+2. In-memory: filter to PRs whose `head.ref` matches a
+   `BranchContext.branch` in the input.
+3. For the (typically small) matched subset, fan out check-runs calls.
+
+Worst-case real number: a user with 10 active sessions across 5 repos,
+all polling actively. 5 list calls + ~10 check-runs calls per 20 s = 45
+calls/min = 2700 calls/hour. Well inside the budget.
+
+For a global list ("review queue") refresh: 1 + 30 calls per minute if
+the user keeps the panel open. Still inside budget. The 30-cap is the
+controlling lever — pagination would change this and is out of scope.
 
 ### MR ID format
 
@@ -223,9 +293,13 @@ Unit tests in `src/__tests__/adapters/github.test.ts` mirror the existing
 |---------|------------|
 | `extractOwnerRepo` | https URLs, ssh URLs, `.git` suffix stripping, malformed → null. |
 | `parseMrUrl` | github.com PR URL, enterprise host PR URL, non-PR URL → null, issue URL → null. |
+| `deriveWebOrigin` | `api.github.com` → `github.com`; `https://gh.acme.corp/api/v3` → `https://gh.acme.corp`; explicit `webUrl` config overrides derivation; non-matching → falls back to apiUrl origin. |
 | `mapMergeRequest` | Full PR JSON → MergeRequest including: status mapping (`draft`/`open`/`merged`/`closed`), approvals from `requested_reviewers` + review count, pipeline derivation from check-runs (one happy case per state), `webUrl` preserved. |
-| `pipeline state mapping` | Pure helper `derivePipelineState(checkRuns)` covering each row of the mapping table above. |
+| `derivePipelineState` | Pure helper covering each row of the mapping table (failure-wins, cancelled-without-failure, in-progress, all-success-with-neutral-and-skipped, empty). |
 | `auth fallback` | `$GITHUB_TOKEN` present → uses env; absent + `gh auth token` succeeds → uses gh token; both absent → `authState = "failed"`. |
+| Search hydration | Search returns issue-shaped JSON → adapter follows each `pull_request.url`, returns `MergeRequest[]` with `pipeline === null` and `sourceBranch`/`targetBranch`/etc. populated from the hydrated PR objects. Includes a fixture asserting the qualifier `user-review-requested:@me` is in the URL for `getMrsAwaitingMyReview`. |
+| `pollAllMergeRequests` rate budget | Given 100-PR list response with 2 branch matches, the adapter issues exactly 1 list + 2 check-runs calls — not 100. Regression guard for the rate-budget contract. |
+| `openInBrowser` | Spawns `open` with `${webOrigin}/${owner}/${repo}/pull/${number}` — covered for both `github.com` and enterprise host. |
 | Network calls | Use `fetch` interception (matches GitLab adapter test setup) for happy path of each method; one 404 case; one 401 case (sets `authState = "failed"`). |
 
 Sidebar test addition in `src/__tests__/sidebar.test.ts`:
@@ -267,3 +341,11 @@ because they're hard but because they're not the bottleneck:
    ID / pipeline glyph in a non-focused session row could open in
    browser. Trivial follow-up once `Ctrl-a o` lands and the click
    handlers are clear.
+4. **Legacy commit statuses for CI state**: `GET /repos/{owner}/{repo}/commits/{sha}/status`
+   merged into the same `PipelineStatus` so projects using only legacy
+   statuses (no GitHub Actions, no Checks API integrations) show a glyph
+   too. Adds one call per matched MR per poll, doubling the per-MR
+   hydration cost — defer until requested.
+5. **Search pagination**: lift the 30-result cap on
+   `getMyMergeRequests` / `getMrsAwaitingMyReview` /
+   `searchMergeRequests` and add page navigation in the panel views.
