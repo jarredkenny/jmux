@@ -63,13 +63,16 @@ This spec addresses those three gaps. Nothing else.
   current MR for this branch"; that is the right primitive.
 - **No GitHub Enterprise auto-discovery.** v1 supports `github.com` and
   any host configured via `codeHost.type = "github"` with a
-  `baseUrl` config field. (Matches GitLab adapter pattern.)
+  `url` (and optional `webUrl`) config field. (Matches GitLab adapter
+  pattern.)
 - **No write operations beyond what GitLabAdapter offers.** `approve` and
   `markReady` map to GitHub equivalents, but we don't add new verbs.
 
 ## Architecture
 
-No new modules. Three files change; one new file is added.
+No new runtime infrastructure (no new poller, tracker, hook target, or
+tmux options). Three existing files change; one new adapter file is
+added.
 
 | File | Change |
 |------|--------|
@@ -204,12 +207,12 @@ GitHub's authenticated rate limit is 5000 requests/hour (15000/hour for
 GitHub Apps). The cadences below are the ones PollCoordinator already
 runs (`src/adapters/poll-coordinator.ts:15-18`).
 
-| Trigger | Calls per cycle |
-|---------|-----------------|
-| Session active poll (20 s) | 1 list call per repo + 1 check-runs call **per matched MR** (typically 0–3 per repo). |
-| Session background poll (180 s) | Same shape, different cadence. |
-| Single MR poll (`pollMergeRequest`) | 1 PR call + 1 check-runs call = 2. |
-| Global lists (`getMyMergeRequests`, etc.) | 1 search + ≤30 PR-hydration calls. No pipeline (see "Search hydration"). |
+| PollCoordinator path | Adapter method | Calls per cycle |
+|---------------------|----------------|-----------------|
+| Active session poll (20 s) — refreshes the focused session's *known* MRs by id (`poll-coordinator.ts:278`) | `pollMergeRequestsByIds(ids)` | 2 calls **per known MR** (1 PR fetch + 1 check-runs). Typically 1–3 MRs per session. |
+| Background batch (180 s) — discovers MRs for non-focused sessions from branch context (`poll-coordinator.ts:350`) | `pollAllMergeRequests(remotes)` | 1 list call per repo + 1 check-runs call **per matched MR**. Match filter applied before hydration. |
+| Single MR poll | `pollMergeRequest(id)` | 2 calls (1 PR + 1 check-runs). |
+| Global lists (`getMyMergeRequests`, etc.) | search-backed | 1 search + ≤30 PR-hydration calls. No pipeline (see "Search hydration"). |
 
 The critical constraint: **`pollAllMergeRequests` MUST NOT hydrate
 pipeline state for unmatched PRs.** Order of operations is:
@@ -219,9 +222,15 @@ pipeline state for unmatched PRs.** Order of operations is:
    `BranchContext.branch` in the input.
 3. For the (typically small) matched subset, fan out check-runs calls.
 
-Worst-case real number: a user with 10 active sessions across 5 repos,
-all polling actively. 5 list calls + ~10 check-runs calls per 20 s = 45
-calls/min = 2700 calls/hour. Well inside the budget.
+Worst-case real number: a user with 10 sessions across 5 repos, one is
+focused, nine in background.
+
+- Active path: 1 focused session × 1–3 MRs × 2 calls / 20 s ≈ 6–18
+  calls/min for the focused session.
+- Background path: 5 repos × (1 list + ~9 check-runs across matched
+  sessions) / 180 s ≈ 17 calls/min.
+- Total ≈ 25–35 calls/min = 1500–2100 calls/hour. Well inside the
+  5000/hour budget.
 
 For a global list ("review queue") refresh: 1 + 30 calls per minute if
 the user keeps the panel open. Still inside budget. The 30-cap is the
