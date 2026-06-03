@@ -55,11 +55,10 @@ const fullSnap: SnapshotFile = {
       attention: true,
       permissionMode: "plan",
       otel: {
-        costUsd: 1.23,
+        contextTokens: 112000,
         cacheWasHit: true,
         lastRequestTime: "2026-05-12T00:00:00.000Z",
         lastCompactionTime: null,
-        lastTool: "Read",
         lastUserPromptTime: null,
         lastError: null,
         failedMcpServers: [],

@@ -260,7 +260,7 @@ export class OtelReceiver {
     }
 
     if (eventName === "tool_result") {
-      // tool_result no longer mutates OTEL state (lastTool was removed). It only
+      // tool_result no longer mutates OTEL state. It only
       // nudges the agent state machine to close the WAITING→RUNNING gap when
       // Claude resumes after a permission grant. Deliberately do NOT touch
       // this.state or emit onUpdate/emitSessionUpdate — that would persist a
