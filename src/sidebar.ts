@@ -777,7 +777,8 @@ export class Sidebar {
       }
     }
 
-    // Row 3: cost / tool / state (or cost / tool / idle for non-promoted sessions).
+    // Row 3: context tokens (left) / agent state label (right). Non-promoted
+    // sessions show the context figure alone.
     if (row3 < this.height) {
       this.paintRowChrome(grid, row3, isActive, isHovered);
       this.rowToSessionIndex.set(row3, sessionIdx);

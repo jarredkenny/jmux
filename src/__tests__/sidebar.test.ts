@@ -776,21 +776,21 @@ describe("Sidebar", () => {
     sidebar.updateSessions(makeSessions([{ name: "alpha" }, { name: "beta" }]));
     sidebar.setSessionOtelState("$0", {
       ...makeBlankOtelState(),
-      costUsd: 1.0,
+      contextTokens: 100000,
     });
     sidebar.setSessionOtelState("$1", {
       ...makeBlankOtelState(),
-      costUsd: 2.0,
+      contextTokens: 200000,
     });
     expect(sidebar._otelStateCount()).toBe(2);
     // Now drop beta. Its state should be evicted.
     sidebar.updateSessions(makeSessions([{ name: "alpha" }]));
     expect(sidebar._otelStateCount()).toBe(1);
-    // Sanity check: alpha's render shouldn't surface beta's cost.
+    // Sanity check: alpha's render shouldn't surface beta's context figure.
     sidebar.setActiveSession("$0");
     const grid = sidebar.getGrid();
     const text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[4][i].char).join("");
-    expect(text).not.toContain("$2.00");
+    expect(text).not.toContain("200k");
   });
 
   test("cacheTimersEnabled false suppresses timer rendering", () => {
@@ -857,27 +857,20 @@ describe("Sidebar", () => {
     expect(grid.cells[8][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
   });
 
-  test("session shows cost / tool / idle on row 3", () => {
-    // Cost ($1.23) + Edit 1.2s + 3m idle = 25 chars + 2x2 gap minimum = ~25.
-    // Budget is width - 3 (we write at col 3), so use a 30-col sidebar so all
-    // three fields survive buildSessionRow3's drop-priority overflow logic.
+  test("session shows context tokens on row 3", () => {
     const width = 30;
     const sidebar = new Sidebar(width, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
     sidebar.setActiveSession("$0");
     sidebar.setSessionOtelState("$0", {
       ...makeBlankOtelState(),
-      costUsd: 1.23,
-      lastTool: { name: "Edit", durationMs: 1234, success: true, timestamp: Date.now() },
-      lastUserPromptTime: Date.now() - 3 * 60 * 1000,
+      contextTokens: 112000,
     });
     const grid = sidebar.getGrid();
-
     // Name row 2, detail row 3, row 3 is row 4
     const text = Array.from({ length: width }, (_, i) => grid.cells[4][i].char).join("");
-    expect(text).toContain("$1.23");
-    expect(text).toContain("Edit");
-    expect(text).toContain("3m idle");
+    expect(text).toContain("112k");
+    expect(text).not.toContain("$");
   });
 
   test("switching active session does not shift layout", () => {

@@ -112,7 +112,6 @@ export function buildSessionView(
       const candidates = [
         timerState.lastRequestTime,
         timerState.lastUserPromptTime ?? 0,
-        timerState.lastTool?.timestamp ?? 0,
       ].filter((t) => t > 0);
       if (candidates.length > 0) {
         timerText = formatElapsed(now - Math.max(...candidates));
@@ -162,21 +161,6 @@ export function buildSessionView(
   };
 }
 
-function formatToolDuration(ms: number): string {
-  if (ms < 60_000) {
-    const s = (ms / 1000).toFixed(1);
-    return `${s}s`;
-  }
-  const totalSeconds = Math.floor(ms / 1000);
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}m${s}s`;
-}
-
-function formatIdle(ms: number): string {
-  return `${formatElapsed(ms)} idle`;
-}
-
 const ROW3_GAP = "  ";
 
 const STATE_LABEL: Record<AgentState, string> = {
@@ -191,37 +175,29 @@ export interface SessionRow3Result {
   labelCol: number;
 }
 
+function formatContext(tokens: number): string {
+  if (tokens <= 0) return "";
+  const k = Math.round(tokens / 1000);
+  if (k >= 1000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  return `${k}k`;
+}
+
 export function buildSessionRow3(
   state: SessionOtelState,
   width: number,
   agentState: AgentState | null,
 ): SessionRow3Result {
-  const costText = state.costUsd > 0 ? `$${state.costUsd.toFixed(2)}` : null;
-  const toolText = state.lastTool
-    ? `${state.lastTool.name} ${formatToolDuration(state.lastTool.durationMs)}`
-    : null;
-  const idleText = state.lastUserPromptTime !== null
-    ? formatIdle(Date.now() - state.lastUserPromptTime)
-    : null;
-
+  const contextText = formatContext(state.contextTokens);
   const usable = Math.max(0, width);
 
-  // Promoted session: state label is the right-anchored sentinel. Drop priority:
-  // tool → cost; state stays. Idle is replaced by the row-1 unified timer and
-  // never appears here for promoted sessions.
+  // Promoted session: the state label is the right-anchored sentinel and always
+  // stays. The context figure is dropped first if it doesn't fit.
   if (agentState !== null) {
     const stateText = STATE_LABEL[agentState];
     const candidates: Array<Array<{ text: string; align: "left" | "right" }>> = [];
-    if (costText && toolText) {
+    if (contextText) {
       candidates.push([
-        { text: costText, align: "left" },
-        { text: toolText, align: "left" },
-        { text: stateText, align: "right" },
-      ]);
-    }
-    if (costText) {
-      candidates.push([
-        { text: costText, align: "left" },
+        { text: contextText, align: "left" },
         { text: stateText, align: "right" },
       ]);
     }
@@ -242,47 +218,11 @@ export function buildSessionRow3(
     return { text, labelCol: 0 };
   }
 
-  // Non-promoted: keep existing cost/tool/idle behavior unchanged.
-  const candidates: Array<Array<{ text: string; align: "left" | "right" }>> = [];
-  if (costText && toolText && idleText) {
-    candidates.push([
-      { text: costText, align: "left" },
-      { text: toolText, align: "left" },
-      { text: idleText, align: "right" },
-    ]);
+  // Non-promoted session: context figure only, left-aligned. No state label.
+  // slice is a no-op when the figure already fits within usable.
+  if (contextText) {
+    return { text: contextText.slice(0, usable), labelCol: -1 };
   }
-  if (costText && toolText) {
-    candidates.push([
-      { text: costText, align: "left" },
-      { text: toolText, align: "left" },
-    ]);
-  }
-  if (costText && idleText) {
-    candidates.push([
-      { text: costText, align: "left" },
-      { text: idleText, align: "right" },
-    ]);
-  }
-  if (toolText && idleText) {
-    candidates.push([
-      { text: toolText, align: "left" },
-      { text: idleText, align: "right" },
-    ]);
-  }
-  if (costText) candidates.push([{ text: costText, align: "left" }]);
-  if (toolText) candidates.push([{ text: toolText, align: "left" }]);
-  if (idleText) candidates.push([{ text: idleText, align: "right" }]);
-
-  for (const fields of candidates) {
-    const totalLen = fields.reduce((s, f) => s + f.text.length, 0)
-      + Math.max(0, fields.length - 1) * ROW3_GAP.length;
-    if (totalLen <= usable) {
-      return { text: layoutRow3(fields, usable), labelCol: -1 };
-    }
-  }
-
-  // Last resort: cost truncated
-  if (costText) return { text: costText.slice(0, usable), labelCol: -1 };
   return { text: "", labelCol: -1 };
 }
 
