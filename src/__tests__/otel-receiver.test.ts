@@ -10,7 +10,8 @@ function makeOtlpPayload(opts: {
   eventName?: string;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
-  costUsd?: number;
+  inputTokens?: number;
+  querySource?: string;
   attributes?: Array<{ key: string; value: any }>;
 }): object {
   const {
@@ -18,7 +19,8 @@ function makeOtlpPayload(opts: {
     eventName = "api_request",
     cacheReadTokens = 100,
     cacheCreationTokens = 0,
-    costUsd,
+    inputTokens,
+    querySource,
     attributes,
   } = opts;
 
@@ -27,8 +29,11 @@ function makeOtlpPayload(opts: {
     { key: "cache_read_tokens", value: { stringValue: String(cacheReadTokens) } },
     { key: "cache_creation_tokens", value: { stringValue: String(cacheCreationTokens) } },
   ];
-  if (costUsd !== undefined) {
-    baseAttrs.push({ key: "cost_usd", value: { doubleValue: costUsd } });
+  if (inputTokens !== undefined) {
+    baseAttrs.push({ key: "input_tokens", value: { stringValue: String(inputTokens) } });
+  }
+  if (querySource !== undefined) {
+    baseAttrs.push({ key: "query_source", value: { stringValue: querySource } });
   }
   if (attributes) baseAttrs.push(...attributes);
 
@@ -248,42 +253,6 @@ describe("OtelReceiver", () => {
     expect(updates).toEqual(["$7"]);
   });
 
-  test("accumulates cost across api_request events", async () => {
-    const port = await receiver.start();
-
-    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionName: "$c", costUsd: 0.42 })),
-    });
-    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionName: "$c", costUsd: 1.08 })),
-    });
-
-    const state = receiver.getSessionState("$c");
-    expect(state).not.toBeNull();
-    expect(state!.costUsd).toBeCloseTo(1.50, 5);
-  });
-
-  test("api_request without cost_usd leaves cost unchanged", async () => {
-    const port = await receiver.start();
-
-    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionName: "$d", costUsd: 0.5 })),
-    });
-    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionName: "$d" })),
-    });
-
-    expect(receiver.getSessionState("$d")!.costUsd).toBeCloseTo(0.5, 5);
-  });
-
   test("api_error sets lastError", async () => {
     const port = await receiver.start();
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
@@ -328,29 +297,93 @@ describe("OtelReceiver", () => {
     expect(receiver.getSessionState("$x")!.lastError).toBeNull();
   });
 
-  test("tool_result sets lastTool", async () => {
+  test("main-thread api_request sets contextTokens to the input-side total", async () => {
     const port = await receiver.start();
-    const payload = makeOtlpPayload({
-      sessionName: "$t",
-      eventName: "tool_result",
-      attributes: [
-        { key: "tool_name", value: { stringValue: "Edit" } },
-        { key: "duration_ms", value: { intValue: "1234" } },
-        { key: "success", value: { boolValue: true } },
-      ],
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$ctx", inputTokens: 5000, cacheReadTokens: 100000, cacheCreationTokens: 2000, querySource: "repl_main_thread" })),
+    });
+    expect(receiver.getSessionState("$ctx")!.contextTokens).toBe(107000);
+  });
+
+  test("a smaller later main-thread request lowers contextTokens (latest wins)", async () => {
+    const port = await receiver.start();
+    const post = (input: number, read: number) =>
+      fetch(`http://127.0.0.1:${port}/v1/logs`, {
+        method: "POST",
+        body: JSON.stringify(makeOtlpPayload({ sessionName: "$lw", inputTokens: input, cacheReadTokens: read, cacheCreationTokens: 0, querySource: "repl_main_thread" })),
+      });
+    await post(1000, 150000); // 151k
+    await post(500, 40000);   // 40.5k — after a compaction the context shrinks
+    expect(receiver.getSessionState("$lw")!.contextTokens).toBe(40500);
+  });
+
+  test("subagent request does not change contextTokens", async () => {
+    const port = await receiver.start();
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$sa", inputTokens: 1000, cacheReadTokens: 100000, querySource: "repl_main_thread" })),
     });
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$sa", inputTokens: 500, cacheReadTokens: 8000, querySource: "code-reviewer" })),
     });
+    expect(receiver.getSessionState("$sa")!.contextTokens).toBe(101000);
+  });
 
-    const state = receiver.getSessionState("$t");
-    expect(state!.lastTool).not.toBeNull();
-    expect(state!.lastTool!.name).toBe("Edit");
-    expect(state!.lastTool!.durationMs).toBe(1234);
-    expect(state!.lastTool!.success).toBe(true);
-    expect(state!.lastTool!.timestamp).toBeGreaterThan(0);
+  test("compact request does not change contextTokens", async () => {
+    const port = await receiver.start();
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$cq", inputTokens: 1000, cacheReadTokens: 100000, querySource: "repl_main_thread" })),
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$cq", inputTokens: 9000, cacheReadTokens: 1000, querySource: "compact" })),
+    });
+    expect(receiver.getSessionState("$cq")!.contextTokens).toBe(101000);
+  });
+
+  test("absent query_source uses high-water max (legacy fallback)", async () => {
+    const port = await receiver.start();
+    const post = (input: number, read: number) =>
+      fetch(`http://127.0.0.1:${port}/v1/logs`, {
+        method: "POST",
+        body: JSON.stringify(makeOtlpPayload({ sessionName: "$hw", inputTokens: input, cacheReadTokens: read, cacheCreationTokens: 0 })),
+      });
+    await post(1000, 150000); // 151k
+    await post(500, 8000);    // 8.5k subagent-ish — must NOT lower the figure
+    expect(receiver.getSessionState("$hw")!.contextTokens).toBe(151000);
+  });
+
+  test("compaction resets contextTokens to 0", async () => {
+    const port = await receiver.start();
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$rc", inputTokens: 1000, cacheReadTokens: 150000, querySource: "repl_main_thread" })),
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$rc", eventName: "compaction" })),
+    });
+    expect(receiver.getSessionState("$rc")!.contextTokens).toBe(0);
+  });
+
+  test("subagent/compact requests still update request bookkeeping", async () => {
+    const port = await receiver.start();
+    // Seed an error so we can confirm a non-main request clears it.
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$bk", eventName: "api_error" })),
+    });
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$bk", inputTokens: 100, cacheReadTokens: 4000, querySource: "compact" })),
+    });
+    const state = receiver.getSessionState("$bk")!;
+    expect(state.contextTokens).toBe(0);          // occupancy untouched by compact
+    expect(state.lastRequestTime).toBeGreaterThan(0); // bookkeeping advanced
+    expect(state.lastError).toBeNull();            // error cleared
   });
 
   test("user_prompt sets lastUserPromptTime", async () => {
@@ -377,23 +410,55 @@ describe("OtelReceiver", () => {
     expect(receiver.getSessionState("$cp")!.lastCompactionTime).not.toBeNull();
   });
 
-  test("tool_result without tool_name is ignored", async () => {
+  test("tool_result fires resume hint and does not create OTEL state", async () => {
+    const seen: string[] = [];
+    const recv = new OtelReceiver({ onAgentResumeHint: (name) => seen.push(name) });
+    const port = await recv.start();
+    try {
+      // Without tool_name
+      await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+        method: "POST",
+        body: JSON.stringify(makeOtlpPayload({ sessionName: "$tn", eventName: "tool_result" })),
+      });
+      // With tool_name
+      await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+        method: "POST",
+        body: JSON.stringify(makeOtlpPayload({
+          sessionName: "$tn",
+          eventName: "tool_result",
+          attributes: [{ key: "tool_name", value: { stringValue: "Edit" } }],
+        })),
+      });
+      // Resume hint fired both times; no OTEL state was created.
+      expect(seen).toEqual(["$tn", "$tn"]);
+      expect(recv.getSessionState("$tn")).toBeNull();
+    } finally {
+      recv.stop();
+    }
+  });
+
+  test("tool_result leaves an existing session's state untouched", async () => {
     const port = await receiver.start();
-    const payload = makeOtlpPayload({
-      sessionName: "$tn",
-      eventName: "tool_result",
-      attributes: [
-        { key: "duration_ms", value: { intValue: "100" } },
-      ],
-    });
+    // Seed real state via a main-thread api_request.
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "$te", inputTokens: 1000, cacheReadTokens: 4000, cacheCreationTokens: 0, querySource: "repl_main_thread" })),
     });
-
-    // State entry not created when there's nothing to record
-    expect(receiver.getSessionState("$tn")).toBeNull();
+    const before = receiver.getSessionState("$te")!;
+    const beforeContext = before.contextTokens;
+    const beforeRequest = before.lastRequestTime;
+    // tool_result must not change any field.
+    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
+      method: "POST",
+      body: JSON.stringify(makeOtlpPayload({
+        sessionName: "$te",
+        eventName: "tool_result",
+        attributes: [{ key: "tool_name", value: { stringValue: "Bash" } }],
+      })),
+    });
+    const after = receiver.getSessionState("$te")!;
+    expect(after.contextTokens).toBe(beforeContext);
+    expect(after.lastRequestTime).toBe(beforeRequest);
   });
 
   test("permission_mode_changed sets permissionMode", async () => {
@@ -570,15 +635,7 @@ describe("OtelReceiver change events", () => {
           { key: "state", value: { stringValue: "failed" } },
         ],
       }),
-      makeOtlpPayload({
-        sessionName: "beta",
-        eventName: "tool_result",
-        attributes: [
-          { key: "tool_name", value: { stringValue: "Edit" } },
-          { key: "duration_ms", value: { intValue: "100" } },
-          { key: "success", value: { boolValue: true } },
-        ],
-      }),
+      // tool_result no longer emits onSessionUpdate — it is a resume-hint-only trigger
     ];
 
     for (const payload of events) {
@@ -589,7 +646,7 @@ describe("OtelReceiver change events", () => {
       });
     }
 
-    expect(changes.length).toBe(7);
+    expect(changes.length).toBe(6);
     expect(changes.every((n) => n === "beta")).toBe(true);
   });
 
@@ -616,13 +673,13 @@ describe("OtelReceiver change events", () => {
     await fetch(`http://127.0.0.1:${port}/v1/logs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeOtlpPayload({ sessionName: "snap1", costUsd: 0.25 })),
+      body: JSON.stringify(makeOtlpPayload({ sessionName: "snap1", inputTokens: 2000, cacheReadTokens: 8000, querySource: "repl_main_thread" })),
     });
 
     const snap = receiver.getSessionSnapshot("snap1");
     expect(snap).not.toBeNull();
-    expect(typeof snap!.costUsd).toBe("number");
-    expect(snap!.costUsd).toBeCloseTo(0.25, 5);
+    expect(typeof snap!.contextTokens).toBe("number");
+    expect(snap!.contextTokens).toBe(10000);
     expect(typeof snap!.cacheWasHit).toBe("boolean");
     expect(Array.isArray(snap!.failedMcpServers)).toBe(true);
   });
@@ -657,30 +714,6 @@ describe("OtelReceiver change events", () => {
     expect(snap!.lastRequestTime).not.toBeNull();
     expect(snap!.lastUserPromptTime).not.toBeNull();
     expect(snap!.lastCompactionTime).not.toBeNull();
-  });
-
-  test("getSessionSnapshot lastTool is the tool name string or null", async () => {
-    const port = await receiver.start();
-
-    await fetch(`http://127.0.0.1:${port}/v1/logs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        makeOtlpPayload({
-          sessionName: "snap3",
-          eventName: "tool_result",
-          attributes: [
-            { key: "tool_name", value: { stringValue: "Bash" } },
-            { key: "duration_ms", value: { intValue: "500" } },
-            { key: "success", value: { boolValue: true } },
-          ],
-        })
-      ),
-    });
-
-    const snap = receiver.getSessionSnapshot("snap3");
-    expect(snap).not.toBeNull();
-    expect(snap!.lastTool).toBe("Bash");
   });
 
   test("getSessionSnapshot lastError is a string representation or null", async () => {

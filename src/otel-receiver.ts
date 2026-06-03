@@ -42,11 +42,10 @@ export class OtelReceiver {
     const s = this.state.get(name);
     if (!s) return null;
     return {
-      costUsd: s.costUsd,
+      contextTokens: s.contextTokens,
       cacheWasHit: s.lastRequestTime > 0 ? s.cacheWasHit : null,
       lastRequestTime: toIso(s.lastRequestTime),
       lastCompactionTime: toIso(s.lastCompactionTime),
-      lastTool: s.lastTool?.name ?? null,
       lastUserPromptTime: toIso(s.lastUserPromptTime),
       lastError: s.lastError?.type ?? null,
       failedMcpServers: Array.from(s.failedMcpServers),
@@ -66,14 +65,11 @@ export class OtelReceiver {
     };
 
     const existing = this.state.get(name) ?? makeSessionOtelState();
-    existing.costUsd = snap.costUsd;
+    existing.contextTokens = snap.contextTokens ?? 0;
     existing.cacheWasHit = snap.cacheWasHit ?? false;
     existing.lastRequestTime = fromIso(snap.lastRequestTime);
     existing.lastCompactionTime = snap.lastCompactionTime ? fromIso(snap.lastCompactionTime) : null;
     existing.lastUserPromptTime = snap.lastUserPromptTime ? fromIso(snap.lastUserPromptTime) : null;
-    existing.lastTool = snap.lastTool
-      ? { name: snap.lastTool, durationMs: 0, success: true, timestamp: 0 }
-      : null;
     existing.lastError = snap.lastError
       ? { type: snap.lastError as ErrorState["type"], timestamp: 0 }
       : null;
@@ -168,13 +164,29 @@ export class OtelReceiver {
 
     if (eventName === "api_request") {
       const cacheReadTokens = this.findAttrNumber(attrs, "cache_read_tokens");
-      const cost = this.findAttrDouble(attrs, "cost_usd");
 
       const existing = this.state.get(sessionName) ?? makeSessionOtelState();
       existing.lastRequestTime = Date.now();
       existing.cacheWasHit = cacheReadTokens > 0;
       existing.lastError = null;
-      if (cost !== null) existing.costUsd += cost;
+
+      // Context occupancy: a main-loop request sends the entire conversation, so
+      // its input-side total IS the current context size. query_source isolates
+      // the main REPL thread from compaction/subagent requests (which are smaller
+      // and would otherwise corrupt the figure). Latest main-thread total wins, so
+      // the number also drops after a /compact or /clear. When query_source is
+      // absent (older Claude Code) fall back to a high-water max to dodge subagents.
+      const querySource = this.findAttrString(attrs, "query_source");
+      const inputTokens = this.findAttrNumber(attrs, "input_tokens");
+      const cacheCreationTokens = this.findAttrNumber(attrs, "cache_creation_tokens");
+      const total = inputTokens + cacheReadTokens + cacheCreationTokens;
+      if (querySource === "repl_main_thread") {
+        existing.contextTokens = total;
+      } else if (querySource === null) {
+        existing.contextTokens = Math.max(existing.contextTokens, total);
+      }
+      // else: "compact" / subagent — leave contextTokens unchanged.
+
       this.state.set(sessionName, existing);
 
       this.onUpdate?.(sessionName);
@@ -207,6 +219,7 @@ export class OtelReceiver {
     if (eventName === "compaction") {
       const existing = this.state.get(sessionName) ?? makeSessionOtelState();
       existing.lastCompactionTime = Date.now();
+      existing.contextTokens = 0;
       this.state.set(sessionName, existing);
       this.onUpdate?.(sessionName);
       this.emitSessionUpdate(sessionName);
@@ -247,21 +260,11 @@ export class OtelReceiver {
     }
 
     if (eventName === "tool_result") {
-      const toolName = this.findAttrString(attrs, "tool_name");
-      if (!toolName) return;
-      const durationMs = this.findAttrNumber(attrs, "duration_ms");
-      const success = this.findAttrBool(attrs, "success");
-
-      const existing = this.state.get(sessionName) ?? makeSessionOtelState();
-      existing.lastTool = {
-        name: toolName,
-        durationMs,
-        success: success !== false,
-        timestamp: Date.now(),
-      };
-      this.state.set(sessionName, existing);
-      this.onUpdate?.(sessionName);
-      this.emitSessionUpdate(sessionName);
+      // tool_result no longer mutates OTEL state (lastTool was removed). It only
+      // nudges the agent state machine to close the WAITING→RUNNING gap when
+      // Claude resumes after a permission grant. Deliberately do NOT touch
+      // this.state or emit onUpdate/emitSessionUpdate — that would persist a
+      // blank OTEL state for a session that has produced no real OTEL data.
       this.onAgentResumeHint(sessionName);
       return;
     }
@@ -298,37 +301,4 @@ export class OtelReceiver {
     return 0;
   }
 
-  private findAttrBool(attrs: any[], key: string): boolean | null {
-    for (const attr of attrs) {
-      if (attr?.key === key) {
-        const v = attr?.value;
-        if (!v) return null;
-        if (v.boolValue !== undefined) return Boolean(v.boolValue);
-        if (v.stringValue !== undefined) return v.stringValue === "true";
-        return null;
-      }
-    }
-    return null;
-  }
-
-  private findAttrDouble(attrs: any[], key: string): number | null {
-    for (const attr of attrs) {
-      if (attr?.key === key) {
-        const v = attr?.value;
-        if (!v) return null;
-        if (v.doubleValue !== undefined) {
-          return typeof v.doubleValue === "number" ? v.doubleValue : parseFloat(v.doubleValue);
-        }
-        if (v.intValue !== undefined) {
-          return typeof v.intValue === "number" ? v.intValue : parseFloat(v.intValue);
-        }
-        if (v.stringValue !== undefined) {
-          const parsed = parseFloat(v.stringValue);
-          return Number.isFinite(parsed) ? parsed : null;
-        }
-        return null;
-      }
-    }
-    return null;
-  }
 }
