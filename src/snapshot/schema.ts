@@ -10,11 +10,12 @@ export interface SessionLink {
 }
 
 export interface SnapshotOtel {
-  costUsd: number;
+  // Optional & defaulted for back-compat with snapshots written before context
+  // tracking existed. Absent ⇒ treated as 0 on restore.
+  contextTokens?: number;
   cacheWasHit: boolean | null;
   lastRequestTime: string | null;
   lastCompactionTime: string | null;
-  lastTool: string | null;
   lastUserPromptTime: string | null;
   // null or one of the known ErrorState types from src/types.ts
   lastError: "api_error" | "api_retries_exhausted" | null;
@@ -138,14 +139,15 @@ function isKnownLastErrorType(v: unknown): v is KnownLastErrorType {
 function validateOtel(v: unknown, path: string): string | null {
   if (v === null) return null;
   if (!isRecord(v)) return `${path}: not an object or null`;
-  if (!isFiniteNumber(v.costUsd)) return `${path}.costUsd: not a number`;
+  if (v.contextTokens !== undefined && !isFiniteNumber(v.contextTokens)) {
+    return `${path}.contextTokens: not a number`;
+  }
   if (v.cacheWasHit !== null && !isBoolean(v.cacheWasHit)) {
     return `${path}.cacheWasHit: not boolean or null`;
   }
   const nullableStrings = [
     "lastRequestTime",
     "lastCompactionTime",
-    "lastTool",
     "lastUserPromptTime",
   ] as const;
   for (const k of nullableStrings) {

@@ -312,17 +312,24 @@ describe("snapshot schema", () => {
     if (!result.ok) expect(result.error).toContain("otel");
   });
 
-  test("validateSnapshot rejects otel with non-number costUsd", () => {
+  test("validateSnapshot rejects otel with non-number contextTokens", () => {
     const bad = JSON.parse(JSON.stringify(good));
-    bad.sessions[0].otel = { costUsd: "free", cacheWasHit: null, lastRequestTime: null, lastCompactionTime: null, lastTool: null, lastUserPromptTime: null, lastError: null, failedMcpServers: [] };
+    bad.sessions[0].otel = { contextTokens: "lots", cacheWasHit: null, lastRequestTime: null, lastCompactionTime: null, lastUserPromptTime: null, lastError: null, failedMcpServers: [] };
     const result = validateSnapshot(bad);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain("costUsd");
+    if (!result.ok) expect(result.error).toContain("contextTokens");
+  });
+
+  test("validateSnapshot accepts otel without contextTokens (back-compat)", () => {
+    const variant = JSON.parse(JSON.stringify(good));
+    variant.sessions[0].otel = { cacheWasHit: true, lastRequestTime: null, lastCompactionTime: null, lastUserPromptTime: null, lastError: null, failedMcpServers: [] };
+    const result = validateSnapshot(variant);
+    expect(result.ok).toBe(true);
   });
 
   test("validateSnapshot rejects otel with invalid cacheWasHit", () => {
     const bad = JSON.parse(JSON.stringify(good));
-    bad.sessions[0].otel = { costUsd: 0, cacheWasHit: "yes", lastRequestTime: null, lastCompactionTime: null, lastTool: null, lastUserPromptTime: null, lastError: null, failedMcpServers: [] };
+    bad.sessions[0].otel = { cacheWasHit: "yes", lastRequestTime: null, lastCompactionTime: null, lastUserPromptTime: null, lastError: null, failedMcpServers: [] };
     const result = validateSnapshot(bad);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("cacheWasHit");
@@ -330,7 +337,7 @@ describe("snapshot schema", () => {
 
   test("validateSnapshot rejects otel with invalid nullable string field", () => {
     const bad = JSON.parse(JSON.stringify(good));
-    bad.sessions[0].otel = { costUsd: 0, cacheWasHit: null, lastRequestTime: 42, lastCompactionTime: null, lastTool: null, lastUserPromptTime: null, lastError: null, failedMcpServers: [] };
+    bad.sessions[0].otel = { cacheWasHit: null, lastRequestTime: 42, lastCompactionTime: null, lastUserPromptTime: null, lastError: null, failedMcpServers: [] };
     const result = validateSnapshot(bad);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("lastRequestTime");
@@ -338,7 +345,7 @@ describe("snapshot schema", () => {
 
   test("validateSnapshot rejects otel with non-array failedMcpServers", () => {
     const bad = JSON.parse(JSON.stringify(good));
-    bad.sessions[0].otel = { costUsd: 0, cacheWasHit: null, lastRequestTime: null, lastCompactionTime: null, lastTool: null, lastUserPromptTime: null, lastError: null, failedMcpServers: "none" };
+    bad.sessions[0].otel = { cacheWasHit: null, lastRequestTime: null, lastCompactionTime: null, lastUserPromptTime: null, lastError: null, failedMcpServers: "none" };
     const result = validateSnapshot(bad);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("failedMcpServers");
@@ -346,7 +353,7 @@ describe("snapshot schema", () => {
 
   test("validateSnapshot rejects otel with non-string failedMcpServers entry", () => {
     const bad = JSON.parse(JSON.stringify(good));
-    bad.sessions[0].otel = { costUsd: 0, cacheWasHit: null, lastRequestTime: null, lastCompactionTime: null, lastTool: null, lastUserPromptTime: null, lastError: null, failedMcpServers: [42] };
+    bad.sessions[0].otel = { cacheWasHit: null, lastRequestTime: null, lastCompactionTime: null, lastUserPromptTime: null, lastError: null, failedMcpServers: [42] };
     const result = validateSnapshot(bad);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("failedMcpServers[0]");
@@ -355,11 +362,10 @@ describe("snapshot schema", () => {
   test("validateSnapshot accepts full valid otel object", () => {
     const variant = JSON.parse(JSON.stringify(good));
     variant.sessions[0].otel = {
-      costUsd: 1.23,
+      contextTokens: 112000,
       cacheWasHit: true,
       lastRequestTime: "2026-05-12T18:00:00.000Z",
       lastCompactionTime: null,
-      lastTool: "Edit",
       lastUserPromptTime: "2026-05-12T17:00:00.000Z",
       lastError: null,
       failedMcpServers: ["linear", "slack"],
@@ -371,11 +377,9 @@ describe("snapshot schema", () => {
   test("validateSnapshot rejects otel with unknown lastError type string", () => {
     const bad = JSON.parse(JSON.stringify(good));
     bad.sessions[0].otel = {
-      costUsd: 0,
       cacheWasHit: null,
       lastRequestTime: null,
       lastCompactionTime: null,
-      lastTool: null,
       lastUserPromptTime: null,
       lastError: "some_unknown_error",
       failedMcpServers: [],
