@@ -114,13 +114,20 @@ reflects the most recent main-loop context size.
   - Compute `total = input_tokens + cache_read_tokens + cache_creation_tokens`.
   - Apply the tracking rule above to set `contextTokens`.
   - Stop reading `cost_usd` and stop accumulating `costUsd`.
-  - Keep `lastRequestTime`, `cacheWasHit`, and the `lastError = null` reset.
+  - **The `query_source` filtering governs `contextTokens` only.** Every
+    `api_request`, regardless of source, still updates `lastRequestTime` and
+    `cacheWasHit`, clears `lastError`, fires `onAgentResumeHint`, and emits the
+    `onUpdate` / `emitSessionUpdate` notifications exactly as today. Only the
+    context-occupancy assignment is skipped for `"compact"` / subagent sources.
 - `compaction` handler: additionally set `contextTokens = 0`.
-- `tool_result` handler: keep the `onAgentResumeHint(sessionName)` call (it
-  closes the WAITING→RUNNING gap), but remove the `lastTool` assignment. The
-  `tool_name` lookup is no longer required; if the handler no longer needs to
-  read any attribute, it still fires the resume hint and the session-update
-  emit.
+- `tool_result` handler: **fire `onAgentResumeHint(sessionName)` only.** Once
+  `lastTool` is removed, `tool_result` no longer mutates any OTEL state, so it
+  must **not** call `onUpdate` or `emitSessionUpdate` — doing so would push a
+  redundant render and snapshot, and (because `onUpdate` does
+  `getSessionState` → `setSessionOtelState`, and `onSessionUpdate` writes a
+  snapshot) would create/persist a blank OTEL state for a session that has never
+  produced any OTEL data. Drop the `tool_name` lookup and the `lastTool`
+  assignment; the resume hint is the handler's entire remaining job.
 - `getSessionSnapshot`: replace `costUsd` / `lastTool` fields with
   `contextTokens`.
 - `setSessionSnapshot`: restore `contextTokens` from the snapshot (default `0`
@@ -190,9 +197,19 @@ Pure unit tests, matching the existing test style (no tmux spawned).
   - a `"compact"` request does not change `contextTokens`.
   - absent `query_source` uses the high-water max (a later smaller request does
     **not** lower it).
+  - a subagent / `"compact"` request still updates the request bookkeeping
+    (`lastRequestTime` advances, `lastError` clears) even though `contextTokens`
+    is unchanged — confirms the `query_source` filter is scoped to occupancy.
   - `compaction` resets `contextTokens` to 0.
   - snapshot get/set round-trips `contextTokens`; an old snapshot without
     `contextTokens` restores as `0`.
+- Replace the existing "tool_result without tool_name is ignored" test
+  (currently around `otel-receiver.test.ts:380`). The new regression assertion:
+  a `tool_result` event (with **and** without `tool_name`) fires the resume hint
+  and does **not** create or clear OTEL state — i.e. `getSessionState` for a
+  session that has only ever seen `tool_result` returns `null` (no blank state
+  was written), and a `tool_result` for an existing session leaves its state
+  fields untouched.
 
 ### `src/__tests__/session-view.test.ts`
 - Replace cost/tool/idle row-3 expectations with context-figure expectations:
