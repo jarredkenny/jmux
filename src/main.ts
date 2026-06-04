@@ -43,7 +43,7 @@ import { homedir } from "os";
 
 // --- CLI commands (run and exit before TUI) ---
 
-const VERSION = "0.15.0";
+const VERSION = "0.17.0";
 const MIN_BUN_VERSION = "1.3.8";
 
 function checkBunVersion(): void {
