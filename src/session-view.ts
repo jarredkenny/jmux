@@ -1,5 +1,5 @@
 import type { SessionInfo, SessionOtelState, AgentState, AgentStateRecord } from "./types";
-import type { SessionContext } from "./adapters/types";
+import type { SessionContext, MergeRequest } from "./adapters/types";
 
 const CACHE_TIMER_TTL = 300; // seconds
 const COMPACTION_FLASH_MS = 30_000;
@@ -58,10 +58,18 @@ function formatElapsed(ms: number): string {
   return `${h}h`;
 }
 
-/** Extract the MR iid (e.g. "42") from compound id "project:42" */
-function extractMrIid(compoundId: string): string {
-  const colonIdx = compoundId.lastIndexOf(":");
-  return colonIdx >= 0 ? compoundId.slice(colonIdx + 1) : compoundId;
+/**
+ * Format a MergeRequest id into the per-host short label shown in the
+ * sidebar. GitHub ids are "owner/repo#N" -> "#N". GitLab ids are
+ * "<encoded_project>:<iid>" -> "!<iid>". Discrimination is by id shape
+ * rather than adapter type, so this stays pure and out of the adapter
+ * surface.
+ */
+function formatMrId(mr: MergeRequest): string {
+  const hashIdx = mr.id.lastIndexOf("#");
+  if (hashIdx >= 0) return `#${mr.id.slice(hashIdx + 1)}`;
+  const colonIdx = mr.id.lastIndexOf(":");
+  return colonIdx >= 0 ? `!${mr.id.slice(colonIdx + 1)}` : `!${mr.id}`;
 }
 
 export function buildSessionView(
@@ -87,7 +95,7 @@ export function buildSessionView(
     }
   }
 
-  const mrId = selectedMr ? `!${extractMrIid(selectedMr.id)}` : null;
+  const mrId = selectedMr ? formatMrId(selectedMr) : null;
   const pipelineState = selectedMr?.pipeline?.state ?? null;
 
   // Row-1 unified timer fallback chain (see spec §"Row 1 unified timer"):

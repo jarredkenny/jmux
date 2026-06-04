@@ -101,6 +101,24 @@ describe("buildSessionView", () => {
     expect(view.mrId).toBe("!20");
   });
 
+  test("MR id with '#' separator (GitHub) renders as '#N'", () => {
+    const ctx = makeCtx({
+      remote: "https://github.com/acme/repo.git",
+      mrs: [makeMr({ id: "acme/repo#42" })],
+    });
+    const view = buildSessionView(makeSession(), ctx, undefined, new Set());
+    expect(view.mrId).toBe("#42");
+  });
+
+  test("MR id with ':' separator (GitLab) still renders as '!N'", () => {
+    const ctx = makeCtx({
+      remote: "https://gitlab.com/acme/repo.git",
+      mrs: [makeMr({ id: "acme%2Frepo:42" })],
+    });
+    const view = buildSessionView(makeSession(), ctx, undefined, new Set());
+    expect(view.mrId).toBe("!42");
+  });
+
   test("extracts pipeline state from selected MR", () => {
     const ctx = makeCtx({
       mrs: [
