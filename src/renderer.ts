@@ -19,6 +19,8 @@ export interface ToolbarConfig {
   hoveredTabId?: string | null;
   /** When set, a dim status chip is rendered between tabs and buttons. */
   statusChip?: string | null;
+  /** Total toolbar height in rows (1 = tabs only; 2 = tabs + per-window branch row). Defaults to 1. */
+  toolbarRows?: number;
 }
 
 export function sgrForCell(cell: Cell): string {
@@ -144,6 +146,50 @@ export function getModalPosition(
   };
 }
 
+// Renders the optional second toolbar row: each window's git branch, aligned
+// under its tab (dim, with a ⎇ glyph, truncated to the tab width). Windows whose
+// pane isn't in a git repo simply leave their slot blank.
+function renderWindowBranchRow(
+  grid: CellGrid,
+  toolbar: ToolbarConfig,
+  borderCol: number,
+  totalCols: number,
+): void {
+  const branchIcon = "⎇ ";
+  const iconWidth = stringDisplayWidth(branchIcon);
+  for (const { startCol, endCol, tab } of getToolbarTabRanges(toolbar)) {
+    const branch = tab.branch;
+    if (!branch) continue;
+    const tabWidth = endCol - startCol + 1;
+    const maxLen = tabWidth - 2 - iconWidth; // leading + trailing space
+    if (maxLen <= 0) continue;
+    let branchText = branch;
+    if (stringDisplayWidth(branchText) > maxLen) {
+      branchText = branchText.slice(0, Math.max(1, maxLen - 1)) + "…";
+    }
+    const label = " " + branchIcon + branchText + " ";
+    let col = 0;
+    for (const ch of label) {
+      const c = borderCol + 1 + startCol + col;
+      const w = charDisplayWidth(ch);
+      if (c < totalCols) {
+        grid.cells[1][c] = {
+          ...DEFAULT_CELL,
+          char: ch,
+          width: w,
+          fg: 8,
+          fgMode: ColorMode.Palette,
+          dim: true,
+        };
+        if (w === 2 && c + 1 < totalCols) {
+          grid.cells[1][c + 1] = { ...DEFAULT_CELL, char: "", width: 0 };
+        }
+      }
+      col += w;
+    }
+  }
+}
+
 export function compositeGrids(
   main: CellGrid,
   sidebar: CellGrid | null,
@@ -170,7 +216,7 @@ export function compositeGrids(
     contentCols = mainCols;
   }
   const totalCols = sidebar.cols + 1 + contentCols;
-  const toolbarRows = toolbar ? 1 : 0;
+  const toolbarRows = toolbar ? (toolbar.toolbarRows ?? 1) : 0;
   const totalRows = main.rows + toolbarRows;
   const grid = createGrid(totalCols, totalRows);
 
@@ -188,7 +234,11 @@ export function compositeGrids(
       fgMode: ColorMode.Palette,
     };
 
-    if (toolbar && y === 0) {
+    if (toolbar && y < toolbarRows) {
+      if (y === 1 && toolbarRows >= 2) {
+        // Second toolbar row: per-window git branch, aligned under each tab.
+        renderWindowBranchRow(grid, toolbar, borderCol, totalCols);
+      } else if (y === 0) {
       // Toolbar row — always render (palette no longer replaces it)
       const hoverBg = (0x2a << 16) | (0x2f << 8) | 0x38;
       const activeBg = (0x1e << 16) | (0x2a << 8) | 0x35;
@@ -304,9 +354,10 @@ export function compositeGrids(
           col += w;
         }
       }
+      }
     } else {
-      // Main content — offset by toolbar row
-      const mainY = toolbar ? y - 1 : y;
+      // Main content — offset by toolbar rows
+      const mainY = toolbar ? y - toolbarRows : y;
       if (mainY >= 0) {
         if (diffPanel && diffPanel.mode === "full") {
           // Full mode: copy diff grid instead of main

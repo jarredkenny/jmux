@@ -204,6 +204,10 @@ let sidebarWidth = configStore.config.sidebarWidth || 26;
 const BORDER_WIDTH = 1;
 function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
 const toolbarEnabled = true;
+// Opt-in second toolbar row showing each window's git branch. Read once at
+// startup; changing it requires a restart (toolbarHeight feeds PTY sizing).
+const windowBranchesEnabled = configStore.config.windowBranches === true;
+const toolbarHeight = toolbarEnabled ? (windowBranchesEnabled ? 2 : 1) : 0;
 let claudeCommand = configStore.config.claudeCommand || "claude";
 let cacheTimersEnabled = configStore.config.cacheTimers !== false;
 let pinnedSessions = new Set<string>(configStore.config.pinnedSessions ?? []);
@@ -323,7 +327,7 @@ const cols = process.stdout.columns || 80;
 const rows = process.stdout.rows || 24;
 const sidebarVisible = cols >= 80;
 let mainCols = sidebarVisible ? cols - sidebarTotal() : cols;
-const ptyRows = toolbarEnabled ? rows - 1 : rows;
+const ptyRows = toolbarEnabled ? rows - toolbarHeight : rows;
 
 // Toolbar buttons and window tabs
 let hoveredToolbarButton: string | null = null;
@@ -357,6 +361,7 @@ function makeToolbar(): ToolbarConfig {
     tabs: currentWindows,
     hoveredTabId,
     statusChip: snapshotChipReason ? "snapshot off" : null,
+    toolbarRows: toolbarHeight,
   };
 }
 
@@ -830,7 +835,7 @@ async function spawnHunk(cols: number, rows: number): Promise<void> {
 function resizeDiffPanel(): void {
   if (!diffPty || !diffBridge) return;
   const cols = getDiffPanelCols();
-  const rows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+  const rows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
   diffPty.resize(cols, rows);
   diffBridge.resize(cols, rows);
 }
@@ -842,7 +847,7 @@ async function toggleDiffPanel(): Promise<void> {
   const totalCols = process.stdout.columns || 80;
   const sidebarCols = sidebarShown ? sidebarTotal() : 0;
   const available = totalCols - sidebarCols;
-  const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+  const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
 
   if (!wasActive && diffPanel.state === "split") {
     // off → split: shrink tmux, spawn hunk, focus the panel
@@ -875,7 +880,7 @@ async function zoomDiffPanel(): Promise<void> {
   const totalCols = process.stdout.columns || 80;
   const sidebarCols = sidebarShown ? sidebarTotal() : 0;
   const available = totalCols - sidebarCols;
-  const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+  const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
 
   if (diffPanel.state === "full") {
     // split → full: resize tmux to full width (invisible), resize hunk to full
@@ -1071,7 +1076,7 @@ function renderFrame(): void {
   let diffPanelArg: { grid: import("./types").CellGrid; mode: "split" | "full"; focused: boolean; tabBar?: import("./types").CellGrid } | undefined;
   if (diffPanel.isActive()) {
     const dpCols = getDiffPanelCols();
-    const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+    const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
 
     let contentGrid: import("./types").CellGrid;
     if (infoPanel.activeTab === "diff") {
@@ -1402,7 +1407,7 @@ const inputRouter = new InputRouter(
         viewState.selectedIndex++;
         viewState.detailScrollOffset = 0; // reset detail scroll on item change
         // Scroll list if selection goes below visible area
-        const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+        const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
         const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
         if (viewState.selectedIndex >= viewState.scrollOffset + listRows) {
           viewState.scrollOffset = viewState.selectedIndex - listRows + 1;
@@ -1715,7 +1720,7 @@ const inputRouter = new InputRouter(
       if (!viewState) return;
 
       // Determine if scroll is in list area or detail area
-      const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+      const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
       const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
 
       if (row < listRows) {
@@ -1746,7 +1751,7 @@ const inputRouter = new InputRouter(
       const viewState = viewStates.get(view.id);
       if (!viewState) return;
       // Only handle clicks in the list area (top half)
-      const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+      const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
       const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
       if (row >= listRows) return; // click was in detail area — ignore
       // row is relative to panel content (after toolbar row)
@@ -1842,6 +1847,7 @@ const inputRouter = new InputRouter(
   },
   sidebarShown,
 );
+inputRouter.setToolbarRows(toolbarHeight);
 
 const palette = new CommandPalette();
 let activeModal: Modal | null = null;
@@ -2333,7 +2339,7 @@ function focusPanelOnSessionIssue(sessionName: string): void {
         viewState.selectedIndex = i;
         viewState.detailScrollOffset = 0;
         // Ensure visible
-        const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+        const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
         const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
         if (i >= viewState.scrollOffset + listRows) {
           viewState.scrollOffset = i - listRows + 1;
@@ -3059,7 +3065,7 @@ process.on("SIGWINCH", () => {
   const newCols = process.stdout.columns || 80;
   const newRows = process.stdout.rows || 24;
   const newSidebarVisible = newCols >= 80;
-  const newPtyRows = toolbarEnabled ? newRows - 1 : newRows;
+  const newPtyRows = toolbarEnabled ? newRows - toolbarHeight : newRows;
   const sidebarCols = newSidebarVisible ? sidebarTotal() : 0;
   const available = newCols - sidebarCols;
 
@@ -3138,7 +3144,7 @@ try {
       const rows = process.stdout.rows || 24;
       const newSidebarVisible = cols >= 80;
       const newMainCols = newSidebarVisible ? cols - sidebarTotal() : cols;
-      const newPtyRows = toolbarEnabled ? rows - 1 : rows;
+      const newPtyRows = toolbarEnabled ? rows - toolbarHeight : rows;
 
       mainCols = newMainCols;
       sidebarShown = newSidebarVisible;
@@ -3161,7 +3167,7 @@ try {
       const sidebarCols = sidebarShown ? sidebarTotal() : 0;
       const available = cols - sidebarCols;
       const panelCols = calcSplitPanelCols(available);
-      const newPtyRows = toolbarEnabled ? rows - 1 : rows;
+      const newPtyRows = toolbarEnabled ? rows - toolbarHeight : rows;
       mainCols = available - panelCols - 1;
       pty.resize(mainCols, newPtyRows);
       bridge.resize(mainCols, newPtyRows);
@@ -3309,7 +3315,7 @@ control.onEvent((event: ControlEvent) => {
           fetchWindows();
           if (diffPanel.isActive() && !diffPanel.hunkExited) {
             const dpCols = getDiffPanelCols();
-            const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - 1 : (process.stdout.rows || 24);
+            const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
             await spawnHunk(dpCols, dpRows);
           }
           // Sync issue panel and snapshotter to the new session's linked issue
@@ -3405,7 +3411,7 @@ async function fetchWindows(): Promise<void> {
     const lines = await control.sendCommand(
       `list-windows ${target} -F '#{window_id}:#{window_index}:#{window_name}:#{window_active}:#{window_bell_flag}:#{window_zoomed_flag}'`,
     );
-    currentWindows = lines
+    const windows: import("./types").WindowTab[] = lines
       .filter((l) => l.length > 0)
       .map((line) => {
         const [windowId, index, name, active, bell, zoomed] = line.split(":");
@@ -3418,9 +3424,57 @@ async function fetchWindows(): Promise<void> {
           zoomed: zoomed === "1",
         };
       });
+
+    if (windowBranchesEnabled) {
+      // Resolve each window's cwd serially — concurrent control-mode commands
+      // can interleave replies — then resolve branches concurrently, since the
+      // git lookups are independent and run as non-blocking async subprocesses.
+      const cwdByWindow = new Map<string, string>();
+      for (const win of windows) {
+        try {
+          const cwdLines = await control.sendCommand(
+            `display-message -t ${win.windowId} -p '#{pane_current_path}'`,
+          );
+          const cwd = cwdLines.find((l) => l.length > 0);
+          if (cwd) cwdByWindow.set(win.windowId, cwd);
+        } catch {
+          // pane gone / session shutting down
+        }
+      }
+      await Promise.all(
+        windows.map(async (win) => {
+          const cwd = cwdByWindow.get(win.windowId);
+          if (!cwd) return;
+          const branch = await gitBranchForPath(cwd);
+          if (branch) win.branch = branch;
+        }),
+      );
+    }
+
+    currentWindows = windows;
     scheduleRender();
   } catch {
     // Session may be shutting down
+  }
+}
+
+/**
+ * Resolve the current git branch for a directory via a non-blocking subprocess.
+ * Returns null when the path isn't a git work tree (or git isn't available).
+ */
+async function gitBranchForPath(cwd: string): Promise<string | null> {
+  try {
+    const proc = Bun.spawn(["git", "-C", cwd, "branch", "--show-current"], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    if (proc.exitCode !== 0) return null;
+    const branch = out.trim();
+    return branch.length > 0 ? branch : null;
+  } catch {
+    return null;
   }
 }
 

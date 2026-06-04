@@ -40,6 +40,7 @@ export interface WindowTab {
   active: boolean;
   bell: boolean;
   zoomed: boolean;
+  branch?: string;
 }
 
 export interface SessionInfo {

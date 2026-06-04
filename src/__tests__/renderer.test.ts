@@ -132,6 +132,51 @@ describe("getModalPosition", () => {
   });
 });
 
+describe("compositeGrids window branch row", () => {
+  const tab = (over: Record<string, unknown> = {}) => ({
+    windowId: "@1", index: 0, name: "window", active: true,
+    bell: false, zoomed: false, ...over,
+  });
+
+  test("toolbarRows=2 renders the branch under the tab and offsets main by 2", () => {
+    const sidebar = createGrid(6, 6);
+    const main = createGrid(20, 4);
+    writeString(main, 0, 0, "MAINROW0");
+    const toolbar = {
+      buttons: [], mainCols: 20, tabs: [tab({ branch: "main" })], toolbarRows: 2,
+    };
+    const result = compositeGrids(main, sidebar, toolbar);
+    expect(result.rows).toBe(6); // main(4) + 2 toolbar rows
+    const row1 = result.cells[1].map((c) => c.char).join("");
+    expect(row1).toContain("⎇");
+    expect(row1).toContain("main");
+    // main content shifted down by the 2-row toolbar
+    expect(result.cells[2].map((c) => c.char).join("")).toContain("MAINROW0");
+  });
+
+  test("toolbarRows unset defaults to 1 — no branch row, main offset by 1", () => {
+    const sidebar = createGrid(6, 4);
+    const main = createGrid(20, 3);
+    writeString(main, 0, 0, "TOP");
+    const toolbar = { buttons: [], mainCols: 20, tabs: [tab({ branch: "main" })] };
+    const result = compositeGrids(main, sidebar, toolbar);
+    expect(result.rows).toBe(4); // main(3) + 1 toolbar row
+    const allText = result.cells.map((r) => r.map((c) => c.char).join("")).join("\n");
+    expect(allText).not.toContain("⎇");
+    expect(result.cells[1].map((c) => c.char).join("")).toContain("TOP");
+  });
+
+  test("windows with no branch leave their slot blank (no ⎇)", () => {
+    const sidebar = createGrid(6, 6);
+    const main = createGrid(20, 4);
+    const toolbar = {
+      buttons: [], mainCols: 20, tabs: [tab({ branch: undefined })], toolbarRows: 2,
+    };
+    const result = compositeGrids(main, sidebar, toolbar);
+    expect(result.cells[1].map((c) => c.char).join("")).not.toContain("⎇");
+  });
+});
+
 describe("compositeGrids with palette overlay", () => {
   test("palette is centered with box border over entire terminal", () => {
     const sidebar = createGrid(6, 20);

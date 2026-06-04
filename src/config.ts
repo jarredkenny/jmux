@@ -25,6 +25,7 @@ export interface JmuxConfig {
   infoPanelWidth?: number;
   claudeCommand?: string;
   cacheTimers?: boolean;
+  windowBranches?: boolean;
   pinnedSessions?: string[];
   projectDirs?: string[];
   wtmIntegration?: boolean;
