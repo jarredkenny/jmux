@@ -12,7 +12,7 @@ Two decisions already locked with the user via the visual-companion mockups:
 - **Identity:** dark, with a new **Cool Cyan** accent (off the old terminal green).
 - **Toolchain:** stays a single static file, Tailwind via CDN, but pulls in real web fonts. **No build step, no new runtime deps.**
 
-Reference mockups (kept for implementation): `.superpowers/brainstorm/61742-1780959187/content/` — `direction-explorer.html`, `hero-layout.html`, `fullpage-concept.html`.
+**Approved visual target:** `.superpowers/brainstorm/61742-1780959187/content/fullpage-v2.html` — the complete, user-approved mockup of the redesigned page (all sections, corrected copy, real screenshots). Build `site/index.html` to match it. Earlier exploration mockups in the same dir (`direction-explorer.html`, `hero-layout.html`, `fullpage-concept.html`) are superseded and kept only for history.
 
 ## Visual identity
 
