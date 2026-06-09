@@ -192,6 +192,164 @@
   </style>
 </head>
 <body>
-  <!-- BODY SECTIONS ADDED IN LATER TASKS -->
+
+<!-- NAV -->
+<nav><div class="wrap row">
+  <div class="brand"><img src="assets/logo.svg" alt="" width="26" height="26"> jmux <span class="v">v0.17.0</span></div>
+  <div class="navlinks">
+    <a href="#features">Features</a><a href="#ecosystem">Ecosystem</a><a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener">Docs</a>
+    <a href="https://github.com/jarredkenny/jmux" target="_blank" rel="noopener" class="btn ghost">GitHub</a><a href="#install" class="btn">Install</a>
+  </div>
+</div></nav>
+
+<!-- 1 · HERO -->
+<header class="hero">
+  <div class="glow"></div>
+  <div class="wrap grid">
+    <div>
+      <div class="eyebrow">Terminal Agent Orchestrator</div>
+      <h1>Replace nothing.<br><span class="m">Orchestrate everything.</span></h1>
+      <p class="lead">Agent IDEs ship their own terminal, diff viewer, and worktree manager — then lock you in. jmux conducts the tools you already run.</p>
+      <div class="pill"><span class="d">$</span> bun install -g @jx0/jmux <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux');var s=this.innerHTML;this.innerHTML='<svg width=\'15\' height=\'15\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#5eead4\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'/></svg>';setTimeout(()=>this.innerHTML=s,1500)" class="cp" title="Copy" style="background:none;border:none;cursor:pointer;color:var(--ink3)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+      <div class="proof">
+        <div class="avs"><span>M</span><span>R</span><span>A</span></div>
+        <span class="stars">★★★★★</span><span>loved by terminal-native devs</span>
+      </div>
+    </div>
+    <div class="heroshot"><img src="assets/hero.png" alt="jmux sidebar with grouped sessions alongside vim and Claude Code"></div>
+  </div>
+</header>
+
+<!-- 2 · THESIS / ORCHESTRATION DIAGRAM -->
+<section class="sec thesis center">
+  <div class="glow"></div>
+  <div class="wrap">
+    <div class="eyebrow">The whole idea</div>
+    <h2>One orchestrator.<br>Your tools stay your tools.</h2>
+    <p class="lead" style="margin-top:18px;">jmux doesn't reinvent your diff viewer, your branching model, or your terminal. It conducts the best-in-class tools you already trust — and if you stop using jmux, they're all still there.</p>
+    <div class="diagram">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        <g stroke="rgba(94,234,212,.28)" stroke-width=".4" fill="none">
+          <line x1="50" y1="50" x2="50" y2="9"/><line x1="50" y1="50" x2="90" y2="29"/>
+          <line x1="50" y1="50" x2="90" y2="71"/><line x1="50" y1="50" x2="50" y2="91"/>
+          <line x1="50" y1="50" x2="10" y2="71"/><line x1="50" y1="50" x2="10" y2="29"/>
+        </g>
+      </svg>
+      <div class="node hub" style="left:50%;top:50%;"><b>jmux</b></div>
+      <div class="node" style="left:50%;top:9%;">tmux<small>your multiplexer</small></div>
+      <div class="node" style="left:90%;top:29%;">hunk<small>your diff viewer</small></div>
+      <div class="node" style="left:90%;top:71%;">wtm<small>your worktrees</small></div>
+      <div class="node" style="left:50%;top:91%;">Claude · Codex · aider<small>your agent</small></div>
+      <div class="node" style="left:10%;top:71%;">neovim<small>your editor</small></div>
+      <div class="node" style="left:10%;top:29%;">Linear · GitHub · GitLab<small>your tracker</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · BENTO FEATURES -->
+<section class="sec surf showcase" id="features">
+  <div class="wrap center">
+    <div class="eyebrow">Built for the workflow</div>
+    <h2>Everything visible. Nothing in your way.</h2>
+  </div>
+  <div class="wrap">
+    <div class="bento">
+      <div class="tile big">
+        <div class="ico">▤</div>
+        <h3>Session Sidebar</h3>
+        <p>Every session at a glance — project group, git branch, agent state, pipeline status, linked issue or PR, and live context tokens. Replaces tmux's status bar with a real workspace map.</p>
+        <img src="assets/hero.png" alt="jmux session sidebar">
+      </div>
+      <div class="tile">
+        <div class="ico">⏵</div>
+        <h3>Agent State</h3>
+        <p>Three live states, driven by Claude Code hooks + telemetry:</p>
+        <div class="states">
+          <span class="st"><span class="g" style="color:var(--green)">⏵</span>RUNNING</span>
+          <span class="st"><span class="g" style="color:var(--amber)">!</span>WAITING</span>
+          <span class="st"><span class="g" style="color:var(--blue)">✓</span>COMPLETE</span>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="ico">⇋</div>
+        <h3>Instant Switching</h3>
+        <p><span class="kbd">Ctrl-Shift-↑/↓</span> — no prefix, no menu, no mode. Or click the sidebar.</p>
+      </div>
+      <div class="tile wide">
+        <div class="ico">◷</div>
+        <h3>Context &amp; cache visibility</h3>
+        <p>Live context-token occupancy per session (<span class="mono" style="color:var(--ink)">42k</span>, <span class="mono" style="color:var(--ink)">1.5M</span>) plus a cache-warm countdown — read straight from Claude Code's OpenTelemetry. Send while warm, save up to 90% on input tokens. No setup.</p>
+      </div>
+      <div class="tile">
+        <div class="ico">⌘</div>
+        <h3>Command Palette</h3>
+        <p><span class="kbd">Ctrl-a p</span> — fuzzy-search sessions, windows, pane actions, settings.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 · SHOWCASE ·1 -->
+<section class="sec showcase">
+  <div class="wrap showrow">
+    <div class="txt">
+      <div class="eyebrow">Keyboard-first</div>
+      <h2>Command Palette</h2>
+      <p class="lead"><span class="kbd">Ctrl-a p</span> to open. Type to fuzzy-search sessions, windows, pane actions, and settings. Hit Enter to execute.</p>
+      <p class="lead">Switch sessions by name, split panes, zoom, change settings — without memorizing keybindings.</p>
+    </div>
+    <img src="assets/command-palette.png" alt="jmux command palette floating over a workspace">
+  </div>
+</section>
+
+<!-- 4 · SHOWCASE ·2 -->
+<section class="sec surf showcase">
+  <div class="wrap showrow flip">
+    <div class="txt">
+      <div class="eyebrow">Code review</div>
+      <h2>Info Panel &amp; Diff</h2>
+      <p class="lead"><span class="kbd">Ctrl-a g</span> to toggle. A tabbed side panel with diffs, issues, and PRs/MRs — the Diff tab powered by <a href="https://github.com/modem-dev/hunk" target="_blank" rel="noopener" style="color:var(--ac)">hunk</a>: syntax highlighting, word-level diffs, split and full-screen views.</p>
+      <p class="lead">Split mode to monitor while agents work, full-screen for review. <span class="kbd">[</span> <span class="kbd">]</span> cycle tabs.</p>
+    </div>
+    <div><img src="assets/diff-panel-split.png" alt="jmux diff panel split mode"><img src="assets/diff-panel-full.png" alt="jmux diff panel full screen"></div>
+  </div>
+</section>
+
+<!-- 4 · SHOWCASE ·3 -->
+<section class="sec showcase">
+  <div class="wrap showrow">
+    <div class="txt">
+      <div class="eyebrow">Issue &amp; PR tracking</div>
+      <h2>Linear, GitHub &amp; GitLab<br><span style="color:var(--ink3)">in the terminal.</span></h2>
+      <p class="lead">The info panel shows your Linear issues and your GitHub/GitLab PRs/MRs in tabbed views, with pipeline status glyphs in the sidebar. Sessions auto-link to their branch's PR and issue.</p>
+      <p class="lead">Select an issue, press <span class="kbd">n</span> — jmux creates a worktree, opens a session, and launches your agent with the issue context. <span class="kbd">o</span> open · <span class="kbd">s</span> status · <span class="kbd">a</span> approve.</p>
+    </div>
+    <div><img src="assets/linear-issues.png" alt="jmux info panel showing Linear issues"><img src="assets/gitlab-mrs.png" alt="jmux info panel showing merge requests"></div>
+  </div>
+</section>
+
+<!-- 5 · TESTIMONIALS -->
+<section class="sec surf tst center">
+  <div class="wrap">
+    <div class="eyebrow">From the terminal</div>
+    <h2>Loved by terminal-native devs.</h2>
+    <div class="tgrid">
+      <div class="tcard" style="text-align:left">
+        <p>"I've used tmux for 5 years — jmux makes me 5× more efficient."</p>
+        <div class="who"><span class="av">M</span><span><div class="nm">Mouad</div></span></div>
+      </div>
+      <a href="https://x.com/ravinwashere" target="_blank" rel="noopener" class="tcard" style="text-align:left">
+        <p>"The attention flags, clean sidebar, and quick session switching have genuinely made my workflow much smoother and less chaotic."</p>
+        <div class="who"><span class="av"><img src="assets/testimonial-ravinwashere.jpg" alt=""></span><span><div class="nm">Ravin</div><div class="hd">@ravinwashere</div></span></div>
+      </a>
+      <div class="tcard" style="text-align:left">
+        <p>"Wow."</p>
+        <div class="who"><span class="av">A</span><span><div class="nm">Azzeddine</div></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MORE SECTIONS ADDED IN LATER TASKS -->
 </body>
 </html>
