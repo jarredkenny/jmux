@@ -71,8 +71,23 @@
   .btn.ghost{ background:transparent; color:var(--ink); border:1px solid var(--bd2); }
 
   /* HERO */
-  .hero{ position:relative; padding:90px 0 76px; }
+  .hero{ position:relative; padding:90px 0 76px; --mx:64%; --my:42%; overflow:hidden; }
   .hero .glow{ width:700px; height:700px; top:-200px; right:-180px; background:radial-gradient(circle,rgba(94,234,212,.16),transparent 62%); }
+  /* spotlight fx layer */
+  .hero .fx{ position:absolute; inset:0; z-index:1; pointer-events:none; }
+  .hero .fx .lines, .hero .fx .litlines{ position:absolute; inset:0;
+    background-image:linear-gradient(to right, rgba(255,255,255,.045) 1px, transparent 1px),
+                     linear-gradient(to bottom, rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size:46px 46px; }
+  .hero .fx .lines{ -webkit-mask:radial-gradient(125% 90% at 72% 4%, #000 28%, transparent 76%);
+                            mask:radial-gradient(125% 90% at 72% 4%, #000 28%, transparent 76%); }
+  .hero .fx .litlines{
+    background-image:linear-gradient(to right, rgba(94,234,212,.5) 1px, transparent 1px),
+                     linear-gradient(to bottom, rgba(94,234,212,.5) 1px, transparent 1px);
+    -webkit-mask:radial-gradient(280px circle at var(--mx) var(--my), #000 0%, transparent 62%);
+            mask:radial-gradient(280px circle at var(--mx) var(--my), #000 0%, transparent 62%); }
+  .hero .fx .glowspot{ position:absolute; inset:0;
+    background:radial-gradient(460px circle at var(--mx) var(--my), rgba(94,234,212,.13), transparent 60%); }
   .hero .grid{ position:relative; z-index:2; display:grid; grid-template-columns:.88fr 1.12fr; gap:40px; align-items:center; }
   .hero h1{ font-weight:900; letter-spacing:-.045em; line-height:1.0; font-size:56px; margin-bottom:24px; }
   .hero h1 .m{ opacity:.42; }
@@ -241,6 +256,7 @@
 <!-- 1 · HERO -->
 <header class="hero">
   <div class="glow"></div>
+  <div class="fx" aria-hidden="true"><div class="lines"></div><div class="litlines"></div><div class="glowspot"></div></div>
   <div class="wrap grid">
     <div class="hero-copy">
       <div class="eyebrow">Terminal Agent Orchestrator</div>
@@ -499,6 +515,23 @@
       });
     }, { threshold: 0.12 });
     document.querySelectorAll('.animate-in').forEach(function (el) { io.observe(el); });
+  })();
+
+  // hero cursor spotlight
+  (function () {
+    var hero = document.querySelector('.hero');
+    if (!hero) return;
+    var raf = null, x = 0, y = 0;
+    function apply() {
+      raf = null;
+      hero.style.setProperty('--mx', x + 'px');
+      hero.style.setProperty('--my', y + 'px');
+    }
+    hero.addEventListener('pointermove', function (e) {
+      var r = hero.getBoundingClientRect();
+      x = e.clientX - r.left; y = e.clientY - r.top;
+      if (!raf) raf = requestAnimationFrame(apply);
+    });
   })();
 </script>
 </body>
