@@ -193,8 +193,36 @@
   }
   .animate-in{ opacity:0; transform:translateY(18px); }
   .animate-in.visible{ opacity:1; transform:none; transition:opacity .5s ease, transform .5s ease; }
+
+  /* hero entrance + ambient motion */
+  @keyframes riseIn{ from{ opacity:0; transform:translateY(18px); } to{ opacity:1; transform:none; } }
+  .hero-copy > *{ opacity:0; animation:riseIn .7s cubic-bezier(.2,.7,.2,1) forwards; }
+  .hero-copy > *:nth-child(1){ animation-delay:.05s; }
+  .hero-copy > *:nth-child(2){ animation-delay:.13s; }
+  .hero-copy > *:nth-child(3){ animation-delay:.21s; }
+  .hero-copy > *:nth-child(4){ animation-delay:.29s; }
+  .hero-copy > *:nth-child(5){ animation-delay:.37s; }
+  .hero-copy > *:nth-child(6){ animation-delay:.45s; }
+  .heroshot{ opacity:0; animation:riseIn .8s cubic-bezier(.2,.7,.2,1) .3s forwards; }
+  @keyframes floaty{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-8px); } }
+  .heroshot img{ animation:floaty 7s ease-in-out 1.2s infinite; }
+  @keyframes breathe{ 0%,100%{ opacity:.7; transform:scale(1); } 50%{ opacity:1; transform:scale(1.08); } }
+  .hero .glow{ animation:breathe 9s ease-in-out infinite; }
+
+  /* orchestration diagram: pulses flowing into the hub + hub glow */
+  @keyframes dashflow{ to{ stroke-dashoffset:-11.4; } }
+  .diagram .flow line{ animation:dashflow 1.9s linear infinite; }
+  @keyframes hubpulse{ 0%,100%{ box-shadow:0 0 0 1px rgba(94,234,212,.3),0 0 38px rgba(94,234,212,.18); } 50%{ box-shadow:0 0 0 1px rgba(94,234,212,.55),0 0 60px rgba(94,234,212,.4); } }
+  .diagram .hub{ animation:hubpulse 3.6s ease-in-out infinite; }
+
+  /* live RUNNING indicator */
+  @keyframes runpulse{ 0%,100%{ opacity:.45; } 50%{ opacity:1; } }
+  .runpulse{ animation:runpulse 1.4s ease-in-out infinite; }
+
   @media (prefers-reduced-motion: reduce){
     .animate-in{ opacity:1; transform:none; transition:none; }
+    .hero-copy > *, .heroshot{ opacity:1 !important; transform:none !important; animation:none !important; }
+    .heroshot img, .hero .glow, .diagram .flow line, .diagram .hub, .runpulse{ animation:none !important; }
     *{ scroll-behavior:auto !important; }
   }
   </style>
@@ -214,7 +242,7 @@
 <header class="hero">
   <div class="glow"></div>
   <div class="wrap grid">
-    <div>
+    <div class="hero-copy">
       <div class="eyebrow">Terminal Agent Orchestrator</div>
       <h1>Replace nothing.<br><span class="m">Orchestrate everything.</span></h1>
       <p class="lead">Agent IDEs ship their own terminal, diff viewer, and worktree manager — then lock you in. jmux conducts the tools you already run.</p>
@@ -242,6 +270,11 @@
     <div class="diagram">
       <svg viewBox="0 0 100 100" preserveAspectRatio="none">
         <g stroke="rgba(94,234,212,.28)" stroke-width=".4" fill="none">
+          <line x1="50" y1="50" x2="50" y2="9"/><line x1="50" y1="50" x2="90" y2="29"/>
+          <line x1="50" y1="50" x2="90" y2="71"/><line x1="50" y1="50" x2="50" y2="91"/>
+          <line x1="50" y1="50" x2="10" y2="71"/><line x1="50" y1="50" x2="10" y2="29"/>
+        </g>
+        <g class="flow" stroke="#5eead4" stroke-width=".5" fill="none" stroke-linecap="round" stroke-dasharray="1.4 10">
           <line x1="50" y1="50" x2="50" y2="9"/><line x1="50" y1="50" x2="90" y2="29"/>
           <line x1="50" y1="50" x2="90" y2="71"/><line x1="50" y1="50" x2="50" y2="91"/>
           <line x1="50" y1="50" x2="10" y2="71"/><line x1="50" y1="50" x2="10" y2="29"/>
@@ -277,7 +310,7 @@
         <h3>Agent State</h3>
         <p>Three live states, driven by Claude Code hooks + telemetry:</p>
         <div class="states">
-          <span class="st"><span class="g" style="color:var(--green)">⏵</span>RUNNING</span>
+          <span class="st"><span class="g runpulse" style="color:var(--green)">⏵</span>RUNNING</span>
           <span class="st"><span class="g" style="color:var(--amber)">!</span>WAITING</span>
           <span class="st"><span class="g" style="color:var(--blue)">✓</span>COMPLETE</span>
         </div>
