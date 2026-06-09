@@ -73,7 +73,7 @@
   /* HERO */
   .hero{ position:relative; padding:90px 0 76px; }
   .hero .glow{ width:700px; height:700px; top:-200px; right:-180px; background:radial-gradient(circle,rgba(94,234,212,.16),transparent 62%); }
-  .hero .grid{ position:relative; z-index:2; display:grid; grid-template-columns:.92fr 1.08fr; gap:34px; align-items:center; }
+  .hero .grid{ position:relative; z-index:2; display:grid; grid-template-columns:.88fr 1.12fr; gap:40px; align-items:center; }
   .hero h1{ font-weight:900; letter-spacing:-.045em; line-height:1.0; font-size:56px; margin-bottom:24px; }
   .hero h1 .m{ opacity:.42; }
   .hero .lead{ font-size:17px; max-width:42ch; margin-bottom:30px; }
@@ -85,7 +85,7 @@
   .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
   .chip{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ink2); background:var(--surf); border:1px solid var(--bd2); border-radius:7px; padding:5px 10px; }
   .heroshot{ position:relative; }
-  .heroshot img{ width:128%; max-width:128%; border-radius:14px 0 0 14px; border:1px solid var(--bd2); border-right:0; box-shadow:0 40px 100px rgba(0,0,0,.65); display:block; }
+  .heroshot img{ width:100%; border-radius:14px; border:1px solid var(--bd2); box-shadow:0 30px 80px rgba(0,0,0,.6); display:block; }
 
   /* THESIS / DIAGRAM */
   .thesis{ padding:100px 0; }
@@ -188,7 +188,7 @@
     .bento{ grid-template-columns:1fr; grid-auto-rows:auto; } .tile.big,.tile.wide{ grid-column:span 1; grid-row:auto; }
     .tile.big h3,.tile.big p{ max-width:none; }
     .tile.big .bigshot{ position:static; width:100%; height:190px; object-fit:cover; object-position:left top; margin-top:18px; border-left:0; border:1px solid var(--bd2); border-radius:10px; }
-    .ecogrid,.tgrid{ grid-template-columns:1fr; } .heroshot img{ width:100%; border-radius:14px; border-right:1px solid var(--bd2); }
+    .ecogrid,.tgrid{ grid-template-columns:1fr; }
     .hero h1{ font-size:40px; } .cta h2{ font-size:34px; }
   }
   .animate-in{ opacity:0; transform:translateY(18px); }
