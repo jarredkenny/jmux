@@ -105,8 +105,8 @@
   .tile p{ color:var(--ink2); font-size:13.5px; line-height:1.55; }
   .tile .ico{ width:38px; height:38px; border-radius:10px; background:rgba(94,234,212,.1); display:flex; align-items:center; justify-content:center; color:var(--ac); margin-bottom:14px; font-family:'JetBrains Mono'; font-weight:700; font-size:16px; }
   .tile.big{ grid-column:span 2; grid-row:span 2; padding:30px; }
-  .tile.big h3, .tile.big p{ max-width:47%; position:relative; z-index:1; }
-  .tile.big img{ position:absolute; right:0; bottom:0; width:52%; max-height:78%; object-fit:cover; object-position:left top; border-radius:12px 0 0 0; border:1px solid var(--bd2); border-right:0; border-bottom:0; box-shadow:-24px -24px 60px rgba(0,0,0,.55); }
+  .tile.big h3, .tile.big p{ max-width:48%; position:relative; z-index:1; }
+  .tile.big .bigshot{ position:absolute; top:0; right:0; bottom:0; width:44%; height:100%; object-fit:cover; object-position:left top; border-left:1px solid var(--bd); }
   .tile.wide{ grid-column:span 2; }
   .states{ display:flex; gap:16px; margin-top:6px; }
   .states .st{ display:flex; align-items:center; gap:7px; font-family:'JetBrains Mono'; font-size:12px; color:var(--ink2); }
@@ -187,7 +187,7 @@
     .showrow.flip .txt{ order:0; }
     .bento{ grid-template-columns:1fr; grid-auto-rows:auto; } .tile.big,.tile.wide{ grid-column:span 1; grid-row:auto; }
     .tile.big h3,.tile.big p{ max-width:none; }
-    .tile.big img{ position:static; width:100%; max-height:220px; margin-top:18px; border-radius:10px; border:1px solid var(--bd2); box-shadow:none; }
+    .tile.big .bigshot{ position:static; width:100%; height:190px; object-fit:cover; object-position:left top; margin-top:18px; border-left:0; border:1px solid var(--bd2); border-radius:10px; }
     .ecogrid,.tgrid{ grid-template-columns:1fr; } .heroshot img{ width:100%; border-radius:14px; border-right:1px solid var(--bd2); }
     .hero h1{ font-size:40px; } .cta h2{ font-size:34px; }
   }
@@ -270,7 +270,7 @@
         <div class="ico">▤</div>
         <h3>Session Sidebar</h3>
         <p>Every session at a glance — project group, git branch, agent state, pipeline status, linked issue or PR, and live context tokens. Replaces tmux's status bar with a real workspace map.</p>
-        <img src="assets/hero.png" alt="jmux session sidebar">
+        <img class="bigshot" src="assets/sidebar.png" alt="jmux session sidebar showing grouped sessions, activity dots, and agent-state flags">
       </div>
       <div class="tile animate-in">
         <div class="ico">⏵</div>
