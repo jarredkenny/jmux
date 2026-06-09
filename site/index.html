@@ -39,8 +39,8 @@
   <style>
   *{margin:0;padding:0;box-sizing:border-box;}
   :root{
-    --ac:#5eead4; --ac-deep:#06241f;
-    --page:#06080b; --base:#0a0e12; --surf:#0d1318; --elev:#0f161c;
+    --ac:#34d399; --ac-deep:#04231a;
+    --page:#0a0a0c; --base:#0f0f13; --surf:#16161b; --elev:#1c1c22;
     --bd:rgba(255,255,255,.07); --bd2:rgba(255,255,255,.11);
     --ink:#e7e9ee; --ink2:#9aa0ac; --ink3:#5a606c;
     --green:#34d399; --amber:#fbbf24; --blue:#60a5fa;
@@ -53,7 +53,7 @@
   h2{ font-weight:800; letter-spacing:-.03em; line-height:1.06; font-size:36px; }
   .lead{ color:var(--ink2); font-size:16px; line-height:1.62; }
   .sec{ position:relative; border-top:1px solid var(--bd); }
-  .sec.surf{ background:transparent; }
+  .sec.surf{ background:var(--base); }
   .center{ text-align:center; }
   .center .lead{ max-width:54ch; margin:0 auto; }
   .glow{ position:absolute; border-radius:50%; pointer-events:none; filter:blur(80px); z-index:0; }
@@ -61,10 +61,10 @@
   a{ color:inherit; text-decoration:none; }
 
   /* NAV */
-  nav{ position:sticky; top:0; z-index:40; backdrop-filter:blur(14px); background:rgba(6,8,11,.72); border-bottom:1px solid var(--bd); }
+  nav{ position:sticky; top:0; z-index:40; backdrop-filter:blur(14px); background:rgba(10,10,12,.72); border-bottom:1px solid var(--bd); }
   nav .row{ display:flex; align-items:center; justify-content:space-between; height:62px; }
   .brand{ display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.01em; font-size:18px; }
-  .brand .v{ font-size:10px; color:var(--ac); background:rgba(94,234,212,.1); padding:2px 7px; border-radius:5px; font-family:'JetBrains Mono'; }
+  .brand .v{ font-size:10px; color:var(--ac); background:rgba(52,211,153,.1); padding:2px 7px; border-radius:5px; font-family:'JetBrains Mono'; }
   .navlinks{ display:flex; align-items:center; gap:26px; color:var(--ink2); font-size:14px; }
   .navlinks a:hover{ color:var(--ink); }
   .btn{ background:var(--ac); color:var(--ac-deep); padding:8px 16px; border-radius:9px; font-weight:600; font-size:13.5px; display:inline-block; }
@@ -72,11 +72,11 @@
 
   /* HERO */
   .hero{ position:relative; padding:90px 0 76px; --mx:64%; --my:42%; overflow:hidden; }
-  .hero .glow{ width:700px; height:700px; top:-200px; right:-180px; background:radial-gradient(circle,rgba(94,234,212,.16),transparent 62%); }
+  .hero .glow{ width:700px; height:700px; top:-200px; right:-180px; background:radial-gradient(circle,rgba(52,211,153,.16),transparent 62%); }
   /* soft cursor spotlight (no grid) */
   .hero .fx{ position:absolute; inset:0; z-index:1; pointer-events:none; }
   .hero .fx .glowspot{ position:absolute; inset:0;
-    background:radial-gradient(480px circle at var(--mx) var(--my), rgba(94,234,212,.12), transparent 60%); }
+    background:radial-gradient(480px circle at var(--mx) var(--my), rgba(52,211,153,.12), transparent 60%); }
   .hero .grid{ position:relative; z-index:2; display:grid; grid-template-columns:.88fr 1.12fr; gap:40px; align-items:center; }
   .hero h1{ font-weight:900; letter-spacing:-.045em; line-height:1.0; font-size:56px; margin-bottom:24px; }
   .hero h1 .m{ opacity:.42; }
@@ -94,21 +94,21 @@
   /* THESIS / DIAGRAM */
   .thesis{ padding:96px 0; }
   .thesis .wrap{ position:relative; z-index:2; }
-  .thesis .glow{ width:760px; height:600px; top:28%; left:50%; transform:translateX(-50%); background:radial-gradient(circle,rgba(94,234,212,.13),transparent 62%); }
+  .thesis .glow{ width:760px; height:600px; top:28%; left:50%; transform:translateX(-50%); background:radial-gradient(circle,rgba(52,211,153,.13),transparent 62%); }
   .diagram{ position:relative; z-index:2; max-width:780px; height:460px; margin:54px auto 0; }
   .diagram svg{ position:absolute; inset:0; width:100%; height:100%; }
   .node{ position:absolute; transform:translate(-50%,-50%); background:var(--surf); border:1px solid var(--bd2); border-radius:12px; padding:11px 16px; font-family:'JetBrains Mono',monospace; font-size:13px; white-space:nowrap; z-index:2; box-shadow:0 8px 24px rgba(0,0,0,.4); text-align:center; }
   .node small{ display:block; font-family:'Inter'; font-size:10.5px; color:var(--ink3); margin-top:3px; }
-  .hub{ background:linear-gradient(180deg,#0f2722,#0b1a17); border-color:rgba(94,234,212,.5); box-shadow:0 0 0 1px rgba(94,234,212,.3),0 0 50px rgba(94,234,212,.25); padding:16px 28px; }
+  .hub{ background:linear-gradient(180deg,#0f2722,#0b1a17); border-color:rgba(52,211,153,.5); box-shadow:0 0 0 1px rgba(52,211,153,.3),0 0 50px rgba(52,211,153,.25); padding:16px 28px; }
   .hub b{ color:var(--ac); font-size:21px; font-weight:700; }
 
   /* BENTO */
   .bento{ display:grid; grid-template-columns:repeat(3,1fr); grid-auto-rows:188px; gap:16px; margin-top:50px; }
   .tile{ background:var(--surf); border:1px solid var(--bd); border-radius:18px; padding:24px; position:relative; overflow:hidden; transition:border-color .25s, transform .25s; }
-  .tile:hover{ border-color:rgba(94,234,212,.35); transform:translateY(-3px); }
+  .tile:hover{ border-color:rgba(52,211,153,.35); transform:translateY(-3px); }
   .tile h3{ font-size:17px; font-weight:700; margin-bottom:8px; }
   .tile p{ color:var(--ink2); font-size:13.5px; line-height:1.55; }
-  .tile .ico{ width:38px; height:38px; border-radius:10px; background:rgba(94,234,212,.1); display:flex; align-items:center; justify-content:center; color:var(--ac); margin-bottom:14px; font-family:'JetBrains Mono'; font-weight:700; font-size:16px; }
+  .tile .ico{ width:38px; height:38px; border-radius:10px; background:rgba(52,211,153,.1); display:flex; align-items:center; justify-content:center; color:var(--ac); margin-bottom:14px; font-family:'JetBrains Mono'; font-weight:700; font-size:16px; }
   .tile.big{ grid-column:span 2; grid-row:span 2; padding:30px; }
   .tile.big h3, .tile.big p{ max-width:48%; position:relative; z-index:1; }
   .tile.big .bigshot{ position:absolute; top:0; right:0; bottom:0; width:44%; height:100%; object-fit:cover; object-position:left top; border-left:1px solid var(--bd); }
@@ -147,7 +147,7 @@
   .ctable tr:last-child td{ border-bottom:0; }
   .ctable th:first-child,.ctable td:first-child{ text-align:left; color:var(--ink2); width:40%; }
   .ctable thead th{ color:var(--ink3); font-weight:500; }
-  .ctable .jcol{ background:rgba(94,234,212,.06); color:var(--ac); font-weight:600; }
+  .ctable .jcol{ background:rgba(52,211,153,.06); color:var(--ac); font-weight:600; }
   .ctable thead .jcol{ color:var(--ac); font-weight:700; }
   .yes{ color:var(--ac); } .no{ color:var(--ink3); } .meh{ color:var(--ink3); font-size:12.5px; }
   .cmp .foot{ text-align:center; color:var(--ink3); font-size:12.5px; margin-top:18px; }
@@ -166,16 +166,16 @@
   .eco{ padding:96px 0; }
   .ecogrid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:46px; text-align:left; }
   .ecocard{ background:var(--surf); border:1px solid var(--bd); border-radius:14px; padding:20px; transition:border-color .25s, transform .25s; }
-  .ecocard:hover{ border-color:rgba(94,234,212,.35); transform:translateY(-3px); }
+  .ecocard:hover{ border-color:rgba(52,211,153,.35); transform:translateY(-3px); }
   .ecocard .nm{ font-family:'JetBrains Mono'; font-weight:700; font-size:16px; margin-bottom:5px; }
   .ecocard .tg{ color:var(--ink3); font-size:11.5px; margin-bottom:8px; }
   .ecocard p{ color:var(--ink2); font-size:12px; line-height:1.5; }
   .ecocard.dashed{ border-style:dashed; } .ecocard.dashed .nm{ color:var(--ac); }
-  .ecocard .new{ font-size:9px; color:var(--ac); background:rgba(94,234,212,.12); padding:1px 6px; border-radius:4px; margin-left:7px; vertical-align:middle; letter-spacing:.05em; }
+  .ecocard .new{ font-size:9px; color:var(--ac); background:rgba(52,211,153,.12); padding:1px 6px; border-radius:4px; margin-left:7px; vertical-align:middle; letter-spacing:.05em; }
 
   /* CTA */
   .cta{ padding:120px 0; text-align:center; position:relative; }
-  .cta .glow{ width:720px; height:520px; top:0; left:50%; transform:translateX(-50%); background:radial-gradient(circle,rgba(94,234,212,.14),transparent 60%); }
+  .cta .glow{ width:720px; height:520px; top:0; left:50%; transform:translateX(-50%); background:radial-gradient(circle,rgba(52,211,153,.14),transparent 60%); }
   .cta h2{ font-size:48px; font-weight:900; letter-spacing:-.045em; position:relative; z-index:2; }
   .cta .sub{ color:var(--ink3); margin:14px 0 34px; position:relative; z-index:2; font-size:14px; }
   .cmd{ position:relative; z-index:2; max-width:430px; margin:0 auto; background:var(--surf); border:1px solid var(--bd2); border-radius:14px; padding:22px 24px; text-align:left; font-family:'JetBrains Mono'; font-size:14px; }
@@ -217,7 +217,7 @@
   /* orchestration diagram: pulses flowing into the hub + hub glow */
   @keyframes dashflow{ to{ stroke-dashoffset:-11.4; } }
   .diagram .flow line{ animation:dashflow 1.9s linear infinite; }
-  @keyframes hubpulse{ 0%,100%{ box-shadow:0 0 0 1px rgba(94,234,212,.3),0 0 38px rgba(94,234,212,.18); } 50%{ box-shadow:0 0 0 1px rgba(94,234,212,.55),0 0 60px rgba(94,234,212,.4); } }
+  @keyframes hubpulse{ 0%,100%{ box-shadow:0 0 0 1px rgba(52,211,153,.3),0 0 38px rgba(52,211,153,.18); } 50%{ box-shadow:0 0 0 1px rgba(52,211,153,.55),0 0 60px rgba(52,211,153,.4); } }
   .diagram .hub{ animation:hubpulse 3.6s ease-in-out infinite; }
 
   /* live RUNNING indicator */
@@ -252,7 +252,7 @@
       <div class="eyebrow">Terminal Agent Orchestrator</div>
       <h1>Replace nothing.<br><span class="m">Orchestrate everything.</span></h1>
       <p class="lead">Agent IDEs ship their own terminal, diff viewer, and worktree manager — then lock you in. jmux conducts the tools you already run.</p>
-      <div class="pill"><span class="d">$</span> bun install -g @jx0/jmux <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux');var s=this.innerHTML;this.innerHTML='<svg width=\'15\' height=\'15\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#5eead4\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'/></svg>';setTimeout(()=>this.innerHTML=s,1500)" class="cp" title="Copy" style="background:none;border:none;cursor:pointer;color:var(--ink3)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+      <div class="pill"><span class="d">$</span> bun install -g @jx0/jmux <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux');var s=this.innerHTML;this.innerHTML='<svg width=\'15\' height=\'15\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#34d399\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'/></svg>';setTimeout(()=>this.innerHTML=s,1500)" class="cp" title="Copy" style="background:none;border:none;cursor:pointer;color:var(--ink3)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
       <div class="proof">
         <span class="stars">★★★★★</span><span>loved by terminal-native devs</span>
       </div>
@@ -275,12 +275,12 @@
     <p class="lead" style="margin-top:18px;">jmux doesn't reinvent your diff viewer, your branching model, or your terminal. It conducts the best-in-class tools you already trust — and if you stop using jmux, they're all still there.</p></div>
     <div class="diagram">
       <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-        <g stroke="rgba(94,234,212,.28)" stroke-width=".4" fill="none">
+        <g stroke="rgba(52,211,153,.28)" stroke-width=".4" fill="none">
           <line x1="50" y1="50" x2="50" y2="9"/><line x1="50" y1="50" x2="90" y2="29"/>
           <line x1="50" y1="50" x2="90" y2="71"/><line x1="50" y1="50" x2="50" y2="91"/>
           <line x1="50" y1="50" x2="10" y2="71"/><line x1="50" y1="50" x2="10" y2="29"/>
         </g>
-        <g class="flow" stroke="#5eead4" stroke-width=".5" fill="none" stroke-linecap="round" stroke-dasharray="1.4 10">
+        <g class="flow" stroke="#34d399" stroke-width=".5" fill="none" stroke-linecap="round" stroke-dasharray="1.4 10">
           <line x1="50" y1="50" x2="50" y2="9"/><line x1="50" y1="50" x2="90" y2="29"/>
           <line x1="50" y1="50" x2="90" y2="71"/><line x1="50" y1="50" x2="50" y2="91"/>
           <line x1="50" y1="50" x2="10" y2="71"/><line x1="50" y1="50" x2="10" y2="29"/>
@@ -475,7 +475,7 @@
   <h2>Two commands. You're in.</h2>
   <p class="sub">Requires Bun 1.3.8+ and tmux 3.2+.</p>
   <div class="cmd">
-    <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux\njmux');var s=this.innerHTML;this.innerHTML='<svg width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#5eead4\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'/></svg>';setTimeout(()=>this.innerHTML=s,1500)" title="Copy" style="position:absolute;top:16px;right:16px;background:none;border:none;cursor:pointer;color:var(--ink3)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+    <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux\njmux');var s=this.innerHTML;this.innerHTML='<svg width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#34d399\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'/></svg>';setTimeout(()=>this.innerHTML=s,1500)" title="Copy" style="position:absolute;top:16px;right:16px;background:none;border:none;cursor:pointer;color:var(--ink3)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
     <div><span class="d">$</span> bun install -g @jx0/jmux</div>
     <div><span class="d">$</span> jmux</div>
   </div>
