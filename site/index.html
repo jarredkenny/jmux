@@ -80,10 +80,10 @@
   .pill{ display:inline-flex; align-items:center; gap:11px; padding:13px 18px; border-radius:12px; background:var(--surf); border:1px solid var(--bd2); font-family:'JetBrains Mono',monospace; font-size:14px; color:#cfe9e4; }
   .pill .d{ color:var(--ac); font-weight:700; }
   .pill .cp{ margin-left:6px; color:var(--ink3); cursor:pointer; }
-  .proof{ display:flex; align-items:center; gap:14px; margin-top:30px; color:var(--ink3); font-size:13px; }
-  .avs{ display:flex; } .avs span{ width:32px; height:32px; border-radius:50%; border:2px solid var(--page); background:#1c2530; margin-left:-9px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:var(--ac); }
-  .avs span:first-child{ margin-left:0; }
+  .proof{ display:flex; align-items:center; gap:12px; margin-top:30px; color:var(--ink3); font-size:13px; }
   .stars{ color:var(--ac); letter-spacing:1px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .chip{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ink2); background:var(--surf); border:1px solid var(--bd2); border-radius:7px; padding:5px 10px; }
   .heroshot{ position:relative; }
   .heroshot img{ width:128%; max-width:128%; border-radius:14px 0 0 14px; border:1px solid var(--bd2); border-right:0; box-shadow:0 40px 100px rgba(0,0,0,.65); display:block; }
 
@@ -217,8 +217,12 @@
       <p class="lead">Agent IDEs ship their own terminal, diff viewer, and worktree manager — then lock you in. jmux conducts the tools you already run.</p>
       <div class="pill"><span class="d">$</span> bun install -g @jx0/jmux <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux');var s=this.innerHTML;this.innerHTML='<svg width=\'15\' height=\'15\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#5eead4\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'/></svg>';setTimeout(()=>this.innerHTML=s,1500)" class="cp" title="Copy" style="background:none;border:none;cursor:pointer;color:var(--ink3)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
       <div class="proof">
-        <div class="avs"><span>M</span><span>R</span><span>A</span></div>
         <span class="stars">★★★★★</span><span>loved by terminal-native devs</span>
+      </div>
+      <div class="chips">
+        <span class="chip">MIT licensed</span>
+        <span class="chip">~0.3 MB</span>
+        <span class="chip">runs in your tmux</span>
       </div>
     </div>
     <div class="heroshot"><img src="assets/hero.png" alt="jmux sidebar with grouped sessions alongside vim and Claude Code"></div>
