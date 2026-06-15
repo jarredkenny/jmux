@@ -777,11 +777,23 @@ otelReceiver.onUpdate = (sessionName) => {
 
 function switchByOffset(offset: number): void {
   const ids = sidebar.getDisplayOrderIds();
-  if (ids.length === 0) return;
-  const currentIdx = ids.indexOf(currentSessionId ?? "");
-  const base = currentIdx >= 0 ? currentIdx : 0;
-  const newIdx = (base + offset + ids.length) % ids.length;
-  switchSession(ids[newIdx]);
+  // Virtual cycle with the Overview as the first stop: [Overview, ...sessions].
+  const n = ids.length + 1;
+  let curPos: number;
+  if (inGlass) {
+    curPos = 0;
+  } else {
+    const idx = ids.indexOf(currentSessionId ?? "");
+    curPos = idx >= 0 ? idx + 1 : Math.min(1, ids.length);
+  }
+  const newPos = (((curPos + offset) % n) + n) % n;
+  if (newPos === 0) {
+    if (!inGlass) void enterGlass();
+    return;
+  }
+  const target = ids[newPos - 1];
+  if (inGlass) void leaveGlass(target);
+  else switchSession(target);
 }
 
 // --- Diff panel lifecycle ---
