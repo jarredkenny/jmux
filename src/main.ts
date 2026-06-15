@@ -38,6 +38,7 @@ import { INTERNAL_SESSION_FILTER, PARK_SESSION } from "./glass/internal-sessions
 import { PinnedPaneTracker } from "./glass/pinned-pane-tracker";
 import { parsePaneStateLines, PANE_STATE_FORMAT } from "./glass/reflect";
 import { buildPaneLabel } from "./glass/pane-label";
+import { GlassView, type GlassTileSpec } from "./glass/view";
 import { OtelReceiver } from "./otel-receiver";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
@@ -596,6 +597,10 @@ agentStateTracker.onChange((sessionId) => {
 
 const pinnedTracker = new PinnedPaneTracker();
 
+// Whether the Overview (pane-of-glass) view is currently shown, and its renderer.
+let inGlass = false;
+let glassView: GlassView | null = null;
+
 const glassRunner = {
   run: (args: string[]): { ok: boolean; lines: string[] } => {
     const socketArgs = socketName ? ["-L", socketName] : [];
@@ -1083,6 +1088,21 @@ function renderFrame(): void {
     return;
   }
 
+  // Pane-of-glass (Overview) replaces main content; toolbar hidden.
+  if (inGlass && glassView) {
+    const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
+    renderer.render(
+      glassView.getGrid(),
+      { x: 0, y: 0 },
+      sidebarGrid,
+      null, // no toolbar
+      null, // no modal
+      null,
+      undefined,
+    );
+    return;
+  }
+
   const grid = bridge.getGrid();
   const cursor = bridge.getCursor();
   const tb = toolbarEnabled ? makeToolbar() : null;
@@ -1239,6 +1259,10 @@ const inputRouter = new InputRouter(
   {
     sidebarCols: sidebarWidth,
     onPtyData: (data) => {
+      if (inGlass) {
+        glassView?.writeFocused(data);
+        return;
+      }
       pty.write(data);
       clearSessionIndicators();
     },
@@ -1253,8 +1277,16 @@ const inputRouter = new InputRouter(
         scheduleRender();
         return;
       }
+      const sel = sidebar.getSelectionByRow(row);
+      if (sel?.type === "overview" || sel?.type === "pinnedPane") {
+        void enterGlass();
+        return;
+      }
       const session = sidebar.getSessionByRow(row);
-      if (session) switchSession(session.id);
+      if (session) {
+        if (inGlass) void leaveGlass(session.id);
+        else switchSession(session.id);
+      }
     },
     onSidebarScroll: (delta) => {
       sidebar.scrollBy(delta);
@@ -3128,6 +3160,7 @@ process.on("SIGWINCH", () => {
   sidebarShown = newSidebarVisible;
   inputRouter.setSidebarVisible(newSidebarVisible);
   sidebar.resize(sidebarWidth, newRows);
+  if (inGlass) resizeGlass();
 
   if (diffPanel.state === "split") {
     const panelCols = calcSplitPanelCols(available);
@@ -3585,14 +3618,13 @@ function refreshPinnedPanes(): void {
   }
   pinnedTracker.pruneExcept([...state.live.keys()]);
 
-  // Build sidebar Overview entries (labels) for the currently pinned panes.
-  const entries: PinnedPaneEntry[] = [];
+  // Per-pane labels + home session names for building entries/specs.
+  const labelByPane = new Map<string, { label: string; sessionName: string }>();
   for (const row of glassRunner.run(["list-panes", "-a", "-F", PIN_LABEL_FORMAT]).lines) {
     const [paneId, sessionName, paneTitle, cmd, path] = row.split("\x1f");
-    if (!paneId || !pinnedTracker.has(paneId)) continue;
-    entries.push({
-      paneId,
-      homeSessionName: sessionName ?? "",
+    if (!paneId) continue;
+    labelByPane.set(paneId, {
+      sessionName: sessionName ?? "",
       label: buildPaneLabel({
         sessionName: sessionName ?? "",
         paneTitle: paneTitle ?? "",
@@ -3601,8 +3633,67 @@ function refreshPinnedPanes(): void {
       }),
     });
   }
+
+  const entries: PinnedPaneEntry[] = [];
+  const specs: GlassTileSpec[] = [];
+  for (const paneId of pinnedTracker.all()) {
+    const loc = state.live.get(paneId);
+    const meta = labelByPane.get(paneId);
+    if (!loc || !meta) continue;
+    entries.push({ paneId, homeSessionName: meta.sessionName, label: meta.label });
+    specs.push({ paneId, sessionId: loc.sessionId, windowId: loc.windowId, label: meta.label });
+  }
   sidebar.setPinnedPanes(entries);
+  if (inGlass) glassView?.setTiles(specs);
   scheduleRender();
+}
+
+function ensureGlassView(): GlassView {
+  if (!glassView) {
+    glassView = new GlassView({
+      socketName,
+      configFile,
+      jmuxDir,
+      runner: (args) => glassRunner.run(args),
+      minTileWidth: 80,
+      minTileHeight: 10,
+      onFrame: scheduleRender,
+    });
+  }
+  return glassView;
+}
+
+function resizeGlass(): void {
+  if (!glassView) return;
+  const totalCols = process.stdout.columns || 80;
+  const contentCols = sidebarShown ? totalCols - sidebarTotal() : totalCols;
+  const contentRows = process.stdout.rows || 24;
+  glassView.resize(contentCols, contentRows);
+}
+
+async function enterGlass(): Promise<void> {
+  ensureGlassView();
+  inGlass = true;
+  // Park the main client so it doesn't constrain the pinned sessions' sizes.
+  if (!ptyClientName) await resolveClientName();
+  if (ptyClientName) {
+    await control
+      .sendCommand(`switch-client -c ${ptyClientName} -t ${PARK_SESSION}`)
+      .catch(() => {});
+  }
+  resizeGlass();
+  refreshPinnedPanes(); // builds + applies tile specs (inGlass is true)
+  scheduleRender();
+}
+
+async function leaveGlass(sessionId: string): Promise<void> {
+  if (!inGlass) {
+    switchSession(sessionId);
+    return;
+  }
+  inGlass = false;
+  glassView?.teardown();
+  await switchSession(sessionId); // unparks the main client onto the session
 }
 
 async function handleTabClick(windowId: string): Promise<void> {
