@@ -342,6 +342,7 @@ export class Sidebar {
   private height: number;
   private sessions: SessionInfo[] = [];
   private activeSessionId: string | null = null;
+  private overviewActive = false;
   private items: RenderItem[] = [];
   private displayOrder: number[] = [];
   private rowToSessionIndex = new Map<number, number>();
@@ -381,6 +382,11 @@ export class Sidebar {
   setActiveSession(id: string): void {
     if (this.activeSessionId === id) return;
     this.activeSessionId = id;
+  }
+
+  /** Mark the Command Center (Overview) as the active selection. */
+  setOverviewActive(active: boolean): void {
+    this.overviewActive = active;
   }
 
   toggleGroup(label: string): void {
@@ -590,8 +596,14 @@ export class Sidebar {
       }
 
       if (item.type === "overview") {
+        // Selected chrome (ACTIVE_BG fill + \u258e marker) when the glass is the
+        // active view \u2014 same treatment as the active session row.
+        const active = this.overviewActive;
+        const bgPatch: CellAttrs = active ? { bg: ACTIVE_BG, bgMode: ColorMode.RGB } : {};
+        this.paintRowChrome(grid, screenRow, active, false);
+
         // Header row: "\u2318 Command Center \u00b7 N" (bold).
-        const headerAttrs: CellAttrs = { ...GROUP_HEADER_ATTRS, bold: true };
+        const headerAttrs: CellAttrs = { ...GROUP_HEADER_ATTRS, bold: true, ...bgPatch };
         const headerText = item.paneCount > 0
           ? `\u2318 Command Center \u00b7 ${item.paneCount}`
           : "\u2318 Command Center";
@@ -615,11 +627,12 @@ export class Sidebar {
           if (tally.running > 0) segs.push({ text: `${tally.running} RUN`, attrs: AGENT_STATE_RUNNING_ATTRS });
           if (tally.waiting > 0) segs.push({ text: `${tally.waiting} WAIT`, attrs: AGENT_STATE_WAITING_ATTRS });
           if (tally.complete > 0) segs.push({ text: `${tally.complete} DONE`, attrs: AGENT_STATE_COMPLETE_ATTRS });
-          if (breakdownRow < contentBottom && segs.length > 0) {
+          if (breakdownRow < contentBottom) {
+            this.paintRowChrome(grid, breakdownRow, active, false);
             let col = 3;
             for (const seg of segs) {
               if (col + seg.text.length > this.width) break;
-              writeString(grid, breakdownRow, col, seg.text, seg.attrs);
+              writeString(grid, breakdownRow, col, seg.text, { ...seg.attrs, ...bgPatch });
               col += seg.text.length + 2; // two-space gap
             }
             this.rowToSelection.set(breakdownRow, { type: "overview" });

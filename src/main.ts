@@ -1066,6 +1066,7 @@ async function switchSession(sessionId: string): Promise<void> {
       `switch-client -c ${ptyClientName} -t ${tq(sessionId)}`,
     );
     currentSessionId = sessionId;
+    sidebar.setOverviewActive(false);
     sidebar.setActiveSession(sessionId);
     sidebar.scrollToActive();
     const sessionName = currentSessions.find((s) => s.id === sessionId)?.name;
@@ -3757,6 +3758,8 @@ function resizeGlass(): void {
 async function enterGlass(): Promise<void> {
   ensureGlassView();
   inGlass = true;
+  sidebar.setActiveSession(""); // clear the session highlight while in the glass
+  sidebar.setOverviewActive(true);
   // Park the main client so it doesn't constrain the pinned sessions' sizes.
   if (!ptyClientName) await resolveClientName();
   if (ptyClientName) {
