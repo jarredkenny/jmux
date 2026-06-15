@@ -1,6 +1,11 @@
 import type { CellGrid } from "../types";
-import { createGrid, writeString, cellWidth } from "../cell-grid";
+import { createGrid, writeString, cellWidth, type CellAttrs } from "../cell-grid";
 import { ColorMode } from "../types";
+
+// ─── Tile label accent ───────────────────────────────────────────────────────
+// Emerald-400 (#34D399), matching the jmux accent. Focused tiles get the bold
+// accent label; unfocused tiles get a dim gray so focus reads at a glance.
+const LABEL_ACCENT_RGB = (0x34 << 16) | (0xD3 << 8) | 0x99;
 import { ScreenBridge } from "../screen-bridge";
 import { TmuxPty } from "../tmux-pty";
 import { computeTileLayout } from "./layout";
@@ -424,13 +429,17 @@ export class GlassView {
     const borderFgMode = ColorMode.Palette;
     const borderAttrs = { fg: borderFg, fgMode: borderFgMode };
 
+    // The label pops in bold emerald when focused, dims to gray otherwise.
+    const labelAttrs: CellAttrs = isFocused
+      ? { fg: LABEL_ACCENT_RGB, fgMode: ColorMode.RGB, bold: true }
+      : { fg: 8, fgMode: ColorMode.Palette, bold: false };
+
     const { x, y, width, height } = rect;
 
     if (width < 2 || height < 2) return;
 
-    // Top border: ┌──[label]──┐
-    // We write the label into the top border row at x+1.
-    this.drawBorderRow(grid, y, x, width, true, tile.spec.label, borderAttrs);
+    // Top border: ┌─ label ─────┐
+    this.drawBorderRow(grid, y, x, width, true, tile.spec.label, borderAttrs, labelAttrs);
 
     // Bottom border: └──────────┘
     this.drawBorderRow(grid, y + height - 1, x, width, false, "", borderAttrs);
@@ -516,6 +525,7 @@ export class GlassView {
     isTop: boolean,
     label: string,
     borderAttrs: { fg: number; fgMode: ColorMode },
+    labelAttrs?: CellAttrs,
   ): void {
     if (row < 0 || row >= grid.rows) return;
     if (width < 2) return;
@@ -556,25 +566,34 @@ export class GlassView {
       cell.fgMode = borderAttrs.fgMode;
     }
 
-    // Overlay label on top border (truncated to inner width).
+    // Overlay the label on the top border as ─ label ─, inset one cell from the
+    // corner and wrapped in spaces so it reads as a chip rather than running
+    // into the border line.
     if (isTop && label.length > 0) {
-      const maxLabelCols = innerEnd - innerStart;
-      let labelText = label;
-      // Truncate by display width.
-      let cols = 0;
-      let cutAt = 0;
-      for (const ch of labelText) {
-        const w = cellWidth(ch.codePointAt(0) ?? 0);
-        if (cols + w > maxLabelCols) break;
-        cols += w;
-        cutAt++;
-      }
-      labelText = labelText.slice(0, cutAt);
-      if (labelText.length > 0) {
-        writeString(grid, row, innerStart, labelText, {
-          fg: borderAttrs.fg,
-          fgMode: borderAttrs.fgMode,
-        });
+      const labelStart = innerStart + 2;          // ┌ ─ <space> label
+      const maxLabelCols = innerEnd - labelStart - 1; // leave a trailing space
+      if (maxLabelCols > 0) {
+        // Truncate by display width, appending an ellipsis when it doesn't fit.
+        let cols = 0;
+        let cutAt = 0;
+        for (const ch of label) {
+          const w = cellWidth(ch.codePointAt(0) ?? 0);
+          if (cols + w > maxLabelCols) break;
+          cols += w;
+          cutAt++;
+        }
+        let labelText = label.slice(0, cutAt);
+        if (cutAt < label.length && maxLabelCols >= 1) {
+          labelText = label.slice(0, Math.max(0, cutAt - 1)) + "…";
+          cols = Math.min(cols, maxLabelCols);
+        }
+        if (labelText.length > 0) {
+          // Padding spaces around the chip, in the border colour.
+          const spaceAttrs = { fg: borderAttrs.fg, fgMode: borderAttrs.fgMode };
+          writeString(grid, row, innerStart + 1, " ", spaceAttrs);
+          writeString(grid, row, labelStart, labelText, labelAttrs ?? spaceAttrs);
+          writeString(grid, row, labelStart + cols, " ", spaceAttrs);
+        }
       }
     }
   }
