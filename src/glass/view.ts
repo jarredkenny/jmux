@@ -223,6 +223,41 @@ export class GlassView {
     tile.pty.write(data);
   }
 
+  /**
+   * Forward a mouse event (e.g. wheel scroll) to the tile under the cursor,
+   * translated into that tile's pane-local 1-indexed coordinates. This makes
+   * scrollback / copy-mode work per-tile. x/y are glass-viewport-relative.
+   */
+  forwardMouse(x: number, y: number, button: number, release: boolean): void {
+    if (this.tileOrder.length === 0) return;
+    const layout = computeTileLayout({
+      tileCount: this.tileOrder.length,
+      mainWidth: this.width,
+      mainHeight: this.height,
+      minTileWidth: this.opts.minTileWidth,
+      minTileHeight: this.opts.minTileHeight,
+      focusedIndex: this.focusedIndex,
+      scrollRow: this.scrollRow,
+    });
+    for (const rect of layout.tiles) {
+      if (!rect.visible) continue;
+      if (
+        x >= rect.x && x < rect.x + rect.width &&
+        y >= rect.y && y < rect.y + rect.height
+      ) {
+        const paneId = this.tileOrder[rect.index];
+        const tile = paneId ? this.tiles.get(paneId) : undefined;
+        if (!tile) return;
+        // Interior begins after the 1-cell border; tmux mouse coords are 1-indexed.
+        const localCol = x - rect.x; // (x - (rect.x + 1)) + 1
+        const localRow = y - rect.y;
+        if (localCol < 1 || localRow < 1) return;
+        tile.pty.write(`\x1b[<${button};${localCol};${localRow}${release ? "m" : "M"}`);
+        return;
+      }
+    }
+  }
+
   focusedPaneId(): string | null {
     if (this.tileOrder.length === 0) return null;
     return this.tileOrder[this.focusedIndex] ?? null;

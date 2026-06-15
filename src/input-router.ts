@@ -48,6 +48,7 @@ export interface InputRouterOptions {
   // Pane-of-glass (Overview) additions
   glassActive?: () => boolean;                       // true while the glass is shown
   onGlassClick?: (x: number, y: number) => void;     // content-relative click → focus tile
+  onGlassMouse?: (x: number, y: number, button: number, release: boolean) => void; // wheel/scroll → tile under cursor
   onGlassFocusMove?: (dir: "left" | "right" | "up" | "down") => void; // Shift+arrows
   // Diff panel additions
   onDiffPanelData?: (data: string) => void;
@@ -310,6 +311,18 @@ export class InputRouter {
           }
           return;
         }
+      }
+
+      // Pane-of-glass: wheel over a tile scrolls that tile (forward to its
+      // client so tmux copy-mode / the agent's own scrollback engages).
+      if (this.opts.glassActive?.() && isWheel) {
+        this.opts.onGlassMouse?.(
+          mouse.x - this.opts.sidebarCols - 1,
+          mouse.y - 1,
+          mouse.button,
+          mouse.release,
+        );
+        return;
       }
 
       // Pane-of-glass: a click in the main area focuses the tile under the

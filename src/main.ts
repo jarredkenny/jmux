@@ -1414,6 +1414,10 @@ const inputRouter = new InputRouter(
       glassView?.focusAt(x, y);
       scheduleRender();
     },
+    onGlassMouse: (x, y, button, release) => {
+      glassView?.forwardMouse(x, y, button, release);
+      scheduleRender();
+    },
     onGlassFocusMove: (dir) => {
       glassView?.moveFocus(dir);
       scheduleRender();
