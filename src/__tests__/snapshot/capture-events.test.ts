@@ -26,7 +26,7 @@ describe("Snapshotter structural events", () => {
       exitCode: 0,
     });
     runner.setResponse(
-      "list-sessions -F #{session_name}|#{session_path}",
+      "list-sessions -f #{?#{m:__jmux_*,#{session_name}},0,1} -F #{session_name}|#{session_path}",
       { stdout: "alpha|/repos/foo\n", stderr: "", exitCode: 0 },
     );
 

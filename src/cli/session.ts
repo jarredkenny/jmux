@@ -1,4 +1,5 @@
 import { sanitizeTmuxSessionName, buildOtelResourceAttrs } from "../config";
+import { INTERNAL_SESSION_FILTER } from "../glass/internal-sessions";
 import { runTmuxDirect } from "./tmux";
 import { resolveCurrentSession, tmuxOrThrow, CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
@@ -104,7 +105,7 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
   switch (action) {
     case "list": {
       const result = runTmuxDirect(
-        ["list-sessions", "-F", "#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{pane_current_path}"],
+        ["list-sessions", "-f", INTERNAL_SESSION_FILTER, "-F", "#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}:#{pane_current_path}"],
         ctx.socket,
       );
       // If no sessions exist, tmux exits non-zero — treat as empty list
@@ -204,7 +205,7 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
         }
 
         // Last-session guard
-        const listResult = runTmuxDirect(["list-sessions", "-F", "#{session_name}"], ctx.socket);
+        const listResult = runTmuxDirect(["list-sessions", "-f", INTERNAL_SESSION_FILTER, "-F", "#{session_name}"], ctx.socket);
         if (listResult.ok && listResult.lines.length <= 1) {
           throw new CliError(
             `Refusing to kill the last session "${target}". Use --force to override.`,

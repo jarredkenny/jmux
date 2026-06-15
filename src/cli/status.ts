@@ -2,6 +2,7 @@ import { resolve } from "path";
 import { homedir } from "os";
 import { runTmuxDirect } from "./tmux";
 import { loadUserConfig } from "../config";
+import { INTERNAL_SESSION_FILTER } from "../glass/internal-sessions";
 import { SessionState, type SessionLink } from "../session-state";
 import { US, type CtlAgentState } from "./agent";
 import type { CliContext } from "./context";
@@ -158,7 +159,7 @@ function gitBranch(path: string): string | null {
 }
 
 export function handleStatus(ctx: CliContext, _parsed: ParsedCtlArgs): unknown {
-  const result = runTmuxDirect(["list-sessions", "-F", STATUS_FORMAT], ctx.socket);
+  const result = runTmuxDirect(["list-sessions", "-f", INTERNAL_SESSION_FILTER, "-F", STATUS_FORMAT], ctx.socket);
   const lines = result.ok ? result.lines : [];
   const rows = lines
     .map(parseStatusLine)

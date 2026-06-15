@@ -9,6 +9,7 @@ import {
   loadUserConfig,
   type JmuxConfig,
 } from "../config";
+import { INTERNAL_SESSION_FILTER } from "../glass/internal-sessions";
 import { LinearAdapter } from "../adapters/linear";
 import { buildLinearPrompt } from "../adapters/linear-prompt";
 import { buildClaudeLaunchCommand } from "./run-claude";
@@ -193,7 +194,7 @@ async function issueGet(parsed: ParsedCtlArgs): Promise<unknown> {
 
 function listIssueLinkRows(ctx: CliContext): IssueLinkRow[] {
   const result = runTmuxDirect(
-    ["list-sessions", "-F", ISSUE_LINK_FORMAT],
+    ["list-sessions", "-f", INTERNAL_SESSION_FILTER, "-F", ISSUE_LINK_FORMAT],
     ctx.socket,
   );
   const lines = result.ok ? result.lines : [];

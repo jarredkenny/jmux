@@ -7,6 +7,7 @@ import {
   tileSessionName,
   isInternalSession,
 } from "../../glass/internal-sessions";
+import { sanitizeTmuxSessionName } from "../../config";
 
 describe("isInternalSession", () => {
   test("true for the reserved prefix", () => {
@@ -41,5 +42,17 @@ describe("INTERNAL_SESSION_FILTER", () => {
       "#{?#{m:__jmux_*,#{session_name}},0,1}",
     );
     expect(INTERNAL_SESSION_FILTER).not.toContain("#{!:");
+  });
+});
+
+describe("sanitizeTmuxSessionName rejects the reserved prefix", () => {
+  test("a user name colliding with the internal prefix is defanged", () => {
+    expect(isInternalSession(sanitizeTmuxSessionName("__jmux_glass"))).toBe(false);
+    expect(isInternalSession(sanitizeTmuxSessionName("__jmux_evil"))).toBe(false);
+  });
+
+  test("ordinary names are unaffected apart from existing . : rules", () => {
+    expect(sanitizeTmuxSessionName("api")).toBe("api");
+    expect(sanitizeTmuxSessionName("a.b:c")).toBe("a_b_c");
   });
 });

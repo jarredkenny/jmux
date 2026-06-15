@@ -1,6 +1,7 @@
 import type { Clock, FileSystem, Lock, TmuxRunner } from "./deps";
 import { SnapshotModel } from "./model";
 import { detectPaneKind } from "./painter";
+import { INTERNAL_SESSION_FILTER } from "../glass/internal-sessions";
 import type {
   SnapshotAgentState,
   SnapshotOtel,
@@ -122,6 +123,8 @@ export class Snapshotter {
     if (this.stopped) return;
     const sessionsRes = await this.opts.runner.run([
       "list-sessions",
+      "-f",
+      INTERNAL_SESSION_FILTER,
       "-F",
       "#{session_name}|#{session_path}",
     ]);
@@ -218,6 +221,8 @@ export class Snapshotter {
     try {
       const sessRes = await this.opts.runner.run([
         "list-sessions",
+        "-f",
+        INTERNAL_SESSION_FILTER,
         "-F",
         "#{session_name}",
       ]);

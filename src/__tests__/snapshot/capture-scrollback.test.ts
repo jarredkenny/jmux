@@ -4,7 +4,7 @@ import { SnapshotModel } from "../../snapshot/model";
 import { FakeClock, FakeFs, FakeRunner } from "./helpers";
 
 function setupSession(runner: FakeRunner) {
-  runner.setResponse("list-sessions -F #{session_name}", {
+  runner.setResponse("list-sessions -f #{?#{m:__jmux_*,#{session_name}},0,1} -F #{session_name}", {
     stdout: "alpha\n",
     stderr: "",
     exitCode: 0,
@@ -98,7 +98,7 @@ describe("Snapshotter scrollback loop", () => {
     const clock = new FakeClock();
     const fs = new FakeFs();
     const runner = new FakeRunner();
-    runner.setResponse("list-sessions -F #{session_name}", {
+    runner.setResponse("list-sessions -f #{?#{m:__jmux_*,#{session_name}},0,1} -F #{session_name}", {
       stdout: "alpha\n",
       stderr: "",
       exitCode: 0,
@@ -198,7 +198,7 @@ describe("Snapshotter scrollback loop", () => {
     const runner = new FakeRunner();
 
     // "alpha" is live with panes 0-0 and 0-1
-    runner.setResponse("list-sessions -F #{session_name}", {
+    runner.setResponse("list-sessions -f #{?#{m:__jmux_*,#{session_name}},0,1} -F #{session_name}", {
       stdout: "alpha\n",
       stderr: "",
       exitCode: 0,
@@ -267,7 +267,7 @@ describe("Snapshotter scrollback loop", () => {
     const runner = new FakeRunner();
 
     // Only "beta" is live; "dead" is gone
-    runner.setResponse("list-sessions -F #{session_name}", {
+    runner.setResponse("list-sessions -f #{?#{m:__jmux_*,#{session_name}},0,1} -F #{session_name}", {
       stdout: "beta\n",
       stderr: "",
       exitCode: 0,

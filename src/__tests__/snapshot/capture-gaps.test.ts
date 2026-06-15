@@ -126,7 +126,7 @@ describe("Snapshotter.onFocused", () => {
 describe("Snapshotter.onSessionsChanged failure paths", () => {
   test("returns early (no dirty flag) when list-sessions exits non-zero", async () => {
     const runner = new FakeRunner();
-    runner.setResponse("list-sessions -F #{session_name}|#{session_path}", {
+    runner.setResponse("list-sessions -f #{?#{m:__jmux_*,#{session_name}},0,1} -F #{session_name}|#{session_path}", {
       stdout: "",
       stderr: "error",
       exitCode: 1,
@@ -141,7 +141,7 @@ describe("Snapshotter.onSessionsChanged failure paths", () => {
 
   test("removes stale sessions from model when they disappear from tmux", async () => {
     const runner = new FakeRunner();
-    runner.setResponse("list-sessions -F #{session_name}|#{session_path}", {
+    runner.setResponse("list-sessions -f #{?#{m:__jmux_*,#{session_name}},0,1} -F #{session_name}|#{session_path}", {
       stdout: "beta|/y\n",
       stderr: "",
       exitCode: 0,
@@ -169,7 +169,7 @@ describe("Snapshotter.onSessionsChanged failure paths", () => {
 describe("Snapshotter.scrollbackTick failure paths", () => {
   test("skips scrollback processing when list-sessions fails", async () => {
     const runner = new FakeRunner();
-    runner.setResponse("list-sessions -F #{session_name}", {
+    runner.setResponse("list-sessions -f #{?#{m:__jmux_*,#{session_name}},0,1} -F #{session_name}", {
       stdout: "",
       stderr: "no server",
       exitCode: 1,
@@ -204,7 +204,7 @@ describe("Snapshotter.scrollbackTick failure paths", () => {
 
   test("skips a window when list-windows fails during scrollback tick", async () => {
     const runner = new FakeRunner();
-    runner.setResponse("list-sessions -F #{session_name}", {
+    runner.setResponse("list-sessions -f #{?#{m:__jmux_*,#{session_name}},0,1} -F #{session_name}", {
       stdout: "alpha\n",
       stderr: "",
       exitCode: 0,

@@ -47,7 +47,14 @@ export interface JmuxConfig {
  * tmux's sanitization here so callers and tmux agree on the final name.
  */
 export function sanitizeTmuxSessionName(name: string): string {
-  return name.replace(/[.:]/g, "_");
+  const cleaned = name.replace(/[.:]/g, "_");
+  // Reserve the jmux-internal prefix so user sessions can never collide with
+  // the pane-of-glass holding/park/tile sessions. Collapse a leading underscore
+  // run to one so "__jmux_glass" → "_jmux_glass" (no longer internal).
+  if (cleaned.startsWith("__jmux_")) {
+    return cleaned.replace(/^_+/, "_");
+  }
+  return cleaned;
 }
 
 /**

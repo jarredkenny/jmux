@@ -1,4 +1,5 @@
 import { runTmuxDirect } from "./tmux";
+import { INTERNAL_SESSION_FILTER } from "../glass/internal-sessions";
 import { CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
 
@@ -89,7 +90,7 @@ function listAgentRecords(
   sessionFilter: string | null,
   nowSeconds: number,
 ): AgentRecord[] {
-  const args = ["list-sessions", "-F", AGENT_FORMAT];
+  const args = ["list-sessions", "-f", INTERNAL_SESSION_FILTER, "-F", AGENT_FORMAT];
   if (sessionFilter) {
     args.push("-f", `#{==:#{session_name},${sessionFilter}}`);
   }

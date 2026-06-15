@@ -33,6 +33,7 @@ import type { DemoContext } from "./demo/setup";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { ConfigStore, sanitizeTmuxSessionName } from "./config";
+import { INTERNAL_SESSION_FILTER } from "./glass/internal-sessions";
 import { OtelReceiver } from "./otel-receiver";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
@@ -915,7 +916,7 @@ async function zoomDiffPanel(): Promise<void> {
 async function fetchSessions(): Promise<void> {
   try {
     const lines = await control.sendCommand(
-      "list-sessions -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}'",
+      `list-sessions -f "${INTERNAL_SESSION_FILTER}" -F '#{session_id}:#{session_name}:#{session_activity}:#{session_attached}:#{session_windows}'`,
     );
     const sessions: SessionInfo[] = lines
       .filter((l) => l.length > 0)
@@ -3480,7 +3481,7 @@ async function gitBranchForPath(cwd: string): Promise<string | null> {
 
 async function fetchAgentState(): Promise<void> {
   const result = await control.sendCommand(
-    "list-sessions -F '#{session_id}:#{@jmux-agent-state}:#{@jmux-agent-state-since}'",
+    `list-sessions -f "${INTERNAL_SESSION_FILTER}" -F '#{session_id}:#{@jmux-agent-state}:#{@jmux-agent-state-since}'`,
   );
   const activeIds: string[] = [];
   for (const line of result) {
