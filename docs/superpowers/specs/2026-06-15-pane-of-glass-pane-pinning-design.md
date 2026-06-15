@@ -1,5 +1,14 @@
 # Pane of glass — pane-level pinning
 
+> **REVISED 2026-06-15 (mid-build): pinning is NON-DESTRUCTIVE.** The sections
+> below describing `break-pane` checkout into a `__jmux_glass` holding session,
+> home-restore records, and the reconciler/executor are **superseded**. The pane
+> is **never moved** — the Overview renders a *live mirror* of each pinned pane
+> (a client attached to the pane's own session, shown full-bleed via a transient
+> zoom that's restored on exit). The pin model (per-pane `@jmux-pinned`, tracker,
+> CLI, palette, sidebar Overview, layout, labels) is unchanged. Full rewrite of
+> this doc + ADR 0001/0002 pending. See `project_pane_of_glass` memory.
+
 **Status:** design approved, ready for planning
 **Date:** 2026-06-15
 **Supersedes the pane-of-glass parts of:** `docs/adr/0001-pane-of-glass-live-composited-clients.md`, `docs/adr/0002-pin-state-in-tmux-option.md`, and the CONTEXT.md glossary entries for *Pin*, *Tile*, and *Agent pane*.
