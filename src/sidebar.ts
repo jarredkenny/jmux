@@ -4,6 +4,17 @@ import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { SessionContext } from "./adapters/types";
 import { buildSessionView, buildSessionRow3 } from "./session-view";
 
+export interface PinnedPaneEntry {
+  paneId: string;
+  label: string;
+  homeSessionName: string;
+}
+
+export type SidebarSelection =
+  | { type: "overview" }
+  | { type: "session"; id: string }
+  | { type: "pinnedPane"; paneId: string };
+
 const HEADER_ROWS = 2; // "jmux" header + separator
 
 const DIM_ATTRS: CellAttrs = { dim: true };
@@ -174,8 +185,10 @@ function getSubdirectory(dir: string, groupLabel: string): string | null {
 
 type RenderItem =
   | { type: "group-header"; label: string; collapsed: boolean; sessionCount: number }
-  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string }
-  | { type: "spacer" };
+  | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string; pinnedCount?: number }
+  | { type: "spacer" }
+  | { type: "overview"; paneCount: number }
+  | { type: "pinned-pane"; paneIndex: number };
 
 const PINNED_GROUP_LABEL = "Pinned";
 
@@ -183,6 +196,7 @@ function buildRenderPlan(
   sessions: SessionInfo[],
   collapsedGroups: Set<string>,
   pinnedNames: Set<string>,
+  pinnedPanes: PinnedPaneEntry[],
 ): {
   items: RenderItem[];
   displayOrder: number[];
@@ -190,6 +204,15 @@ function buildRenderPlan(
   const pinnedIndices: number[] = [];
   const groupMap = new Map<string, number[]>();
   const ungrouped: number[] = [];
+
+  // Build a map of homeSessionName → count for pinned panes
+  const pinnedPaneCountBySession = new Map<string, number>();
+  for (const pane of pinnedPanes) {
+    pinnedPaneCountBySession.set(
+      pane.homeSessionName,
+      (pinnedPaneCountBySession.get(pane.homeSessionName) ?? 0) + 1,
+    );
+  }
 
   for (let i = 0; i < sessions.length; i++) {
     if (pinnedNames.has(sessions[i].name)) {
@@ -229,7 +252,14 @@ function buildRenderPlan(
   const items: RenderItem[] = [];
   const displayOrder: number[] = [];
 
-  // Pinned group first
+  // Overview block first — always present
+  items.push({ type: "overview", paneCount: pinnedPanes.length });
+  for (let i = 0; i < pinnedPanes.length; i++) {
+    items.push({ type: "pinned-pane", paneIndex: i });
+  }
+  items.push({ type: "spacer" });
+
+  // Pinned sessions group
   if (pinnedIndices.length > 0) {
     const isCollapsed = collapsedGroups.has(PINNED_GROUP_LABEL);
     items.push({
@@ -241,11 +271,13 @@ function buildRenderPlan(
     items.push({ type: "spacer" });
     if (!isCollapsed) {
       for (const idx of pinnedIndices) {
+        const pc = pinnedPaneCountBySession.get(sessions[idx].name);
         items.push({
           type: "session",
           sessionIndex: idx,
           grouped: true,
           groupLabel: PINNED_GROUP_LABEL,
+          pinnedCount: pc,
         });
         displayOrder.push(idx);
         items.push({ type: "spacer" });
@@ -264,11 +296,13 @@ function buildRenderPlan(
     items.push({ type: "spacer" });
     if (!isCollapsed) {
       for (const idx of group.sessionIndices) {
+        const pc = pinnedPaneCountBySession.get(sessions[idx].name);
         items.push({
           type: "session",
           sessionIndex: idx,
           grouped: true,
           groupLabel: group.label,
+          pinnedCount: pc,
         });
         displayOrder.push(idx);
         items.push({ type: "spacer" });
@@ -277,10 +311,12 @@ function buildRenderPlan(
   }
 
   for (const idx of ungrouped) {
+    const pc = pinnedPaneCountBySession.get(sessions[idx].name);
     items.push({
       type: "session",
       sessionIndex: idx,
       grouped: false,
+      pinnedCount: pc,
     });
     displayOrder.push(idx);
     items.push({ type: "spacer" });
@@ -291,7 +327,7 @@ function buildRenderPlan(
 
 function itemHeight(item: RenderItem): number {
   if (item.type === "session") return 3;
-  return 1; // group-header or spacer
+  return 1; // group-header, spacer, overview, or pinned-pane
 }
 
 // --- Sidebar class ---
@@ -315,6 +351,8 @@ export class Sidebar {
   private hoveredRow: number | null = null;
   private collapsedGroups = new Set<string>();
   private pinnedSessions = new Set<string>();
+  private pinnedPanes: PinnedPaneEntry[] = [];
+  private rowToSelection = new Map<number, SidebarSelection>();
   private currentVersion: string = "";
   private latestVersion: string | null = null;
   private otelStates = new Map<string, SessionOtelState>();
@@ -359,11 +397,17 @@ export class Sidebar {
     this.rebuildPlan();
   }
 
+  setPinnedPanes(panes: PinnedPaneEntry[]): void {
+    this.pinnedPanes = panes;
+    this.rebuildPlan();
+  }
+
   private rebuildPlan(): void {
     const { items, displayOrder } = buildRenderPlan(
       this.sessions,
       this.collapsedGroups,
       this.pinnedSessions,
+      this.pinnedPanes,
     );
     this.items = items;
     this.displayOrder = displayOrder;
@@ -441,6 +485,10 @@ export class Sidebar {
     return this.rowToGroupLabel.get(row) ?? null;
   }
 
+  getSelectionByRow(row: number): SidebarSelection | null {
+    return this.rowToSelection.get(row) ?? null;
+  }
+
   getGroups(): { label: string; collapsed: boolean }[] {
     const groups: { label: string; collapsed: boolean }[] = [];
     const seen = new Set<string>();
@@ -513,6 +561,7 @@ export class Sidebar {
     const grid = createGrid(this.width, this.height);
     this.rowToSessionIndex.clear();
     this.rowToGroupLabel.clear();
+    this.rowToSelection.clear();
 
     // Header
     writeString(grid, 0, 1, "jmux", { ...ACCENT_ATTRS, bold: true });
@@ -540,7 +589,29 @@ export class Sidebar {
         continue;
       }
 
-      if (item.type === "group-header") {
+      if (item.type === "overview") {
+        const overviewText = item.paneCount > 0
+          ? `\u25c9 Overview (${item.paneCount})`
+          : "\u25c9 Overview";
+        const maxOverviewLen = this.width - 2;
+        const overviewDisplay = overviewText.length > maxOverviewLen
+          ? overviewText.slice(0, maxOverviewLen - 1) + "\u2026"
+          : overviewText;
+        writeString(grid, screenRow, 1, overviewDisplay, GROUP_HEADER_ATTRS);
+        this.rowToSelection.set(screenRow, { type: "overview" });
+      } else if (item.type === "pinned-pane") {
+        const pane = this.pinnedPanes[item.paneIndex];
+        if (pane) {
+          const maxPaneLen = this.width - 3;
+          let paneLabel = pane.label;
+          if (paneLabel.length > maxPaneLen) {
+            paneLabel = paneLabel.slice(0, Math.max(0, maxPaneLen - 1)) + "\u2026";
+          }
+          writeString(grid, screenRow, 0, "\u2502 ", DIM_ATTRS);
+          writeString(grid, screenRow, 2, paneLabel, DIM_ATTRS);
+          this.rowToSelection.set(screenRow, { type: "pinnedPane", paneId: pane.paneId });
+        }
+      } else if (item.type === "group-header") {
         const isHovered = this.hoveredRow === screenRow;
         if (isHovered) {
           const bgFill = " ".repeat(this.width);
@@ -643,6 +714,12 @@ export class Sidebar {
     this.rowToSessionIndex.set(nameRow, sessionIdx);
     if (detailRow < this.height) {
       this.rowToSessionIndex.set(detailRow, sessionIdx);
+    }
+
+    // Map rows to SidebarSelection for the unified selection API
+    this.rowToSelection.set(nameRow, { type: "session", id: session.id });
+    if (detailRow < this.height) {
+      this.rowToSelection.set(detailRow, { type: "session", id: session.id });
     }
 
     // Paint background + active marker bar across name + detail rows
@@ -761,6 +838,16 @@ export class Sidebar {
       if (timerCol > nameStart) {
         writeString(grid, detailRow, timerCol, view.timerText, timerAttrs);
         rightEdge = timerCol - 2;
+      }
+    }
+
+    // Pinned pane count (right side, before branch)
+    if (item.pinnedCount && item.pinnedCount > 0) {
+      const pinnedStr = `(${item.pinnedCount} pinned)`;
+      const pinnedCol = rightEdge - pinnedStr.length + 1;
+      if (pinnedCol > 3) {
+        writeString(grid, detailRow, pinnedCol, pinnedStr, { ...DIM_ATTRS, ...bgAttrs });
+        rightEdge = pinnedCol - 2;
       }
     }
 

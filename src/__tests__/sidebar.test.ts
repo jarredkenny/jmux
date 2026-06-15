@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { Sidebar } from "../sidebar";
+import type { PinnedPaneEntry } from "../sidebar";
 import type { SessionInfo } from "../types";
 import { makeSessionOtelState } from "../types";
 import type { SessionContext, PipelineStatus } from "../adapters/types";
@@ -43,12 +44,12 @@ describe("Sidebar", () => {
       ]),
     );
     const grid = sidebar.getGrid();
-    // No shared parent → ungrouped, sessions start at row 2
-    const row2 = Array.from(
+    // No shared parent → ungrouped. Overview block at rows 2-3, sessions start at row 4.
+    const row4 = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[2][i].char,
+      (_, i) => grid.cells[4][i].char,
     ).join("");
-    expect(row2).toContain("alpha");
+    expect(row4).toContain("alpha");
   });
 
   test("groups sessions sharing a parent directory", () => {
@@ -61,16 +62,16 @@ describe("Sidebar", () => {
       ]),
     );
     const grid = sidebar.getGrid();
-    // Row 2: group header "Code/work"
+    // Row 2: overview, Row 3: spacer, Row 4: group header "Code/work"
     const headerRow = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[2][i].char,
+      (_, i) => grid.cells[4][i].char,
     ).join("");
     expect(headerRow).toContain("Code/work");
-    // Row 3: spacer, Row 4: first session in group "api"
+    // Row 5: spacer, Row 6: first session in group "api"
     const apiRow = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[4][i].char,
+      (_, i) => grid.cells[6][i].char,
     ).join("");
     expect(apiRow).toContain("api");
   });
@@ -85,11 +86,12 @@ describe("Sidebar", () => {
     );
     const grid = sidebar.getGrid();
     // Both have valid group labels → both get group headers
-    const row2 = Array.from(
+    // Row 2: overview, Row 3: spacer, Row 4: first group header
+    const row4 = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[2][i].char,
+      (_, i) => grid.cells[4][i].char,
     ).join("");
-    expect(row2).toContain("Code/work");
+    expect(row4).toContain("Code/work");
   });
 
   test("grouped sessions show branch on detail line", () => {
@@ -109,10 +111,10 @@ describe("Sidebar", () => {
       ]),
     );
     const grid = sidebar.getGrid();
-    // Row 2: group header, Row 3: spacer, Row 4: api name, Row 5: api detail
+    // Row 2: overview, Row 3: spacer, Row 4: group header, Row 5: spacer, Row 6: api name, Row 7: api detail
     const detailRow = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[5][i].char,
+      (_, i) => grid.cells[7][i].char,
     ).join("");
     expect(detailRow).toContain("main");
     expect(detailRow).not.toContain("Code/work");
@@ -126,10 +128,10 @@ describe("Sidebar", () => {
       ]),
     );
     const grid = sidebar.getGrid();
-    // Row 2: session name, Row 3: detail
+    // Row 2: overview, Row 3: spacer, Row 4: session name, Row 5: detail
     const detailRow = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[3][i].char,
+      (_, i) => grid.cells[5][i].char,
     ).join("");
     expect(detailRow).toContain("dev");
   });
@@ -144,7 +146,7 @@ describe("Sidebar", () => {
     // Find the active session's name row and check for marker
     let foundMarker = false;
     for (let r = 2; r < 20; r++) {
-      if (grid.cells[r][0].char === "\u258e") {
+      if (grid.cells[r][0].char === "▎") {
         foundMarker = true;
         break;
       }
@@ -159,7 +161,7 @@ describe("Sidebar", () => {
     const grid = sidebar.getGrid();
     let foundDot = false;
     for (let r = 2; r < 20; r++) {
-      if (grid.cells[r][1].char === "\u25CF") {
+      if (grid.cells[r][1].char === "●") {
         foundDot = true;
         break;
       }
@@ -194,9 +196,10 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
 
-    expect(grid.cells[2][1].char).toBe("⨯"); // ⨯
-    expect(grid.cells[2][1].fg).toBe(1); // palette red
-    expect(grid.cells[2][1].bold).toBe(true);
+    // Row 2: overview, Row 3: spacer, Row 4: session name row
+    expect(grid.cells[4][1].char).toBe("⨯"); // ⨯
+    expect(grid.cells[4][1].fg).toBe(1); // palette red
+    expect(grid.cells[4][1].bold).toBe(true);
   });
 
   test("renders MCP-down glyph when failedMcpServers is non-empty, overriding agent-state", () => {
@@ -209,9 +212,10 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
 
-    expect(grid.cells[2][1].char).toBe("⊘"); // ⊘
-    expect(grid.cells[2][1].fg).toBe(1);
-    expect(grid.cells[2][1].dim).toBe(true);
+    // Row 2: overview, Row 3: spacer, Row 4: session name row
+    expect(grid.cells[4][1].char).toBe("⊘"); // ⊘
+    expect(grid.cells[4][1].fg).toBe(1);
+    expect(grid.cells[4][1].dim).toBe(true);
   });
 
   test("error glyph wins over MCP-down", () => {
@@ -224,7 +228,8 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
 
-    expect(grid.cells[2][1].char).toBe("⨯"); // ⨯
+    // Row 2: overview, Row 3: spacer, Row 4: session name row
+    expect(grid.cells[4][1].char).toBe("⨯"); // ⨯
   });
 
   test("getDisplayOrderIds returns sessions in grouped display order", () => {
@@ -251,19 +256,23 @@ describe("Sidebar", () => {
     );
     sidebar.getGrid(); // must render to populate row map
 
-    // Row 2: group header → null
+    // Row 2: overview → null
     expect(sidebar.getSessionByRow(2)).toBeNull();
     // Row 3: spacer → null
     expect(sidebar.getSessionByRow(3)).toBeNull();
-    // Row 4: first session name row → api
-    expect(sidebar.getSessionByRow(4)?.name).toBe("api");
-    // Row 5: first session detail row → api
-    expect(sidebar.getSessionByRow(5)?.name).toBe("api");
+    // Row 4: group header → null
+    expect(sidebar.getSessionByRow(4)).toBeNull();
+    // Row 5: spacer → null
+    expect(sidebar.getSessionByRow(5)).toBeNull();
+    // Row 6: first session name row → api
+    expect(sidebar.getSessionByRow(6)?.name).toBe("api");
+    // Row 7: first session detail row → api
+    expect(sidebar.getSessionByRow(7)?.name).toBe("api");
   });
 
   test("scrolls to show active session when it overflows", () => {
     // Height 10 = 2 header rows + 8 viewport rows
-    // Each session = 2 rows + 1 spacer = 3 rows, so 8 rows fits ~2.6 sessions
+    // Overview block = 2 rows (overview + spacer), each session = 3 rows + 1 spacer
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
     sidebar.updateSessions(
       makeSessions([
@@ -302,32 +311,32 @@ describe("Sidebar", () => {
         { name: "d" },
       ]),
     );
-    // First session visible at start
+    // Overview at row 2, spacer at row 3, first session "a" at row 4
     let grid = sidebar.getGrid();
-    const row2 = Array.from(
+    const row4 = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[2][i].char,
+      (_, i) => grid.cells[4][i].char,
     ).join("");
-    expect(row2).toContain("a");
+    expect(row4).toContain("a");
 
-    // Scroll down
+    // Scroll down past "a"
     sidebar.scrollBy(3);
     grid = sidebar.getGrid();
-    // "a" should no longer be on row 2
-    const row2After = Array.from(
+    // "a" should no longer be visible on row 4
+    const row4After = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[2][i].char,
+      (_, i) => grid.cells[4][i].char,
     ).join("");
-    expect(row2After).not.toContain("a");
+    expect(row4After).not.toContain("a");
 
     // Scroll way past the top — should clamp to 0
     sidebar.scrollBy(-100);
     grid = sidebar.getGrid();
-    const row2Reset = Array.from(
+    const row4Reset = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[2][i].char,
+      (_, i) => grid.cells[4][i].char,
     ).join("");
-    expect(row2Reset).toContain("a");
+    expect(row4Reset).toContain("a");
   });
 
   test("shows scroll indicators when content overflows", () => {
@@ -342,13 +351,13 @@ describe("Sidebar", () => {
     );
     // At top: should show down indicator but not up
     let grid = sidebar.getGrid();
-    expect(grid.cells[2][SIDEBAR_WIDTH - 1].char).not.toBe("\u25b2");
-    expect(grid.cells[9][SIDEBAR_WIDTH - 1].char).toBe("\u25bc");
+    expect(grid.cells[2][SIDEBAR_WIDTH - 1].char).not.toBe("▲");
+    expect(grid.cells[9][SIDEBAR_WIDTH - 1].char).toBe("▼");
 
     // Scroll to middle: should show both
     sidebar.scrollBy(3);
     grid = sidebar.getGrid();
-    expect(grid.cells[2][SIDEBAR_WIDTH - 1].char).toBe("\u25b2");
+    expect(grid.cells[2][SIDEBAR_WIDTH - 1].char).toBe("▲");
   });
 
   test("scrollToActive snaps back after manual scroll", () => {
@@ -453,8 +462,8 @@ describe("Sidebar", () => {
       ]),
     );
     const grid = sidebar.getGrid();
-    // Group header is at row 2, chevron at col 1
-    expect(grid.cells[2][1].char).toBe("\u25be"); // ▾
+    // Row 2: overview, Row 3: spacer, Row 4: group header — chevron at col 1
+    expect(grid.cells[4][1].char).toBe("▾"); // ▾
   });
 
   test("collapsed group header shows right chevron and session count", () => {
@@ -467,11 +476,11 @@ describe("Sidebar", () => {
     );
     sidebar.toggleGroup("Code/work");
     const grid = sidebar.getGrid();
-    // Group header is at row 2
-    expect(grid.cells[2][1].char).toBe("\u25b8"); // ▸
+    // Row 2: overview, Row 3: spacer, Row 4: group header
+    expect(grid.cells[4][1].char).toBe("▸"); // ▸
     const headerText = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[2][i].char,
+      (_, i) => grid.cells[4][i].char,
     ).join("");
     expect(headerText).toContain("(2)");
   });
@@ -485,10 +494,10 @@ describe("Sidebar", () => {
       ]),
     );
     sidebar.getGrid(); // populate row maps
-    // Row 2 is the group header
-    expect(sidebar.getGroupByRow(2)).toBe("Code/work");
-    // Row 4 is a session, not a group header
-    expect(sidebar.getGroupByRow(4)).toBeNull();
+    // Row 4 is the group header (rows 2,3 are overview+spacer)
+    expect(sidebar.getGroupByRow(4)).toBe("Code/work");
+    // Row 6 is a session, not a group header
+    expect(sidebar.getGroupByRow(6)).toBeNull();
   });
 
   test("group header row shows hover highlight", () => {
@@ -499,10 +508,10 @@ describe("Sidebar", () => {
         { name: "web", directory: "~/Code/work/web" },
       ]),
     );
-    sidebar.setHoveredRow(2); // group header row
+    sidebar.setHoveredRow(4); // group header row (was row 2, now row 4 after overview block)
     const grid = sidebar.getGrid();
     // The header row should have HOVER_BG applied
-    expect(grid.cells[2][0].bg).not.toBe(0);
+    expect(grid.cells[4][0].bg).not.toBe(0);
   });
 
   test("renders cache timer on detail row when set", () => {
@@ -516,9 +525,10 @@ describe("Sidebar", () => {
       cacheWasHit: true,
     });
     const grid = sidebar.getGrid();
+    // Row 2: overview, Row 3: spacer, Row 4: session name, Row 5: detail
     const detailText = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[3][i].char,
+      (_, i) => grid.cells[5][i].char,
     ).join("");
     expect(detailText).toContain("4:0");
   });
@@ -533,9 +543,10 @@ describe("Sidebar", () => {
       cacheWasHit: true,
     });
     const grid = sidebar.getGrid();
+    // Row 2: overview, Row 3: spacer, Row 4: session name, Row 5: detail
     const detailText = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[3][i].char,
+      (_, i) => grid.cells[5][i].char,
     ).join("");
     expect(detailText).toContain("6m");
   });
@@ -546,9 +557,10 @@ describe("Sidebar", () => {
       makeSessions([{ name: "main", directory: "~/mydir", gitBranch: "dev" }]),
     );
     const grid = sidebar.getGrid();
+    // Row 2: overview, Row 3: spacer, Row 4: session name, Row 5: detail
     const detailText = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[3][i].char,
+      (_, i) => grid.cells[5][i].char,
     ).join("");
     expect(detailText).not.toMatch(/\d:\d\d/);
   });
@@ -562,7 +574,8 @@ describe("Sidebar", () => {
       cacheWasHit: true,
     });
     const grid = sidebar.getGrid();
-    const row = grid.cells[3];
+    // Row 2: overview, Row 3: spacer, Row 4: session name, Row 5: detail
+    const row = grid.cells[5];
     let timerColStart = -1;
     for (let c = SIDEBAR_WIDTH - 1; c >= 0; c--) {
       if (row[c].char === ":") {
@@ -583,7 +596,8 @@ describe("Sidebar", () => {
       cacheWasHit: true,
     });
     const grid = sidebar.getGrid();
-    const row = grid.cells[3];
+    // Row 2: overview, Row 3: spacer, Row 4: session name, Row 5: detail
+    const row = grid.cells[5];
     let timerColStart = -1;
     for (let c = SIDEBAR_WIDTH - 1; c >= 0; c--) {
       if (row[c].char === ":") {
@@ -604,7 +618,8 @@ describe("Sidebar", () => {
       cacheWasHit: true,
     });
     const grid = sidebar.getGrid();
-    const row = grid.cells[3];
+    // Row 2: overview, Row 3: spacer, Row 4: session name, Row 5: detail
+    const row = grid.cells[5];
     let timerColStart = -1;
     for (let c = SIDEBAR_WIDTH - 1; c >= 0; c--) {
       if (row[c].char === ":") {
@@ -626,7 +641,8 @@ describe("Sidebar", () => {
       cacheWasHit: true,
     });
     const grid = sidebar.getGrid();
-    const row = grid.cells[3];
+    // Row 2: overview, Row 3: spacer, Row 4: session name, Row 5: detail
+    const row = grid.cells[5];
     const detailText = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => row[i].char).join("");
     expect(detailText).toContain("6m");
     // Find the rightmost dim cell that isn't whitespace — that's the timer.
@@ -655,12 +671,12 @@ describe("Sidebar", () => {
       cacheWasHit: true,
     });
     const grid = sidebar.getGrid();
-    // Row layout: row 2 = group header, row 3 = spacer, row 4 = api name, row 5 = api detail
+    // Row 2: overview, Row 3: spacer, Row 4: group header, Row 5: spacer, Row 6: api name, Row 7: api detail
     const detailText = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[5][i].char,
+      (_, i) => grid.cells[7][i].char,
     ).join("");
-    expect(detailText).toContain("\u2026");
+    expect(detailText).toContain("…");
     expect(detailText).toContain("4:0");
   });
 
@@ -675,18 +691,18 @@ describe("Sidebar", () => {
       ]),
     );
     const grid = sidebar.getGrid();
-    // Row 2 should be the "Pinned" group header
-    const row2 = Array.from(
-      { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[2][i].char,
-    ).join("");
-    expect(row2).toContain("Pinned");
-    // Row 4 should be the pinned session "beta"
+    // Row 2: overview, Row 3: spacer, Row 4: "Pinned" group header
     const row4 = Array.from(
       { length: SIDEBAR_WIDTH },
       (_, i) => grid.cells[4][i].char,
     ).join("");
-    expect(row4).toContain("beta");
+    expect(row4).toContain("Pinned");
+    // Row 5: spacer, Row 6: pinned session "beta"
+    const row6 = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[6][i].char,
+    ).join("");
+    expect(row6).toContain("beta");
   });
 
   test("pinned sessions are excluded from their normal group", () => {
@@ -743,10 +759,10 @@ describe("Sidebar", () => {
       if (text.includes("alpha")) foundAlpha = true;
     }
     expect(foundAlpha).toBe(false);
-    // Header should still be visible with count
+    // Header should still be visible with count (at row 4 after overview block)
     const headerRow = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[2][i].char,
+      (_, i) => grid.cells[4][i].char,
     ).join("");
     expect(headerRow).toContain("Pinned");
     expect(headerRow).toContain("(1)");
@@ -789,7 +805,8 @@ describe("Sidebar", () => {
     // Sanity check: alpha's render shouldn't surface beta's context figure.
     sidebar.setActiveSession("$0");
     const grid = sidebar.getGrid();
-    const text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[4][i].char).join("");
+    // Row 2: overview, Row 3: spacer, Row 4: alpha name, Row 5: alpha detail, Row 6: alpha row3
+    const text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[6][i].char).join("");
     expect(text).not.toContain("200k");
   });
 
@@ -803,9 +820,10 @@ describe("Sidebar", () => {
     });
     sidebar.cacheTimersEnabled = false;
     const grid = sidebar.getGrid();
+    // Row 2: overview, Row 3: spacer, Row 4: session name, Row 5: detail
     const detailText = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[3][i].char,
+      (_, i) => grid.cells[5][i].char,
     ).join("");
     expect(detailText).not.toMatch(/\d:\d\d/);
   });
@@ -813,14 +831,16 @@ describe("Sidebar", () => {
   // Row layout reminder for ungrouped sessions:
   // row 0: jmux header
   // row 1: separator
-  // row 2: first session name (item starts here; spacer follows each session)
+  // row 2: overview entry (permanent synthetic block)
+  // row 3: spacer (after overview block)
+  // row 4: first session name (item starts here; spacer follows each session)
   //
-  // Every session is now uniformly 3 rows tall:
-  //   α: rows 2,3,4
-  //   spacer: row 5
-  //   β: rows 6,7,8
-  //   spacer: row 9
-  //   γ: rows 10,11,12
+  // Every session is uniformly 3 rows tall:
+  //   α: rows 4,5,6
+  //   spacer: row 7
+  //   β: rows 8,9,10
+  //   spacer: row 11
+  //   γ: rows 12,13,14
 
   test("every session is 3 rows tall", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
@@ -831,12 +851,12 @@ describe("Sidebar", () => {
     sidebar.setActiveSession("$0");
     const grid = sidebar.getGrid();
 
-    // alpha at rows 2,3,4; spacer at 5; beta at rows 6,7,8
-    const row6Text = Array.from(
+    // alpha at rows 4,5,6; spacer at 7; beta at rows 8,9,10
+    const row8Text = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[6][i].char,
+      (_, i) => grid.cells[8][i].char,
     ).join("");
-    expect(row6Text).toContain("beta");
+    expect(row8Text).toContain("beta");
   });
 
   test("hovering row 3 keeps hover styling", () => {
@@ -846,15 +866,15 @@ describe("Sidebar", () => {
       { name: "beta" },
     ]));
     sidebar.setActiveSession("$0");
-    // Layout: alpha at 2,3,4; spacer 5; beta at 6,7,8.
-    // Hover beta's row 3 (row 8).
-    sidebar.setHoveredRow(8);
+    // Layout: overview 2, spacer 3, alpha at 4,5,6; spacer 7; beta at 8,9,10.
+    // Hover beta's row 3 (row 10).
+    sidebar.setHoveredRow(10);
     const grid = sidebar.getGrid();
 
-    // Beta's name row (row 6) should have hover bg painted.
-    expect(grid.cells[6][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
-    // Row 8 (the third row) should also have hover bg.
+    // Beta's name row (row 8) should have hover bg painted.
     expect(grid.cells[8][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
+    // Row 10 (the third row) should also have hover bg.
+    expect(grid.cells[10][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
   });
 
   test("session shows context tokens on row 3", () => {
@@ -867,8 +887,8 @@ describe("Sidebar", () => {
       contextTokens: 112000,
     });
     const grid = sidebar.getGrid();
-    // Name row 2, detail row 3, row 3 is row 4
-    const text = Array.from({ length: width }, (_, i) => grid.cells[4][i].char).join("");
+    // Row 2: overview, Row 3: spacer, Row 4: name, Row 5: detail, Row 6: row3
+    const text = Array.from({ length: width }, (_, i) => grid.cells[6][i].char).join("");
     expect(text).toContain("112k");
     expect(text).not.toContain("$");
   });
@@ -882,11 +902,12 @@ describe("Sidebar", () => {
     ]));
     sidebar.setActiveSession("$0");
     const grid1 = sidebar.getGrid();
-    const before = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid1.cells[10][i].char).join("");
+    // Row 2: overview, Row 3: spacer, alpha at 4,5,6, spacer 7, beta at 8,9,10, spacer 11, gamma at 12,13,14
+    const before = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid1.cells[12][i].char).join("");
 
     sidebar.setActiveSession("$1");
     const grid2 = sidebar.getGrid();
-    const after = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid2.cells[10][i].char).join("");
+    const after = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid2.cells[12][i].char).join("");
 
     // Same row should still contain whatever was there before (gamma).
     expect(after).toBe(before);
@@ -902,8 +923,8 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
 
-    // No Linear ID, badge anchors at width - 2
-    const badgeCell = grid.cells[2][SIDEBAR_WIDTH - 2];
+    // Row 2: overview, Row 3: spacer, Row 4: session name row — no Linear ID, badge anchors at width - 2
+    const badgeCell = grid.cells[4][SIDEBAR_WIDTH - 2];
     expect(badgeCell.char).toBe("P");
     expect(badgeCell.fg).toBe(6); // palette cyan
   });
@@ -917,7 +938,8 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
 
-    const badgeCell = grid.cells[2][SIDEBAR_WIDTH - 2];
+    // Row 2: overview, Row 3: spacer, Row 4: session name row
+    const badgeCell = grid.cells[4][SIDEBAR_WIDTH - 2];
     expect(badgeCell.char).toBe("A");
     expect(badgeCell.fg).toBe(3);
   });
@@ -928,7 +950,8 @@ describe("Sidebar", () => {
     sidebar.setSessionOtelState("$0", makeBlankOtelState());
     const grid = sidebar.getGrid();
 
-    expect(grid.cells[2][SIDEBAR_WIDTH - 2].char).toBe(" ");
+    // Row 2: overview, Row 3: spacer, Row 4: session name row
+    expect(grid.cells[4][SIDEBAR_WIDTH - 2].char).toBe(" ");
   });
 
   test("session name truncates 2 columns earlier when a mode badge is present", () => {
@@ -943,7 +966,8 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
 
-    const row = grid.cells[2];
+    // Row 2: overview, Row 3: spacer, Row 4: session name row
+    const row = grid.cells[4];
     // Find last 'a' col
     let lastA = -1;
     for (let c = 0; c < SIDEBAR_WIDTH; c++) if (row[c].char === "a") lastA = c;
@@ -961,8 +985,9 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
 
-    expect(grid.cells[2][SIDEBAR_WIDTH - 2].char).toBe("⊕");
-    expect(grid.cells[2][SIDEBAR_WIDTH - 2].dim).toBe(true);
+    // Row 2: overview, Row 3: spacer, Row 4: session name row
+    expect(grid.cells[4][SIDEBAR_WIDTH - 2].char).toBe("⊕");
+    expect(grid.cells[4][SIDEBAR_WIDTH - 2].dim).toBe(true);
   });
 
   test("compaction marker disappears after 30s", () => {
@@ -974,7 +999,8 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
 
-    expect(grid.cells[2][SIDEBAR_WIDTH - 2].char).toBe(" ");
+    // Row 2: overview, Row 3: spacer, Row 4: session name row
+    expect(grid.cells[4][SIDEBAR_WIDTH - 2].char).toBe(" ");
   });
 
   test("plan mode wins over compaction marker", () => {
@@ -987,7 +1013,8 @@ describe("Sidebar", () => {
     });
     const grid = sidebar.getGrid();
 
-    expect(grid.cells[2][SIDEBAR_WIDTH - 2].char).toBe("P");
+    // Row 2: overview, Row 3: spacer, Row 4: session name row
+    expect(grid.cells[4][SIDEBAR_WIDTH - 2].char).toBe("P");
   });
 
 });
@@ -1112,9 +1139,10 @@ describe("Sidebar inline link data", () => {
       name: "api", issueIds: ["ENG-1234"],
     }]));
     const grid = sidebar.getGrid();
+    // Row 2: overview, Row 3: spacer, Row 4: session name row
     const nameRow = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[2][i].char,
+      (_, i) => grid.cells[4][i].char,
     ).join("");
     expect(nameRow).toContain("ENG-1234");
     expect(nameRow).toContain("api");
@@ -1127,9 +1155,10 @@ describe("Sidebar inline link data", () => {
       name: "api", pipelineState: "passed",
     }]));
     const grid = sidebar.getGrid();
+    // Row 2: overview, Row 3: spacer, Row 4: session name, Row 5: detail row
     const detailRow = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[3][i].char,
+      (_, i) => grid.cells[5][i].char,
     ).join("");
     expect(detailRow).toContain("!1");
     expect(detailRow).toContain("✓");
@@ -1142,18 +1171,18 @@ describe("Sidebar inline link data", () => {
       name: "api", issueIds: ["ENG-1234"], mrCount: 2,
     }]));
     const grid = sidebar.getGrid();
-    // Row 2: api name, Row 3: api detail, Row 4: api row3, Row 5: spacer, Row 6: other name
-    const row6text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[6][i].char).join("");
-    expect(row6text).toContain("other");
+    // Row 2: overview, Row 3: spacer, Row 4: api name, Row 5: api detail, Row 6: api row3, Row 7: spacer, Row 8: other name
+    const row8text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[8][i].char).join("");
+    expect(row8text).toContain("other");
   });
 
   test("no link data shows clean 3-row session", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "api" }, { name: "other" }]));
     const grid = sidebar.getGrid();
-    // Row 2: api name, Row 3: api detail, Row 4: api row3, Row 5: spacer, Row 6: other name
-    const row6text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[6][i].char).join("");
-    expect(row6text).toContain("other");
+    // Row 2: overview, Row 3: spacer, Row 4: api name, Row 5: api detail, Row 6: api row3, Row 7: spacer, Row 8: other name
+    const row8text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[8][i].char).join("");
+    expect(row8text).toContain("other");
   });
 });
 
@@ -1172,8 +1201,8 @@ describe("Sidebar — agent state rendering", () => {
   test("col-1 glyph for running is ⏵ in palette green", () => {
     const sb = makeSidebarWithAgentState("running");
     const grid = sb.getGrid();
-    // Header takes rows 0+1; first session's nameRow is row 2.
-    const cell = grid.cells[2][1];
+    // Header takes rows 0+1; overview block at rows 2,3; first session's nameRow is row 4.
+    const cell = grid.cells[4][1];
     expect(cell.char).toBe("⏵");
     expect(cell.fg).toBe(2);
   });
@@ -1181,7 +1210,8 @@ describe("Sidebar — agent state rendering", () => {
   test("col-1 glyph for waiting is ! in orange bold", () => {
     const sb = makeSidebarWithAgentState("waiting");
     const grid = sb.getGrid();
-    const cell = grid.cells[2][1];
+    // Row 4: first session name row
+    const cell = grid.cells[4][1];
     expect(cell.char).toBe("!");
     expect(cell.fg).toBe(3);
     expect(cell.bold).toBe(true);
@@ -1190,7 +1220,8 @@ describe("Sidebar — agent state rendering", () => {
   test("col-1 glyph for complete is ✓ in dim blue", () => {
     const sb = makeSidebarWithAgentState("complete");
     const grid = sb.getGrid();
-    const cell = grid.cells[2][1];
+    // Row 4: first session name row
+    const cell = grid.cells[4][1];
     expect(cell.char).toBe("✓");
     expect(cell.fg).toBe(4);
     expect(cell.dim).toBe(true);
@@ -1208,7 +1239,8 @@ describe("Sidebar — agent state rendering", () => {
     otel.failedMcpServers = new Set(["server-a"]);
     sb.setSessionOtelState("$1", otel);
     const grid = sb.getGrid();
-    expect(grid.cells[2][1].char).toBe("⊘");
+    // Row 4: first session name row
+    expect(grid.cells[4][1].char).toBe("⊘");
   });
 
   test("indicator priority: agent-state wins over activity", () => {
@@ -1221,7 +1253,8 @@ describe("Sidebar — agent state rendering", () => {
     sb.setAgentStateRecord("$1", { state: "complete", since: Date.now() });
     sb.setActivity("$1", true);
     const grid = sb.getGrid();
-    expect(grid.cells[2][1].char).toBe("✓");  // not the activity dot
+    // Row 4: first session name row
+    expect(grid.cells[4][1].char).toBe("✓");  // not the activity dot
   });
 
   test("setAgentStateRecord(id, null) clears the record", () => {
@@ -1229,7 +1262,8 @@ describe("Sidebar — agent state rendering", () => {
     sb.setAgentStateRecord("$1", null);
     sb.setActivity("$1", true);
     const grid = sb.getGrid();
-    expect(grid.cells[2][1].char).toBe("●");  // falls back to activity dot
+    // Row 4: first session name row
+    expect(grid.cells[4][1].char).toBe("●");  // falls back to activity dot
   });
 
   test("updateSessions prunes orphaned agent-state records", () => {
@@ -1242,18 +1276,18 @@ describe("Sidebar — agent state rendering", () => {
     };
     sb.updateSessions([session]);
     const grid = sb.getGrid();
-    // No agent state and no activity → indicator column should be empty (space).
-    expect(grid.cells[2][1].char).toBe(" ");
+    // Row 4: first session name row. No agent state and no activity → indicator column should be empty (space).
+    expect(grid.cells[4][1].char).toBe(" ");
   });
 
   test("row-2 state label appears with the matching color", () => {
     const sb = makeSidebarWithAgentState("running");
     sb.setSessionOtelState("$1", makeSessionOtelState());
     const grid = sb.getGrid();
-    // Row 2's row-2 text lives at nameRow + 2 = row 4.
+    // Row 2 of the session (nameRow + 2) is at grid row 6 (header rows 0+1, overview+spacer 2+3, nameRow=4, row3=4+2=6).
     // Find the "RUNNING" label by scanning the row for the first non-space cell
     // that has fg=2 (palette green).
-    const row = grid.cells[4];
+    const row = grid.cells[6];
     let found = "";
     for (const cell of row) {
       if (cell.char !== " " && cell.fg === 2) found += cell.char;
@@ -1272,8 +1306,8 @@ describe("Sidebar — agent state rendering", () => {
     sb.setAgentStateRecord("$1", { state: "running", since: Date.now() });
 
     const grid = sb.getGrid();
-    // Row 2 of the session (nameRow + 2) is at grid row 4 (header is rows 0+1).
-    const row = grid.cells[4];
+    // Row 2 of the session (nameRow + 2) is at grid row 6 (header rows 0+1, overview+spacer rows 2+3, nameRow=4).
+    const row = grid.cells[6];
     // Find a cell that has fg=2 (green) — that's a RUNNING label cell.
     const labelCell = row.find((cell) => cell.fg === 2 && cell.char !== " ");
     expect(labelCell).toBeDefined();
@@ -1281,5 +1315,94 @@ describe("Sidebar — agent state rendering", () => {
       // Active background is 0x1e2a35 packed as RGB.
       expect(labelCell.bg).toBe((0x1e << 16) | (0x2a << 8) | 0x35);
     }
+  });
+});
+
+describe("Overview entry", () => {
+  test("overview row is at the very top (row 2, first content row)", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    const grid = sidebar.getGrid();
+    const row2 = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[2][i].char,
+    ).join("");
+    expect(row2).toContain("Overview");
+  });
+
+  test("empty state: zero pinned panes, row 0 still contains 'Overview'", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    // No setPinnedPanes call — default is empty
+    const grid = sidebar.getGrid();
+    const row2 = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[2][i].char,
+    ).join("");
+    expect(row2).toContain("Overview");
+  });
+
+  test("two pinned panes render their labels as nested children", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.setPinnedPanes([
+      { paneId: "%1", label: "api › claude", homeSessionName: "api" },
+      { paneId: "%2", label: "api › npm test", homeSessionName: "api" },
+    ]);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    const grid = sidebar.getGrid();
+
+    // Overview at row 2, pane entries at rows 3 and 4, spacer at row 5
+    let allText = "";
+    for (let r = 0; r < 30; r++) {
+      allText += Array.from(
+        { length: SIDEBAR_WIDTH },
+        (_, i) => grid.cells[r][i].char,
+      ).join("") + "\n";
+    }
+    expect(allText).toContain("claude");
+    expect(allText).toContain("npm test");
+  });
+
+  test("session that owns a pinned pane shows '(N pinned)' marker", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.setPinnedPanes([
+      { paneId: "%1", label: "api › claude", homeSessionName: "api" },
+    ]);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    const grid = sidebar.getGrid();
+
+    let allText = "";
+    for (let r = 0; r < 30; r++) {
+      allText += Array.from(
+        { length: SIDEBAR_WIDTH },
+        (_, i) => grid.cells[r][i].char,
+      ).join("") + "\n";
+    }
+    expect(allText).toMatch(/1 pinned/);
+  });
+
+  test("getSelectionByRow(2) returns {type:'overview'} after getGrid()", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    sidebar.getGrid(); // populate row map
+    const sel = sidebar.getSelectionByRow(2);
+    expect(sel).not.toBeNull();
+    expect(sel?.type).toBe("overview");
+  });
+
+  test("overview shows pane count when panes are present", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.setPinnedPanes([
+      { paneId: "%1", label: "api › claude", homeSessionName: "api" },
+      { paneId: "%2", label: "api › npm test", homeSessionName: "api" },
+    ]);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    const grid = sidebar.getGrid();
+    const row2 = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[2][i].char,
+    ).join("");
+    expect(row2).toContain("2");
+    expect(row2).toContain("Overview");
   });
 });
