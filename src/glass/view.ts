@@ -273,20 +273,15 @@ export class GlassView {
 
   private ensureTile(spec: GlassTileSpec): void {
     const { runner, socketName, configFile, jmuxDir, onFrame } = this.opts;
-    const sessionName = tileSessionName(spec.paneId);
 
-    // 1. Create a session-group member of the pane's home session.
-    runner([
-      "new-session",
-      "-d",
-      "-t", spec.sessionId,
-      "-s", sessionName,
-    ]);
-
-    // 2. Point the tile session at the pane's home window.
+    // 1. Point the home session at the pinned pane's window. We attach the
+    //    mirror client DIRECTLY to the home session — never a new/group session,
+    //    so teardown only ever DETACHES a client and can never destroy a
+    //    session. The main client is parked while the glass is up, so this
+    //    mirror is the only client on the session.
     runner([
       "select-window",
-      "-t", `${sessionName}:${spec.windowId}`,
+      "-t", `${spec.sessionId}:${spec.windowId}`,
     ]);
 
     // 3. Zoom the pane if the window has more than one pane and it isn't already.
@@ -308,10 +303,11 @@ export class GlassView {
     // 4. Compute initial tile dimensions.
     const { interiorCols, interiorRows } = this.getTileInterior(spec.paneId);
 
-    // 5. Spawn the PTY attached to the tile session (strictAttach joins an
-    //    existing session via `tmux attach-session -t <name>`).
+    // 5. Spawn the PTY as a second client attached to the home session
+    //    (strictAttach → `tmux attach-session -t <session>`). Killing this pty
+    //    later just detaches the client; the session is untouched.
     const pty = new TmuxPty({
-      sessionName,
+      sessionName: spec.sessionId,
       socketName,
       configFile,
       jmuxDir,
@@ -349,16 +345,14 @@ export class GlassView {
     const tile = this.tiles.get(paneId);
     if (!tile) return;
 
-    // Unzoom the pane if we were the ones who zoomed it.
+    // Unzoom the pane if we were the ones who zoomed it (restore the layout).
     if (tile.didZoom) {
       this.opts.runner(["resize-pane", "-Z", "-t", paneId]);
     }
 
-    // Kill the PTY client.
+    // Detach the mirror client. This NEVER kills the session — the home session,
+    // its windows, and the pane all survive untouched.
     tile.pty.kill();
-
-    // Kill the group-member session (safe; home session is unaffected).
-    this.opts.runner(["kill-session", "-t", tileSessionName(paneId)]);
 
     this.tiles.delete(paneId);
   }
