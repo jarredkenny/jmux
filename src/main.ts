@@ -33,7 +33,11 @@ import type { DemoContext } from "./demo/setup";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { ConfigStore, sanitizeTmuxSessionName } from "./config";
-import { INTERNAL_SESSION_FILTER } from "./glass/internal-sessions";
+import { INTERNAL_SESSION_FILTER, GLASS_HOLDING_SESSION, PARK_SESSION } from "./glass/internal-sessions";
+import { PinnedPaneTracker } from "./glass/pinned-pane-tracker";
+import { GlassExecutor, type RecordStore, type GlassRunner } from "./glass/executor";
+import { reconcilePins } from "./glass/reconciler";
+import { parsePaneStateLines, PANE_STATE_FORMAT } from "./glass/reflect";
 import { OtelReceiver } from "./otel-receiver";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
@@ -588,6 +592,43 @@ agentStateTracker.onChange((sessionId) => {
 
   scheduleRender();
 });
+// --- Pane-of-glass wiring ---
+
+let glassHoldingSessionId: string | null = null;
+const pinnedTracker = new PinnedPaneTracker();
+
+const recordStore: RecordStore = {
+  get: () => [...(configStore.config.pinnedPanes ?? [])],
+  put: (record) => {
+    const next = (configStore.config.pinnedPanes ?? []).filter((r) => r.paneId !== record.paneId);
+    next.push(record);
+    configStore.set("pinnedPanes", next);
+  },
+  remove: (paneId) => {
+    configStore.set(
+      "pinnedPanes",
+      (configStore.config.pinnedPanes ?? []).filter((r) => r.paneId !== paneId),
+    );
+  },
+};
+
+const glassRunner: GlassRunner = {
+  run: (args) => {
+    const socketArgs = socketName ? ["-L", socketName] : [];
+    const proc = Bun.spawnSync(["tmux", ...socketArgs, ...args], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const ok = (proc.exitCode ?? 1) === 0;
+    const lines = proc.stdout
+      .toString()
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return { ok, lines };
+  },
+};
+
 const otelReceiver = new OtelReceiver({
   onAgentResumeHint: (sessionName) => {
     const id = currentSessions.find((s) => s.name === sessionName)?.id;
@@ -3342,6 +3383,8 @@ control.onEvent((event: ControlEvent) => {
         void fetchAgentState();
       } else if (event.name === "windows") {
         fetchWindows();
+      } else if (event.name === "pinned-panes") {
+        runPinReconcile();
       }
       break;
   }
@@ -3499,6 +3542,45 @@ async function fetchAgentState(): Promise<void> {
   agentStateTracker.pruneExcept(activeIds);
 }
 
+async function ensureGlassSessions(): Promise<void> {
+  await control.sendCommand(`new-session -d -s ${GLASS_HOLDING_SESSION}`).catch(() => {});
+  await control.sendCommand(`new-session -d -s ${PARK_SESSION}`).catch(() => {});
+  const lines = await control
+    .sendCommand(`display-message -p -t ${GLASS_HOLDING_SESSION} '#{session_id}'`)
+    .catch(() => [] as string[]);
+  glassHoldingSessionId = lines[0]?.trim() || null;
+}
+
+function runPinReconcile(): void {
+  const state = parsePaneStateLines(
+    glassRunner.run(["list-panes", "-a", "-F", PANE_STATE_FORMAT]).lines,
+  );
+  for (const paneId of state.live.keys()) {
+    pinnedTracker.apply(paneId, state.pinned.has(paneId) ? "1" : null);
+  }
+  pinnedTracker.pruneExcept([...state.live.keys()]);
+
+  const records = new Map(
+    (configStore.config.pinnedPanes ?? []).map((r) => [r.paneId, r]),
+  );
+  const actions = reconcilePins({
+    desired: state.pinned,
+    records,
+    live: state.live,
+    holdingSessionId: glassHoldingSessionId,
+  });
+  if (actions.length === 0) return;
+
+  const executor = new GlassExecutor({
+    runner: glassRunner,
+    store: recordStore,
+    holdingSession: GLASS_HOLDING_SESSION,
+    holdingSessionId: glassHoldingSessionId ?? "",
+  });
+  executor.apply(actions);
+  scheduleRender();
+}
+
 async function handleTabClick(windowId: string): Promise<void> {
   try {
     await control.sendCommand(`select-window -t ${windowId}`);
@@ -3565,6 +3647,8 @@ async function start(): Promise<void> {
   await syncControlClient();
   await fetchWindows();
   await fetchAgentState();
+  await ensureGlassSessions();
+  runPinReconcile();
 
   // One-time legacy migration: previous jmux versions wrote @jmux-attention=1
   // via a Stop hook. That option is now an orchestrator/human-gate signal owned
@@ -3763,6 +3847,13 @@ async function start(): Promise<void> {
     "windows",
     1,
     "#{session_windows} #{window_index} #{window_name} #{window_zoomed_flag}",
+  );
+
+  // Subscribe to per-pane pin flag — fires whenever any pane's @jmux-pinned changes.
+  await control.registerSubscription(
+    "pinned-panes",
+    1,
+    "#{P:#{pane_id}=#{@jmux-pinned} }",
   );
 }
 
