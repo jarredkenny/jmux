@@ -2,10 +2,14 @@ import type { CellGrid } from "../types";
 import { createGrid, writeString, cellWidth, type CellAttrs } from "../cell-grid";
 import { ColorMode } from "../types";
 
-// ─── Tile label accent ───────────────────────────────────────────────────────
-// Emerald-400 (#34D399), matching the jmux accent. Focused tiles get the bold
-// accent label; unfocused tiles get a dim gray so focus reads at a glance.
-const LABEL_ACCENT_RGB = (0x34 << 16) | (0xD3 << 8) | 0x99;
+// ─── Tile label chip ─────────────────────────────────────────────────────────
+// The label renders as a filled chip on the top border, like the toolbar's
+// window tabs. Focused: bold emerald-400 text on a slate background. Unfocused:
+// dim gray text on a darker, subtler background — so focus reads at a glance.
+const LABEL_ACCENT_RGB = (0x34 << 16) | (0xD3 << 8) | 0x99; // #34D399 emerald-400
+const LABEL_DIM_RGB    = (0x6e << 16) | (0x76 << 8) | 0x80; // #6E7680 gray
+const CHIP_BG_FOCUSED  = (0x1e << 16) | (0x2a << 8) | 0x35; // #1E2A35 (toolbar activeBg)
+const CHIP_BG_DIM      = (0x26 << 16) | (0x2b << 8) | 0x33; // #262B33 subtle slate
 import { ScreenBridge } from "../screen-bridge";
 import { TmuxPty } from "../tmux-pty";
 import { computeTileLayout } from "./layout";
@@ -431,8 +435,8 @@ export class GlassView {
 
     // The label pops in bold emerald when focused, dims to gray otherwise.
     const labelAttrs: CellAttrs = isFocused
-      ? { fg: LABEL_ACCENT_RGB, fgMode: ColorMode.RGB, bold: true }
-      : { fg: 8, fgMode: ColorMode.Palette, bold: false };
+      ? { fg: LABEL_ACCENT_RGB, fgMode: ColorMode.RGB, bold: true, bg: CHIP_BG_FOCUSED, bgMode: ColorMode.RGB }
+      : { fg: LABEL_DIM_RGB, fgMode: ColorMode.RGB, bold: false, bg: CHIP_BG_DIM, bgMode: ColorMode.RGB };
 
     const { x, y, width, height } = rect;
 
@@ -588,11 +592,12 @@ export class GlassView {
           cols = Math.min(cols, maxLabelCols);
         }
         if (labelText.length > 0) {
-          // Padding spaces around the chip, in the border colour.
-          const spaceAttrs = { fg: borderAttrs.fg, fgMode: borderAttrs.fgMode };
-          writeString(grid, row, innerStart + 1, " ", spaceAttrs);
-          writeString(grid, row, labelStart, labelText, labelAttrs ?? spaceAttrs);
-          writeString(grid, row, labelStart + cols, " ", spaceAttrs);
+          // Render ` label ` as one filled chip: the surrounding spaces carry the
+          // same background as the label so it reads as a contiguous tab.
+          const chipAttrs = labelAttrs ?? { fg: borderAttrs.fg, fgMode: borderAttrs.fgMode };
+          writeString(grid, row, innerStart + 1, " ", chipAttrs);
+          writeString(grid, row, labelStart, labelText, chipAttrs);
+          writeString(grid, row, labelStart + cols, " ", chipAttrs);
         }
       }
     }
