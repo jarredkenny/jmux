@@ -6,6 +6,53 @@ import type { ParsedCtlArgs } from "../cli";
 const PANE_FORMAT =
   "#{pane_id}:#{window_id}:#{pane_active}:#{pane_width}:#{pane_height}:#{pane_current_command}:#{pane_current_path}";
 
+const PINNED_LIST_FORMAT = "#{pane_id}:#{@jmux-pinned}";
+
+export interface PaneOptionCommand {
+  args: string[];
+  required: boolean;
+}
+
+/**
+ * Build the tmux command(s) to set/unset the per-pane `@jmux-pinned` option.
+ * This is the *only* thing pin/unpin do — the running TUI reconciler observes
+ * the option change and performs the break-pane/join-pane itself.
+ */
+export function buildPinCommands(
+  verb: "pin" | "unpin",
+  target: string,
+): PaneOptionCommand[] {
+  if (verb === "pin") {
+    return [
+      { args: ["set-option", "-p", "-t", target, "@jmux-pinned", "1"], required: true },
+    ];
+  }
+  return [
+    { args: ["set-option", "-p", "-t", target, "-u", "@jmux-pinned"], required: true },
+  ];
+}
+
+/** Parse `list-panes -a -F '#{pane_id}:#{@jmux-pinned}'` into pinned pane ids. */
+export function parsePinnedListOutput(lines: string[]): string[] {
+  const out: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const idx = trimmed.lastIndexOf(":");
+    if (idx < 0) continue;
+    const id = trimmed.slice(0, idx);
+    const val = trimmed.slice(idx + 1);
+    if (val === "1") out.push(id);
+  }
+  return out;
+}
+
+function resolvePaneTarget(ctx: CliContext, flags: ParsedCtlArgs["flags"]): string {
+  if (typeof flags.target === "string" && flags.target) return flags.target;
+  if (ctx.paneId) return ctx.paneId;
+  throw new CliError("--target is required (or run inside the target pane)");
+}
+
 export interface PaneEntry {
   id: string;
   window: string;
@@ -153,9 +200,26 @@ export function handlePane(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       return { killed: target };
     }
 
+    case "pin":
+    case "unpin": {
+      const target = resolvePaneTarget(ctx, flags);
+      for (const cmd of buildPinCommands(action as "pin" | "unpin", target)) {
+        const result = runTmuxDirect(cmd.args, ctx.socket);
+        if (cmd.required) tmuxOrThrow(result);
+      }
+      return { target, pinned: action === "pin" };
+    }
+
+    case "pinned": {
+      const lines = tmuxOrThrow(
+        runTmuxDirect(["list-panes", "-a", "-F", PINNED_LIST_FORMAT], ctx.socket),
+      );
+      return { pinned: parsePinnedListOutput(lines) };
+    }
+
     default:
       throw new CliError(
-        `Unknown pane action "${action}". Known actions: list, split, send-keys, capture, kill`,
+        `Unknown pane action "${action}". Known actions: list, split, send-keys, capture, kill, pin, unpin, pinned`,
       );
   }
 }
