@@ -3658,12 +3658,25 @@ function refreshPinnedPanes(): void {
     });
   }
 
+  // Deterministic order (by session name, then pane id) so tiles/counts keep a
+  // stable arrangement across detach/reattach and restarts — `pinnedTracker`
+  // iteration order reflects tmux's arbitrary list-panes order otherwise.
+  const paneNum = (id: string): number => parseInt(id.replace(/^%/, ""), 10) || 0;
+  const orderedPaneIds = pinnedTracker
+    .all()
+    .filter((id) => state.live.has(id) && labelByPane.has(id))
+    .sort((a, b) => {
+      const sa = labelByPane.get(a)!.sessionName;
+      const sb = labelByPane.get(b)!.sessionName;
+      if (sa !== sb) return sa < sb ? -1 : 1;
+      return paneNum(a) - paneNum(b);
+    });
+
   const entries: PinnedPaneEntry[] = [];
   const specs: GlassTileSpec[] = [];
-  for (const paneId of pinnedTracker.all()) {
-    const loc = state.live.get(paneId);
-    const meta = labelByPane.get(paneId);
-    if (!loc || !meta) continue;
+  for (const paneId of orderedPaneIds) {
+    const loc = state.live.get(paneId)!;
+    const meta = labelByPane.get(paneId)!;
     entries.push({
       paneId,
       homeSessionName: meta.sessionName,
