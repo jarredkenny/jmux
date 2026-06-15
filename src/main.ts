@@ -1105,7 +1105,7 @@ function renderFrame(): void {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
     renderer.render(
       glassView.getGrid(),
-      { x: 0, y: 0 },
+      glassView.getFocusedCursor() ?? { x: 0, y: 0 },
       sidebarGrid,
       null, // no toolbar
       null, // no modal
@@ -1402,6 +1402,15 @@ const inputRouter = new InputRouter(
     },
     onSessionPrev: () => switchByOffset(-1),
     onSessionNext: () => switchByOffset(1),
+    glassActive: () => inGlass,
+    onGlassClick: (x, y) => {
+      glassView?.focusAt(x, y);
+      scheduleRender();
+    },
+    onGlassFocusMove: (dir) => {
+      glassView?.moveFocus(dir);
+      scheduleRender();
+    },
     onDiffToggle: () => toggleDiffPanel(),
     onDiffZoom: () => zoomDiffPanel(),
     onPaneNavRight: async () => {

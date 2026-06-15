@@ -220,6 +220,38 @@ export class GlassView {
     return this.tileOrder[this.focusedIndex] ?? null;
   }
 
+  /**
+   * Cursor position of the focused tile, translated into this view's grid
+   * coordinates (accounting for the tile's rect offset + 1-cell border).
+   * Returns null when there is no focused tile or it's scrolled off-screen.
+   */
+  getFocusedCursor(): { x: number; y: number } | null {
+    const paneId = this.tileOrder[this.focusedIndex];
+    if (!paneId) return null;
+    const tile = this.tiles.get(paneId);
+    if (!tile) return null;
+
+    const layout = computeTileLayout({
+      tileCount: this.tileOrder.length,
+      mainWidth: this.width,
+      mainHeight: this.height,
+      minTileWidth: this.opts.minTileWidth,
+      minTileHeight: this.opts.minTileHeight,
+      focusedIndex: this.focusedIndex,
+      scrollRow: this.scrollRow,
+    });
+    const rect = layout.tiles[this.focusedIndex];
+    if (!rect || !rect.visible) return null;
+
+    const cur = tile.bridge.getCursor();
+    const iCols = Math.max(0, rect.width - 2);
+    const iRows = Math.max(0, rect.height - 2);
+    // Clamp into the tile interior so the cursor never lands on the border.
+    const cx = Math.min(Math.max(0, cur.x), Math.max(0, iCols - 1));
+    const cy = Math.min(Math.max(0, cur.y), Math.max(0, iRows - 1));
+    return { x: rect.x + 1 + cx, y: rect.y + 1 + cy };
+  }
+
   teardown(): void {
     for (const paneId of [...this.tiles.keys()]) {
       this.teardownTile(paneId);

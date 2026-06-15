@@ -45,6 +45,10 @@ export interface InputRouterOptions {
   onSettingsScreen?: () => void;  // Ctrl-a I (uppercase) — full settings screen
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
+  // Pane-of-glass (Overview) additions
+  glassActive?: () => boolean;                       // true while the glass is shown
+  onGlassClick?: (x: number, y: number) => void;     // content-relative click → focus tile
+  onGlassFocusMove?: (dir: "left" | "right" | "up" | "down") => void; // Shift+arrows
   // Diff panel additions
   onDiffPanelData?: (data: string) => void;
   onDiffPanelFocusToggle?: () => void;
@@ -130,6 +134,15 @@ export class InputRouter {
     if (data === "\x1b[1;6B") {
       this.opts.onSessionNext?.();
       return;
+    }
+
+    // Pane-of-glass: Shift+arrows move focus between tiles (intercepted before
+    // the diff-panel Shift handling and before reaching tmux).
+    if (this.opts.glassActive?.() && !this.modalOpen) {
+      if (data === "\x1b[1;2D") { this.opts.onGlassFocusMove?.("left"); return; }
+      if (data === "\x1b[1;2C") { this.opts.onGlassFocusMove?.("right"); return; }
+      if (data === "\x1b[1;2A") { this.opts.onGlassFocusMove?.("up"); return; }
+      if (data === "\x1b[1;2B") { this.opts.onGlassFocusMove?.("down"); return; }
     }
 
     // Shift+Right/Left pane navigation integrating with diff panel
@@ -297,6 +310,16 @@ export class InputRouter {
           }
           return;
         }
+      }
+
+      // Pane-of-glass: a click in the main area focuses the tile under the
+      // cursor (toolbar is hidden in the glass, so no toolbar row offset).
+      if (this.opts.glassActive?.() && !mouse.release && !isMotion && !isWheel) {
+        this.opts.onGlassClick?.(
+          mouse.x - this.opts.sidebarCols - 1,
+          mouse.y - 1,
+        );
+        return;
       }
 
       // Mouse in main area — translate X coordinate and Y (offset by toolbar)
