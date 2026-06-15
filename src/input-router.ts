@@ -313,25 +313,18 @@ export class InputRouter {
         }
       }
 
-      // Pane-of-glass: wheel over a tile scrolls that tile (forward to its
-      // client so tmux copy-mode / the agent's own scrollback engages).
-      if (this.opts.glassActive?.() && isWheel) {
-        this.opts.onGlassMouse?.(
-          mouse.x - this.opts.sidebarCols - 1,
-          mouse.y - 1,
-          mouse.button,
-          mouse.release,
-        );
-        return;
-      }
-
-      // Pane-of-glass: a click in the main area focuses the tile under the
-      // cursor (toolbar is hidden in the glass, so no toolbar row offset).
-      if (this.opts.glassActive?.() && !mouse.release && !isMotion && !isWheel) {
-        this.opts.onGlassClick?.(
-          mouse.x - this.opts.sidebarCols - 1,
-          mouse.y - 1,
-        );
+      // Pane-of-glass: forward mouse to the tile under the cursor so wheel
+      // scrollback, copy-mode text selection (press→drag→release), and app
+      // mouse interaction all work. A fresh press also focuses that tile.
+      if (this.opts.glassActive?.()) {
+        const cx = mouse.x - this.opts.sidebarCols - 1; // toolbar hidden in glass
+        const cy = mouse.y - 1;
+        const bareMotion = isMotion && (mouse.button & 0x03) === 3;
+        if (bareMotion) return; // ignore hover motion (no button held)
+        if (!mouse.release && !isMotion && !isWheel) {
+          this.opts.onGlassClick?.(cx, cy); // focus on button-down
+        }
+        this.opts.onGlassMouse?.(cx, cy, mouse.button, mouse.release);
         return;
       }
 
