@@ -58,8 +58,9 @@ export class GlassExecutor {
 
     const plan = planRestore(record, liveWindows, liveSessions);
     for (const cmd of buildRestoreCommands(record, plan, { holdingWindowId, newSessionName })) {
-      runner.run(cmd);
+      if (!runner.run(cmd).ok) return; // keep the record; next reconcile retries
     }
+    // Drop the record only after all restore commands succeeded.
     store.remove(record.paneId);
   }
 }
