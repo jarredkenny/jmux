@@ -3717,13 +3717,14 @@ function refreshPinnedPanes(): void {
   for (const paneId of orderedPaneIds) {
     const loc = state.live.get(paneId)!;
     const meta = labelByPane.get(paneId)!;
+    const agentState = agentStateTracker.getState(loc.sessionId);
     entries.push({
       paneId,
       homeSessionName: meta.sessionName,
       label: meta.label,
-      agentState: agentStateTracker.getState(loc.sessionId),
+      agentState,
     });
-    specs.push({ paneId, sessionId: loc.sessionId, windowId: loc.windowId, label: meta.label });
+    specs.push({ paneId, sessionId: loc.sessionId, windowId: loc.windowId, label: meta.label, agentState });
   }
   sidebar.setPinnedPanes(entries);
   if (inGlass) glassView?.setTiles(specs);
