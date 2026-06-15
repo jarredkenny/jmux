@@ -14,7 +14,6 @@ import { ScreenBridge } from "../screen-bridge";
 import { TmuxPty } from "../tmux-pty";
 import { computeTileLayout } from "./layout";
 import type { TileRect } from "./layout";
-import { tileSessionName } from "./internal-sessions";
 
 // ─── Box-drawing characters ──────────────────────────────────────────────────
 const BOX_H  = "─"; // ─
