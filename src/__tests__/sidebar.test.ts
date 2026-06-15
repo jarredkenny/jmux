@@ -1361,7 +1361,7 @@ describe("Overview entry", () => {
     expect(row3).not.toContain("DONE"); // no complete panes → omitted
   });
 
-  test("two pinned panes render their labels as nested children", () => {
+  test("pinned panes are NOT listed individually — only the count/breakdown", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.setPinnedPanes([
       { paneId: "%1", label: "api › claude", homeSessionName: "api" },
@@ -1370,7 +1370,6 @@ describe("Overview entry", () => {
     sidebar.updateSessions(makeSessions([{ name: "api" }]));
     const grid = sidebar.getGrid();
 
-    // Overview at row 2, pane entries at rows 3 and 4, spacer at row 5
     let allText = "";
     for (let r = 0; r < 30; r++) {
       allText += Array.from(
@@ -1378,8 +1377,10 @@ describe("Overview entry", () => {
         (_, i) => grid.cells[r][i].char,
       ).join("") + "\n";
     }
-    expect(allText).toContain("claude");
-    expect(allText).toContain("npm test");
+    // The individual pane labels must NOT appear in the sidebar anymore.
+    expect(allText).not.toContain("npm test");
+    // But the count is present in the Command Center header.
+    expect(allText).toContain("Command Center · 2");
   });
 
   test("session that owns a pinned pane shows '(N pinned)' marker", () => {

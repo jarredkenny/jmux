@@ -189,8 +189,7 @@ type RenderItem =
   | { type: "group-header"; label: string; collapsed: boolean; sessionCount: number }
   | { type: "session"; sessionIndex: number; grouped: boolean; groupLabel?: string; pinnedCount?: number }
   | { type: "spacer" }
-  | { type: "overview"; paneCount: number }
-  | { type: "pinned-pane"; paneIndex: number };
+  | { type: "overview"; paneCount: number };
 
 const PINNED_GROUP_LABEL = "Pinned";
 
@@ -254,11 +253,8 @@ function buildRenderPlan(
   const items: RenderItem[] = [];
   const displayOrder: number[] = [];
 
-  // Overview block first — always present
+  // Command Center block first — always present (header + counts only).
   items.push({ type: "overview", paneCount: pinnedPanes.length });
-  for (let i = 0; i < pinnedPanes.length; i++) {
-    items.push({ type: "pinned-pane", paneIndex: i });
-  }
   items.push({ type: "spacer" });
 
   // Pinned sessions group
@@ -331,7 +327,7 @@ function itemHeight(item: RenderItem): number {
   if (item.type === "session") return 3;
   // Command Center: header row + an agent-state breakdown row when panes exist.
   if (item.type === "overview") return item.paneCount > 0 ? 2 : 1;
-  return 1; // group-header, spacer, or pinned-pane
+  return 1; // group-header or spacer
 }
 
 // --- Sidebar class ---
@@ -628,18 +624,6 @@ export class Sidebar {
             }
             this.rowToSelection.set(breakdownRow, { type: "overview" });
           }
-        }
-      } else if (item.type === "pinned-pane") {
-        const pane = this.pinnedPanes[item.paneIndex];
-        if (pane) {
-          const maxPaneLen = this.width - 3;
-          let paneLabel = pane.label;
-          if (paneLabel.length > maxPaneLen) {
-            paneLabel = paneLabel.slice(0, Math.max(0, maxPaneLen - 1)) + "\u2026";
-          }
-          writeString(grid, screenRow, 0, "\u2502 ", DIM_ATTRS);
-          writeString(grid, screenRow, 2, paneLabel, DIM_ATTRS);
-          this.rowToSelection.set(screenRow, { type: "pinnedPane", paneId: pane.paneId });
         }
       } else if (item.type === "group-header") {
         const isHovered = this.hoveredRow === screenRow;
