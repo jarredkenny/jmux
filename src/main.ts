@@ -16,6 +16,7 @@ import {
   type NewSessionProviders,
 } from "./new-session-modal";
 import { CreateIssueModal, type CreateIssueResult } from "./create-issue-modal";
+import { buildPinCommands } from "./cli/pane";
 import type { CellAttrs } from "./cell-grid";
 import { createGrid } from "./cell-grid";
 import type { Modal } from "./modal";
@@ -2005,6 +2006,20 @@ function buildPaletteCommands(): PaletteCommand[] {
     }
   }
 
+  // Dynamic: pin/unpin the current pane (the active pane of the current session)
+  if (currentSessionId) {
+    const activePane = glassRunner.run(
+      ["display-message", "-p", "-t", currentSessionId, "#{pane_id}"],
+    ).lines[0];
+    if (activePane) {
+      commands.push(
+        pinnedTracker.has(activePane)
+          ? { id: "unpin-pane", label: "Unpin current pane", category: "pane" }
+          : { id: "pin-pane", label: "Pin current pane", category: "pane" },
+      );
+    }
+  }
+
   // Static commands
   commands.push(
     { id: "new-session", label: "New session", category: "session" },
@@ -2552,6 +2567,22 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       sidebar.setPinnedSessions(pinnedSessions);
       configStore.set("pinnedSessions", [...pinnedSessions]);
       scheduleRender();
+    }
+    return;
+  }
+
+  if (commandId === "pin-pane" || commandId === "unpin-pane") {
+    if (currentSessionId) {
+      const activePane = glassRunner.run(
+        ["display-message", "-p", "-t", currentSessionId, "#{pane_id}"],
+      ).lines[0];
+      if (activePane) {
+        // Writers only set/unset the option; the reconciler does the break/join.
+        for (const cmd of buildPinCommands(commandId === "pin-pane" ? "pin" : "unpin", activePane)) {
+          glassRunner.run(cmd.args);
+        }
+        runPinReconcile();
+      }
     }
     return;
   }
