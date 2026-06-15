@@ -27,6 +27,10 @@ export interface JmuxConfig {
   cacheTimers?: boolean;
   windowBranches?: boolean;
   pinnedSessions?: string[];
+  /** Auto-surface every detected Claude/Codex pane on the Command Center. */
+  autoPinAgentPanes?: boolean;
+  /** Case-insensitive regex matched against pane_current_command for auto-pin (e.g. Codex). */
+  agentPaneCommandRegex?: string;
   projectDirs?: string[];
   wtmIntegration?: boolean;
   diffPanel?: {

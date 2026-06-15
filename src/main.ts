@@ -38,6 +38,7 @@ import { INTERNAL_SESSION_FILTER, PARK_SESSION } from "./glass/internal-sessions
 import { PinnedPaneTracker } from "./glass/pinned-pane-tracker";
 import { parsePaneStateLines, PANE_STATE_FORMAT } from "./glass/reflect";
 import { buildPaneLabel } from "./glass/pane-label";
+import { AGENT_DETECT_FORMAT, parseAgentDetectLines, detectAgentPanes } from "./glass/auto-detect";
 import { GlassView, type GlassTileSpec } from "./glass/view";
 import { OtelReceiver } from "./otel-receiver";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
@@ -216,6 +217,8 @@ const windowBranchesEnabled = configStore.config.windowBranches === true;
 const toolbarHeight = toolbarEnabled ? (windowBranchesEnabled ? 2 : 1) : 0;
 let claudeCommand = configStore.config.claudeCommand || "claude";
 let cacheTimersEnabled = configStore.config.cacheTimers !== false;
+let autoPinAgentPanes = configStore.config.autoPinAgentPanes === true;
+let agentPaneRegex = configStore.config.agentPaneCommandRegex ?? "codex";
 let pinnedSessions = new Set<string>(configStore.config.pinnedSessions ?? []);
 let infoPanelWidth: number | null = configStore.config.infoPanelWidth ?? null;
 let diffPanelSplitRatio = configStore.config.diffPanel?.splitRatio ?? 0.4;
@@ -591,8 +594,9 @@ agentStateTracker.onChange((sessionId) => {
     snapshotter?.onAgentState(sessionName, snapState);
   }
 
-  // Keep the Command Center agent-state breakdown live as agents change state.
-  if (pinnedTracker.size > 0) refreshPinnedPanes();
+  // Keep the Command Center live as agents change state — refresh both the
+  // breakdown (manual pins) and auto-detected agent panes.
+  if (pinnedTracker.size > 0 || autoPinAgentPanes) refreshPinnedPanes();
 
   scheduleRender();
 });
@@ -2222,6 +2226,28 @@ function buildSettingsCategories(): SettingsCategory[] {
             configStore.set("cacheTimers", cacheTimersEnabled);
           },
         },
+        {
+          id: "auto-pin-agents",
+          label: "Auto-pin agent panes to Command Center",
+          type: "boolean" as const,
+          getValue: () => autoPinAgentPanes ? "on" : "off",
+          onToggle: () => {
+            autoPinAgentPanes = !autoPinAgentPanes;
+            configStore.set("autoPinAgentPanes", autoPinAgentPanes);
+            refreshPinnedPanes();
+          },
+        },
+        {
+          id: "agent-pane-regex",
+          label: "Auto-pin command match (regex)",
+          type: "text" as const,
+          getValue: () => agentPaneRegex,
+          onTextCommit: (v) => {
+            agentPaneRegex = v;
+            configStore.set("agentPaneCommandRegex", v);
+            refreshPinnedPanes();
+          },
+        },
       ],
     },
     {
@@ -3658,12 +3684,22 @@ function refreshPinnedPanes(): void {
     });
   }
 
+  // Effective Command Center membership = manual pins ∪ auto-detected agent
+  // panes (when the setting is on). Auto panes are derived each refresh and are
+  // NOT written to @jmux-pinned.
+  const effective = new Set(pinnedTracker.all());
+  if (autoPinAgentPanes) {
+    const rows = parseAgentDetectLines(
+      glassRunner.run(["list-panes", "-a", "-F", AGENT_DETECT_FORMAT]).lines,
+    );
+    for (const id of detectAgentPanes(rows, agentPaneRegex)) effective.add(id);
+  }
+
   // Deterministic order (by session name, then pane id) so tiles/counts keep a
-  // stable arrangement across detach/reattach and restarts — `pinnedTracker`
-  // iteration order reflects tmux's arbitrary list-panes order otherwise.
+  // stable arrangement across detach/reattach and restarts — set iteration
+  // order reflects tmux's arbitrary list-panes order otherwise.
   const paneNum = (id: string): number => parseInt(id.replace(/^%/, ""), 10) || 0;
-  const orderedPaneIds = pinnedTracker
-    .all()
+  const orderedPaneIds = [...effective]
     .filter((id) => state.live.has(id) && labelByPane.has(id))
     .sort((a, b) => {
       const sa = labelByPane.get(a)!.sessionName;
