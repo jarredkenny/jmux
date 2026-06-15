@@ -92,20 +92,32 @@ session `__jmux_park`, and one group-member session per tile
 (`__jmux_tile_<paneId>`). All share the reserved **`__jmux_`** name prefix.
 
 There is currently no internal-session concept in the codebase, and
-`list-sessions` is consumed at six independent seams that would each surface
-these sessions:
-
-- `src/main.ts:915` `fetchSessions` (sidebar)
-- `src/snapshot/capture.ts:121` `onSessionsChanged` (snapshot persistence)
-- `src/cli/session.ts`, `src/cli/agent.ts`, `src/cli/issue.ts`,
-  `src/cli/status.ts` (ctl readers)
+`list-sessions` is consumed at many independent seams that would each surface
+these sessions. **The plan must enumerate them from the source of truth — `rg
+"list-sessions" src --glob '!src/__tests__/**'` — not from a fixed count**, since
+the set drifts. As of writing that includes (non-exhaustive): `src/main.ts`
+`fetchSessions` (sidebar) and `fetchAgentState`; `src/snapshot/capture.ts`
+`onSessionsChanged` and `scrollbackTick`; `src/snapshot/restore.ts`; and the ctl
+readers in `src/cli/session.ts` (several call sites, including the last-session
+guard), `src/cli/agent.ts`, `src/cli/issue.ts`, `src/cli/status.ts`. Some already
+filter to a specific session name and so won't surface internal sessions, but the
+plan must audit each rather than assume.
 
 **Contract:** a single shared predicate `isInternalSession(name)` (name starts
-with `__jmux_`) is the one source of truth, applied at every one of those seams.
-Where the query is a `list-sessions` call we additionally pass tmux's own
-`-f '#{m:__jmux_*,#{session_name}}'` negation so internal sessions are excluded
-at the source, with the TS predicate as the belt-and-suspenders backstop for any
-reader that does post-filtering. The reserved prefix is also rejected by
+with `__jmux_`) is the one source of truth, applied at every relevant seam. Where
+the query is a `list-sessions` call we additionally pass a tmux-level filter so
+internal sessions are excluded at the source:
+
+```
+-f '#{?#{m:__jmux_*,#{session_name}},0,1}'
+```
+
+`-f` keeps rows whose format evaluates to a non-zero, non-empty value; the
+conditional yields `0` for a name matching `__jmux_*` (skipped) and `1`
+otherwise (kept). This form uses only operators documented in the tmux 3.6a
+manual — there is **no** `#{!:}` logical-NOT operator, so do not use one. The TS
+predicate is the belt-and-suspenders backstop for any reader that post-filters
+rather than passing `-f`. The reserved prefix is also rejected by
 `sanitizeTmuxSessionName` so a user cannot create a colliding session.
 
 ### Accepted cost
@@ -201,9 +213,12 @@ even as names change):
   2. Then `break-pane` the pane into `__jmux_glass`.
   3. Re-tile.
 
-  Crash between (1) and (2): the pane is still home, the record is harmless and
-  is reconciled away (pane not in holding → discard record). Crash after (2):
-  the record points home, so unpin/restore still works.
+  Crash between (1) and (2): on restart the reconciler sees the pane still
+  desired-pinned (`@jmux-pinned` set) but not yet in holding, so it **retries the
+  checkout**, reusing or refreshing the persisted record. The record is discarded
+  only when the desired pin is gone *or* the pane no longer exists — never merely
+  because the pane is currently still home. Crash after (2): the record points
+  home, so unpin/restore still works.
 
 - **Unpin** (reconciler, on observing `@jmux-pinned` cleared):
   1. `join-pane` the pane back to `homeWindowId` and re-apply `homeLayout`.
@@ -292,7 +307,8 @@ Pure unit-testable logic (matching the existing `src/__tests__/*` style — no
 spawned tmux):
 
 - **`isInternalSession(name)` predicate** — `__jmux_` prefix detection; applied
-  at all six list-sessions seams; `sanitizeTmuxSessionName` rejects the prefix.
+  at every list-sessions seam (enumerated via `rg`, not a fixed count);
+  `sanitizeTmuxSessionName` rejects the prefix.
 - **Pin option parsing/reflection** — control-channel `@jmux-pinned` events →
   desired-membership set updates; config mirroring round-trip.
 - **Reconciler** — given (desired-pinned set, checked-out set + home records,
