@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import type { AdapterConfig } from "./adapters/types";
 import type { PanelView } from "./panel-view";
+import type { PinnedPaneRecord } from "./glass/types";
 import { logError } from "./log";
 
 export interface IssueWorkflowConfig {
@@ -27,6 +28,8 @@ export interface JmuxConfig {
   cacheTimers?: boolean;
   windowBranches?: boolean;
   pinnedSessions?: string[];
+  /** Home-restore records for panes broken out into the glass holding session. */
+  pinnedPanes?: PinnedPaneRecord[];
   projectDirs?: string[];
   wtmIntegration?: boolean;
   diffPanel?: {

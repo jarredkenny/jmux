@@ -3,6 +3,7 @@ import { sanitizeTmuxSessionName, buildOtelResourceAttrs, loadUserConfig, Config
 import { writeFileSync, unlinkSync, existsSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import type { PinnedPaneRecord } from "../glass/types";
 
 describe("sanitizeTmuxSessionName", () => {
   test("replaces dots with underscores", () => {
@@ -243,6 +244,24 @@ describe("ConfigStore", () => {
   test("configPath returns the path", () => {
     const store = new ConfigStore(cfgPath);
     expect(store.configPath).toBe(cfgPath);
+  });
+
+  test("round-trips pinnedPanes home records", () => {
+    const records: PinnedPaneRecord[] = [
+      {
+        paneId: "%7",
+        homeSessionId: "$2",
+        homeWindowId: "@5",
+        homeLayout: "bb62,159x48,0,0,3",
+        displaySessionName: "api",
+        displayWindowName: "tests",
+      },
+    ];
+    const store = new ConfigStore(cfgPath);
+    store.set("pinnedPanes", records);
+
+    const reloaded = new ConfigStore(cfgPath);
+    expect(reloaded.config.pinnedPanes).toEqual(records);
   });
 });
 
