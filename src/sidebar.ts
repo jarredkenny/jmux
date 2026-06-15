@@ -8,6 +8,8 @@ export interface PinnedPaneEntry {
   paneId: string;
   label: string;
   homeSessionName: string;
+  /** Agent state of this pane's session, for the Command Center breakdown. */
+  agentState?: AgentState | null;
 }
 
 export type SidebarSelection =
@@ -327,7 +329,9 @@ function buildRenderPlan(
 
 function itemHeight(item: RenderItem): number {
   if (item.type === "session") return 3;
-  return 1; // group-header, spacer, overview, or pinned-pane
+  // Command Center: header row + an agent-state breakdown row when panes exist.
+  if (item.type === "overview") return item.paneCount > 0 ? 2 : 1;
+  return 1; // group-header, spacer, or pinned-pane
 }
 
 // --- Sidebar class ---
@@ -590,15 +594,41 @@ export class Sidebar {
       }
 
       if (item.type === "overview") {
-        const overviewText = item.paneCount > 0
-          ? `\u25c9 Overview (${item.paneCount})`
-          : "\u25c9 Overview";
-        const maxOverviewLen = this.width - 2;
-        const overviewDisplay = overviewText.length > maxOverviewLen
-          ? overviewText.slice(0, maxOverviewLen - 1) + "\u2026"
-          : overviewText;
-        writeString(grid, screenRow, 1, overviewDisplay, GROUP_HEADER_ATTRS);
+        // Header row: "\u2318 Command Center \u00b7 N" (bold).
+        const headerAttrs: CellAttrs = { ...GROUP_HEADER_ATTRS, bold: true };
+        const headerText = item.paneCount > 0
+          ? `\u2318 Command Center \u00b7 ${item.paneCount}`
+          : "\u2318 Command Center";
+        const maxHeaderLen = this.width - 2;
+        const headerDisplay = headerText.length > maxHeaderLen
+          ? headerText.slice(0, maxHeaderLen - 1) + "\u2026"
+          : headerText;
+        writeString(grid, screenRow, 1, headerDisplay, headerAttrs);
         this.rowToSelection.set(screenRow, { type: "overview" });
+
+        // Breakdown row: colored "n RUN  n WAIT  n DONE" for non-zero states.
+        if (item.paneCount > 0) {
+          const breakdownRow = screenRow + 1;
+          const tally = { running: 0, waiting: 0, complete: 0 };
+          for (const p of this.pinnedPanes) {
+            if (p.agentState === "running") tally.running++;
+            else if (p.agentState === "waiting") tally.waiting++;
+            else if (p.agentState === "complete") tally.complete++;
+          }
+          const segs: { text: string; attrs: CellAttrs }[] = [];
+          if (tally.running > 0) segs.push({ text: `${tally.running} RUN`, attrs: AGENT_STATE_RUNNING_ATTRS });
+          if (tally.waiting > 0) segs.push({ text: `${tally.waiting} WAIT`, attrs: AGENT_STATE_WAITING_ATTRS });
+          if (tally.complete > 0) segs.push({ text: `${tally.complete} DONE`, attrs: AGENT_STATE_COMPLETE_ATTRS });
+          if (breakdownRow < contentBottom && segs.length > 0) {
+            let col = 3;
+            for (const seg of segs) {
+              if (col + seg.text.length > this.width) break;
+              writeString(grid, breakdownRow, col, seg.text, seg.attrs);
+              col += seg.text.length + 2; // two-space gap
+            }
+            this.rowToSelection.set(breakdownRow, { type: "overview" });
+          }
+        }
       } else if (item.type === "pinned-pane") {
         const pane = this.pinnedPanes[item.paneIndex];
         if (pane) {

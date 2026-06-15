@@ -1327,10 +1327,10 @@ describe("Overview entry", () => {
       { length: SIDEBAR_WIDTH },
       (_, i) => grid.cells[2][i].char,
     ).join("");
-    expect(row2).toContain("Overview");
+    expect(row2).toContain("Command Center");
   });
 
-  test("empty state: zero pinned panes, row 0 still contains 'Overview'", () => {
+  test("empty state: zero pinned panes, row 2 still contains 'Command Center'", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "api" }]));
     // No setPinnedPanes call — default is empty
@@ -1339,7 +1339,26 @@ describe("Overview entry", () => {
       { length: SIDEBAR_WIDTH },
       (_, i) => grid.cells[2][i].char,
     ).join("");
-    expect(row2).toContain("Overview");
+    expect(row2).toContain("Command Center");
+  });
+
+  test("command center shows a colored agent-state breakdown row", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.setPinnedPanes([
+      { paneId: "%1", label: "api › claude", homeSessionName: "api", agentState: "running" },
+      { paneId: "%2", label: "web › claude", homeSessionName: "web", agentState: "running" },
+      { paneId: "%3", label: "db › claude", homeSessionName: "db", agentState: "waiting" },
+    ]);
+    sidebar.updateSessions(makeSessions([{ name: "api" }]));
+    const grid = sidebar.getGrid();
+    // Header at row 2, breakdown at row 3.
+    const row3 = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[3][i].char,
+    ).join("");
+    expect(row3).toContain("2 RUN");
+    expect(row3).toContain("1 WAIT");
+    expect(row3).not.toContain("DONE"); // no complete panes → omitted
   });
 
   test("two pinned panes render their labels as nested children", () => {
@@ -1403,6 +1422,6 @@ describe("Overview entry", () => {
       (_, i) => grid.cells[2][i].char,
     ).join("");
     expect(row2).toContain("2");
-    expect(row2).toContain("Overview");
+    expect(row2).toContain("Command Center");
   });
 });

@@ -591,6 +591,9 @@ agentStateTracker.onChange((sessionId) => {
     snapshotter?.onAgentState(sessionName, snapState);
   }
 
+  // Keep the Command Center agent-state breakdown live as agents change state.
+  if (pinnedTracker.size > 0) refreshPinnedPanes();
+
   scheduleRender();
 });
 // --- Pane-of-glass wiring ---
@@ -2050,8 +2053,8 @@ function buildPaletteCommands(): PaletteCommand[] {
     if (activePane) {
       commands.push(
         pinnedTracker.has(activePane)
-          ? { id: "unpin-pane", label: "Unpin current pane", category: "pane" }
-          : { id: "pin-pane", label: "Pin current pane", category: "pane" },
+          ? { id: "unpin-pane", label: "Unpin from Command Center", category: "pane" }
+          : { id: "pin-pane", label: "Pin to Command Center", category: "pane" },
       );
     }
   }
@@ -3661,7 +3664,12 @@ function refreshPinnedPanes(): void {
     const loc = state.live.get(paneId);
     const meta = labelByPane.get(paneId);
     if (!loc || !meta) continue;
-    entries.push({ paneId, homeSessionName: meta.sessionName, label: meta.label });
+    entries.push({
+      paneId,
+      homeSessionName: meta.sessionName,
+      label: meta.label,
+      agentState: agentStateTracker.getState(loc.sessionId),
+    });
     specs.push({ paneId, sessionId: loc.sessionId, windowId: loc.windowId, label: meta.label });
   }
   sidebar.setPinnedPanes(entries);
