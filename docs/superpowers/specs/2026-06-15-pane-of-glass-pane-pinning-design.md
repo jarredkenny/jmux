@@ -49,13 +49,12 @@ it into a window of its own.
 The model:
 
 - A single hidden session **`__jmux_glass`** is the holding area ("glass-land").
-  It is filtered out of the sidebar exactly like the parked-main-client scratch
-  session.
-- **Pinning** a pane `break-pane`s it into its own window inside `__jmux_glass`.
-  That holding window then contains exactly one pane, so a client attached to it
-  shows the pane full-bleed **with no zoom**. On pin we record the pane's home:
-  source session, source window id, and the source window's `window_layout`
-  string (for exact geometry restoration on unpin).
+- **Checking a pane out** (the reconciler's response to a new desired pin — see
+  *Pin state*) `break-pane`s it into its own window inside `__jmux_glass`. That
+  holding window then contains exactly one pane, so a client attached to it shows
+  the pane full-bleed **with no zoom**. The reconciler records the pane's home —
+  source session id, source window id, and the source window's `window_layout`
+  string — for exact geometry restoration on unpin.
 - **Each tile** is a pty running `tmux new-session -t __jmux_glass` — a
   *session-group member*. Group members share the window list but each gets its
   **own current-window and own size**. Each tile client `select-window`s its
@@ -80,10 +79,34 @@ Three consequences, all strictly better than the zoom design:
    (durable). On restart jmux re-adopts `__jmux_glass`. If the tmux *server*
    died, the processes are gone anyway, so there is nothing to restore.
 
-The main interactive PTY client parks on a hidden scratch session while the
-glass is up (so it constrains no real session's size); the tile group-member
-clients are what jmux composites. Promote reuses a client attached to the
-holding session.
+The main interactive PTY client parks on a hidden scratch session
+(**`__jmux_park`**) while the glass is up (so it constrains no real session's
+size); the tile group-member clients are what jmux composites. Promote reuses a
+client attached to the holding session.
+
+### Internal sessions must be hidden everywhere
+
+This model creates three classes of jmux-internal tmux session that must **never**
+appear to the user or to agents: the holding session `__jmux_glass`, the parking
+session `__jmux_park`, and one group-member session per tile
+(`__jmux_tile_<paneId>`). All share the reserved **`__jmux_`** name prefix.
+
+There is currently no internal-session concept in the codebase, and
+`list-sessions` is consumed at six independent seams that would each surface
+these sessions:
+
+- `src/main.ts:915` `fetchSessions` (sidebar)
+- `src/snapshot/capture.ts:121` `onSessionsChanged` (snapshot persistence)
+- `src/cli/session.ts`, `src/cli/agent.ts`, `src/cli/issue.ts`,
+  `src/cli/status.ts` (ctl readers)
+
+**Contract:** a single shared predicate `isInternalSession(name)` (name starts
+with `__jmux_`) is the one source of truth, applied at every one of those seams.
+Where the query is a `list-sessions` call we additionally pass tmux's own
+`-f '#{m:__jmux_*,#{session_name}}'` negation so internal sessions are excluded
+at the source, with the TS predicate as the belt-and-suspenders backstop for any
+reader that does post-filtering. The reserved prefix is also rejected by
+`sanitizeTmuxSessionName` so a user cannot create a colliding session.
 
 ### Accepted cost
 
@@ -92,26 +115,39 @@ been checked out. The "checkout" framing makes this predictable, and the
 sidebar `(N pinned)` marker on the source session explains it. This is
 documented behavior, not a bug.
 
-## Pin source of truth
+## Pin state: desired membership vs physical checkout
 
-Per-pane tmux user option **`@jmux-pinned`** is the runtime source of truth —
-the same pattern as `@jmux-agent-state`, re-scoped from session to pane:
+Two distinct pieces of state, deliberately separated. Conflating them is what
+makes crash recovery fragile.
 
-- Writers: the TUI's own pin/unpin actions and the CLI both set the *same*
-  per-pane option (`set-option -p -t %ID @jmux-pinned 1` / unset), so they can
-  never diverge.
-- The TUI reflects the option via the control channel, updates its in-memory
-  pinned-pane set, re-tiles the glass live, and **mirrors to `config.json`** for
-  durability across a jmux restart.
-- Durability scope: pins are **tmux-server-lifetime**. A server restart kills
-  the pinned processes, so the config mirror only needs to cover
-  jmux-restart-while-the-server-is-alive. On startup the TUI re-adopts pins from
-  live panes (and the surviving `__jmux_glass` holding windows), dropping any
-  recorded pin whose pane no longer exists.
+1. **Desired membership** — per-pane tmux user option **`@jmux-pinned`**, the
+   declarative "this pane should be in the glass" signal. Same pattern as
+   `@jmux-agent-state`, re-scoped from session to pane.
+2. **Physical checkout** — the pane actually `break-pane`d into `__jmux_glass`,
+   plus its home-restore record. This is the *effect* of a desired pin.
 
-The deliberate boundary from ADR 0002 is preserved: **agents control glass
-*membership* (pins), never the user's *view*.** Pinning a pane makes it a tile;
-it does not force the user's screen into the glass.
+**Writers only touch desired state.** Both the TUI's own pin/unpin actions and
+the CLI do nothing more than set/unset `@jmux-pinned`
+(`set-option -p -t %ID @jmux-pinned 1` / unset). They never break/join panes.
+
+**The TUI reconciler owns the physical state.** It reflects `@jmux-pinned`
+changes via the control channel and drives the side effects: a pane that is
+*desired-pinned but not yet checked out* gets broken into the holding session and
+a home record written; a pane that is *checked out but no longer desired-pinned*
+gets joined home and its record cleared. This single reconcile loop is also what
+runs on startup, so crash recovery and steady-state use the exact same path — an
+agent setting the option, a user clicking pin, and a restart all converge through
+it. The reconciler mirrors home records to `config.json` for durability.
+
+Because the CLI only writes an option and the TUI owns all break/join, there is
+no IPC and the two can never diverge. This preserves ADR 0002's boundary:
+**agents control glass *membership* (the option), never the user's *view*.**
+
+**Durability scope:** pins are **tmux-server-lifetime**. A server restart kills
+the pinned processes, so the config mirror only needs to cover
+jmux-restart-while-the-server-is-alive. On restart the reconciler re-adopts the
+surviving `__jmux_glass` holding windows against the persisted home records,
+dropping any record whose pane no longer exists.
 
 ## Sidebar
 
@@ -135,8 +171,10 @@ view selector, not a session. It expands to list the pinned panes themselves:
   as today.
 - A session with a checked-out pane shows a `(N pinned)` marker, which doubles
   as the explanation for why a pane is missing from it.
-- Pane label: `<session> › <pane label>`, where pane label prefers the pane's
-  title and falls back to `pane_current_command`.
+- Pane label: `<session> › <pane label>`, where pane label is
+  `pane_title || "${pane_current_command} · ${basename(pane_current_path)}"`.
+  Including the cwd basename disambiguates the common case of two `node`/`bun`
+  panes in one session.
 
 The sidebar's active selection is therefore one of: a session id, a pinned-pane
 id, or the Overview sentinel.
@@ -146,17 +184,43 @@ selecting it shows a "Pin panes to populate the glass" placeholder.
 
 ## Lifecycle
 
-- **Pin**: `break-pane` the pane into `__jmux_glass`; record `{paneId,
-  homeSession, homeWindowId, homeLayout}`; set `@jmux-pinned` on the pane; mirror
-  to config; re-tile.
-- **Unpin**: `join-pane` the pane back to its home window; re-apply
-  `homeLayout`; unset the option; remove from config; re-tile.
-  - Home **window** gone but home **session** alive → rejoin as a new window.
-  - Home **session** gone → promote the holding window into its own new session
-    (**never kill the process**).
+Ordering is chosen so that a crash at any step leaves enough information to
+recover, never a pane stranded in glass-land without a way home.
+
+**Home-restore record** (ID-based — tmux IDs stay valid for the server lifetime
+even as names change):
+
+```
+{ paneId, homeSessionId, homeWindowId, homeLayout,
+  displaySessionName?, displayWindowName? }   // names are for UI only
+```
+
+- **Pin** (reconciler, on observing a newly desired-pinned pane):
+  1. Capture and **persist the home record** (`homeSessionId`, `homeWindowId`,
+     `homeLayout`) to config *first*.
+  2. Then `break-pane` the pane into `__jmux_glass`.
+  3. Re-tile.
+
+  Crash between (1) and (2): the pane is still home, the record is harmless and
+  is reconciled away (pane not in holding → discard record). Crash after (2):
+  the record points home, so unpin/restore still works.
+
+- **Unpin** (reconciler, on observing `@jmux-pinned` cleared):
+  1. `join-pane` the pane back to `homeWindowId` and re-apply `homeLayout`.
+  2. Only **after** the join+layout restore succeeds, drop the home record from
+     config and re-tile.
+
+  Keeping the record until restoration completes means a crash mid-unpin still
+  finds the record on next startup and retries the join.
+
+  - Home **window** gone but home **session** (`homeSessionId`) alive → rejoin as
+    a new window.
+  - Home **session** gone → promote the holding window into its own new
+    user-visible session (**never kill the process**).
+
 - **Pinned process exits** (test run finishes, dev server crashes): the pane is
-  gone, so jmux auto-clears the pin and drops the tile from the glass. The glass
-  shows only live panes.
+  gone, so the reconciler clears the desired pin, discards the home record, and
+  drops the tile. The glass shows only live panes.
 
 ## Navigation
 
@@ -227,13 +291,19 @@ to the TUI):
 Pure unit-testable logic (matching the existing `src/__tests__/*` style — no
 spawned tmux):
 
+- **`isInternalSession(name)` predicate** — `__jmux_` prefix detection; applied
+  at all six list-sessions seams; `sanitizeTmuxSessionName` rejects the prefix.
 - **Pin option parsing/reflection** — control-channel `@jmux-pinned` events →
-  pinned-pane set updates; config mirroring round-trip.
-- **`jmux ctl pane pin/unpin/pinned`** — command construction and JSON output.
+  desired-membership set updates; config mirroring round-trip.
+- **Reconciler** — given (desired-pinned set, checked-out set + home records,
+  live panes), compute the break/join/discard actions. This is the crash-recovery
+  and steady-state core; pure function over state, so directly unit-testable.
+- **`jmux ctl pane pin/unpin/pinned`** — command construction (option set/unset
+  only, no break/join) and JSON output.
 - **Layout column math** — `floor(mainWidth / minTileWidth)`, row packing,
   overflow/scroll, focused-tile-kept-in-view.
-- **Home-restore records** — break/join record shape; the three unpin
-  resolution branches (window gone / session gone / both present).
+- **Home-restore records** — ID-based record shape; the three unpin resolution
+  branches (window gone / session gone / both present).
 - **Sidebar render plan** — Overview entry with nested pinned-pane children,
   `(N pinned)` markers, empty state, selection model (session id | pane id |
   Overview sentinel).
