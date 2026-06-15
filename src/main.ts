@@ -3,7 +3,7 @@ import { TmuxPty } from "./tmux-pty";
 import { ScreenBridge } from "./screen-bridge";
 import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
-import { Sidebar } from "./sidebar";
+import { Sidebar, type PinnedPaneEntry } from "./sidebar";
 import { CommandPalette } from "./command-palette";
 import { InputModal } from "./input-modal";
 import { ListModal, type ListItem } from "./list-modal";
@@ -34,11 +34,10 @@ import type { DemoContext } from "./demo/setup";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { ConfigStore, sanitizeTmuxSessionName } from "./config";
-import { INTERNAL_SESSION_FILTER, GLASS_HOLDING_SESSION, PARK_SESSION } from "./glass/internal-sessions";
+import { INTERNAL_SESSION_FILTER, PARK_SESSION } from "./glass/internal-sessions";
 import { PinnedPaneTracker } from "./glass/pinned-pane-tracker";
-import { GlassExecutor, type RecordStore, type GlassRunner } from "./glass/executor";
-import { reconcilePins } from "./glass/reconciler";
 import { parsePaneStateLines, PANE_STATE_FORMAT } from "./glass/reflect";
+import { buildPaneLabel } from "./glass/pane-label";
 import { OtelReceiver } from "./otel-receiver";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
@@ -595,26 +594,10 @@ agentStateTracker.onChange((sessionId) => {
 });
 // --- Pane-of-glass wiring ---
 
-let glassHoldingSessionId: string | null = null;
 const pinnedTracker = new PinnedPaneTracker();
 
-const recordStore: RecordStore = {
-  get: () => [...(configStore.config.pinnedPanes ?? [])],
-  put: (record) => {
-    const next = (configStore.config.pinnedPanes ?? []).filter((r) => r.paneId !== record.paneId);
-    next.push(record);
-    configStore.set("pinnedPanes", next);
-  },
-  remove: (paneId) => {
-    configStore.set(
-      "pinnedPanes",
-      (configStore.config.pinnedPanes ?? []).filter((r) => r.paneId !== paneId),
-    );
-  },
-};
-
-const glassRunner: GlassRunner = {
-  run: (args) => {
+const glassRunner = {
+  run: (args: string[]): { ok: boolean; lines: string[] } => {
     const socketArgs = socketName ? ["-L", socketName] : [];
     const proc = Bun.spawnSync(["tmux", ...socketArgs, ...args], {
       stdout: "pipe",
@@ -2581,7 +2564,7 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
         for (const cmd of buildPinCommands(commandId === "pin-pane" ? "pin" : "unpin", activePane)) {
           glassRunner.run(cmd.args);
         }
-        runPinReconcile();
+        refreshPinnedPanes();
       }
     }
     return;
@@ -3415,7 +3398,7 @@ control.onEvent((event: ControlEvent) => {
       } else if (event.name === "windows") {
         fetchWindows();
       } else if (event.name === "pinned-panes") {
-        runPinReconcile();
+        refreshPinnedPanes();
       }
       break;
   }
@@ -3573,16 +3556,27 @@ async function fetchAgentState(): Promise<void> {
   agentStateTracker.pruneExcept(activeIds);
 }
 
-async function ensureGlassSessions(): Promise<void> {
-  await control.sendCommand(`new-session -d -s ${GLASS_HOLDING_SESSION}`).catch(() => {});
+async function ensureParkSession(): Promise<void> {
+  // Scratch session the main client parks on while the glass is up. Created up
+  // front (hidden via the internal-session filter) so it's ready when needed.
   await control.sendCommand(`new-session -d -s ${PARK_SESSION}`).catch(() => {});
-  const lines = await control
-    .sendCommand(`display-message -p -t ${GLASS_HOLDING_SESSION} '#{session_id}'`)
-    .catch(() => [] as string[]);
-  glassHoldingSessionId = lines[0]?.trim() || null;
 }
 
-function runPinReconcile(): void {
+/**
+ * Reflect the per-pane `@jmux-pinned` option into the tracker and the sidebar's
+ * Overview list. Non-destructive: panes are never moved — the glass renders live
+ * mirrors of them (see GlassView). Runs on the pinned-panes subscription, on
+ * pin/unpin, and once at startup.
+ */
+const PIN_LABEL_FORMAT = [
+  "#{pane_id}",
+  "#{session_name}",
+  "#{pane_title}",
+  "#{pane_current_command}",
+  "#{pane_current_path}",
+].join("\x1f");
+
+function refreshPinnedPanes(): void {
   const state = parsePaneStateLines(
     glassRunner.run(["list-panes", "-a", "-F", PANE_STATE_FORMAT]).lines,
   );
@@ -3591,24 +3585,23 @@ function runPinReconcile(): void {
   }
   pinnedTracker.pruneExcept([...state.live.keys()]);
 
-  const records = new Map(
-    (configStore.config.pinnedPanes ?? []).map((r) => [r.paneId, r]),
-  );
-  const actions = reconcilePins({
-    desired: state.pinned,
-    records,
-    live: state.live,
-    holdingSessionId: glassHoldingSessionId,
-  });
-  if (actions.length === 0) return;
-
-  const executor = new GlassExecutor({
-    runner: glassRunner,
-    store: recordStore,
-    holdingSession: GLASS_HOLDING_SESSION,
-    holdingSessionId: glassHoldingSessionId ?? "",
-  });
-  executor.apply(actions);
+  // Build sidebar Overview entries (labels) for the currently pinned panes.
+  const entries: PinnedPaneEntry[] = [];
+  for (const row of glassRunner.run(["list-panes", "-a", "-F", PIN_LABEL_FORMAT]).lines) {
+    const [paneId, sessionName, paneTitle, cmd, path] = row.split("\x1f");
+    if (!paneId || !pinnedTracker.has(paneId)) continue;
+    entries.push({
+      paneId,
+      homeSessionName: sessionName ?? "",
+      label: buildPaneLabel({
+        sessionName: sessionName ?? "",
+        paneTitle: paneTitle ?? "",
+        paneCurrentCommand: cmd ?? "",
+        paneCurrentPath: path ?? "",
+      }),
+    });
+  }
+  sidebar.setPinnedPanes(entries);
   scheduleRender();
 }
 
@@ -3678,8 +3671,8 @@ async function start(): Promise<void> {
   await syncControlClient();
   await fetchWindows();
   await fetchAgentState();
-  await ensureGlassSessions();
-  runPinReconcile();
+  await ensureParkSession();
+  refreshPinnedPanes();
 
   // One-time legacy migration: previous jmux versions wrote @jmux-attention=1
   // via a Stop hook. That option is now an orchestrator/human-gate signal owned

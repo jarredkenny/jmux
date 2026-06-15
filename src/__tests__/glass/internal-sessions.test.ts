@@ -2,7 +2,6 @@ import { describe, test, expect } from "bun:test";
 import {
   INTERNAL_SESSION_PREFIX,
   INTERNAL_SESSION_FILTER,
-  GLASS_HOLDING_SESSION,
   PARK_SESSION,
   tileSessionName,
   isInternalSession,
@@ -25,7 +24,6 @@ describe("isInternalSession", () => {
 
 describe("internal session names", () => {
   test("constants use the reserved prefix", () => {
-    expect(GLASS_HOLDING_SESSION.startsWith(INTERNAL_SESSION_PREFIX)).toBe(true);
     expect(PARK_SESSION.startsWith(INTERNAL_SESSION_PREFIX)).toBe(true);
   });
 

@@ -6,9 +6,6 @@
  */
 export const INTERNAL_SESSION_PREFIX = "__jmux_";
 
-/** The single hidden holding session pinned panes are broken out into. */
-export const GLASS_HOLDING_SESSION = `${INTERNAL_SESSION_PREFIX}glass`;
-
 /** Scratch session the main interactive client parks on while the glass is up. */
 export const PARK_SESSION = `${INTERNAL_SESSION_PREFIX}park`;
 
