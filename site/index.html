@@ -171,7 +171,7 @@
   .ecocard .tg{ color:var(--ink3); font-size:11.5px; margin-bottom:8px; }
   .ecocard p{ color:var(--ink2); font-size:12px; line-height:1.5; }
   .ecocard.dashed{ border-style:dashed; } .ecocard.dashed .nm{ color:var(--ac); }
-  .ecocard .new{ font-size:9px; color:var(--ac); background:rgba(52,211,153,.12); padding:1px 6px; border-radius:4px; margin-left:7px; vertical-align:middle; letter-spacing:.05em; }
+  .new{ font-size:9px; color:var(--ac); background:rgba(52,211,153,.12); padding:1px 6px; border-radius:4px; margin-left:7px; vertical-align:middle; letter-spacing:.05em; }
 
   /* CTA */
   .cta{ padding:120px 0; text-align:center; position:relative; }
@@ -236,7 +236,7 @@
 
 <!-- NAV -->
 <nav><div class="wrap row">
-  <div class="brand"><img src="assets/logo.svg" alt="" width="26" height="26"> jmux <span class="v">v0.17.0</span></div>
+  <div class="brand"><img src="assets/logo.svg" alt="" width="26" height="26"> jmux <span class="v">v0.18.0</span></div>
   <div class="navlinks">
     <a href="#features">Features</a><a href="#ecosystem">Ecosystem</a><a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener">Docs</a>
     <a href="https://github.com/jarredkenny/jmux" target="_blank" rel="noopener" class="btn ghost">GitHub</a><a href="#install" class="btn">Install</a>
@@ -413,6 +413,7 @@
         <tbody>
           <tr><td>Parallel agent orchestration</td><td class="jcol yes">✓</td><td class="yes">✓</td><td class="meh">Manual</td></tr>
           <tr><td>Agent run states (running / waiting / complete)</td><td class="jcol yes">✓</td><td class="yes">✓</td><td class="no">✗</td></tr>
+          <tr><td>Scriptable JSON control surface</td><td class="jcol yes">✓</td><td class="no">✗</td><td class="meh">Manual</td></tr>
           <tr><td>Integrated diff review</td><td class="jcol yes">✓</td><td class="yes">✓</td><td class="no">✗</td></tr>
           <tr><td>Issue &amp; PR/MR tracking</td><td class="jcol yes">✓</td><td class="meh">Extension</td><td class="no">✗</td></tr>
           <tr><td>Context &amp; cache visibility</td><td class="jcol yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
@@ -430,22 +431,24 @@
 <!-- 7 · CLI BAND -->
 <section class="sec surf cliband center">
   <div class="wrap">
-    <div class="animate-in"><div class="eyebrow">Agent automation</div>
+    <div class="animate-in"><div class="eyebrow">Agent orchestration <span class="new">NEW</span></div>
     <h2>Agents that orchestrate agents.</h2>
-    <p class="lead" style="margin-top:16px">A structured JSON CLI for agents and scripts to drive the workspace — dispatch Claude Code, capture pane output, send follow-ups. Context is auto-resolved from <span class="kbd">$TMUX</span>.</p></div>
+    <p class="lead" style="margin-top:16px">A structured JSON control surface for agents and scripts. Read every session's live state, start work from an issue, stream lifecycle events, and flag what needs a human — <strong style="color:var(--ink)">without scraping a single pane</strong>. Context auto-resolves from <span class="kbd">$TMUX</span>, so it works headless too.</p></div>
     <div class="term">
-      <div class="bar"><span class="d" style="background:#ff5f56"></span><span class="d" style="background:#ffbd2e"></span><span class="d" style="background:#27c93f"></span><small>agent-orchestrator</small></div>
+      <div class="bar"><span class="d" style="background:#ff5f56"></span><span class="d" style="background:#ffbd2e"></span><span class="d" style="background:#27c93f"></span><small>work-radar</small></div>
       <div class="body">
-        <div class="c"># Dispatch two agents in parallel</div>
-        <div><span class="a">$</span> <span class="w">jmux ctl run-claude --name fix-auth --message "Fix the auth bug"</span></div>
-        <div class="o">{"session":"fix-auth","pane":"%12","command_dispatched":true}</div>
-        <div><span class="a">$</span> <span class="w">jmux ctl run-claude --name add-tests --message "Add tests for utils"</span></div>
-        <div class="o">{"session":"add-tests","pane":"%14","command_dispatched":true}</div>
-        <div class="c"># List sessions, then read what an agent produced</div>
-        <div><span class="a">$</span> <span class="w">jmux ctl session list</span></div>
-        <div class="o">{"sessions":[{"name":"fix-auth","windows":1,"attached":false}, …]}</div>
-        <div><span class="a">$</span> <span class="w">jmux ctl pane capture --target %12 --lines 50</span></div>
-        <div class="o">{"target":"%12","content":"I've fixed the auth middleware…"}</div>
+        <div class="c"># One snapshot of the whole workspace — the work radar</div>
+        <div><span class="a">$</span> <span class="w">jmux ctl status</span></div>
+        <div class="o">{"sessions":[{"name":"TRA-812","agent":{"state":"running","ageSeconds":42},"links":[{"type":"issue","id":"TRA-812"}],"attention":false}, …]}</div>
+        <div class="c"># Start work straight from an issue — worktree, session, agent</div>
+        <div><span class="a">$</span> <span class="w">jmux ctl issue start TRA-933</span></div>
+        <div class="o">{"session":"TRA-933-rotate-keys","pane":"%21","issue":"TRA-933","reused":false}</div>
+        <div class="c"># Watch an agent's lifecycle — JSONL, no polling loop</div>
+        <div><span class="a">$</span> <span class="w">jmux ctl agent watch --session TRA-812</span></div>
+        <div class="o">{"type":"agent_state_changed","session":"TRA-812","state":<span class="am">"waiting"</span>}</div>
+        <div class="c"># Flag a session that needs a human decision</div>
+        <div><span class="a">$</span> <span class="w">jmux ctl session attention set --target TRA-812 --reason "tests fail"</span></div>
+        <div class="o">{"target":"TRA-812","attention":true,"reason":"tests fail"}</div>
       </div>
     </div>
   </div>
