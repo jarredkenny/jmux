@@ -29,4 +29,5 @@ export function isInternalSession(name: string): boolean {
  * and "1" otherwise (kept). Uses only operators documented in the tmux 3.6a
  * manual — there is NO `#{!:}` logical-NOT operator.
  */
-export const INTERNAL_SESSION_FILTER = "#{?#{m:__jmux_*,#{session_name}},0,1}";
+export const INTERNAL_SESSION_FILTER =
+  `#{?#{m:${INTERNAL_SESSION_PREFIX}*,#{session_name}},0,1}`;
