@@ -31,6 +31,15 @@ export interface ReconcileInput {
   holdingSessionId: string | null;
 }
 
+/** How to bring a checked-out pane home, given what still exists in tmux. */
+export type RestorePlan =
+  /** Home window still exists: join back and re-apply the saved layout. */
+  | { mode: "rejoinWindow"; windowId: string; layout: string }
+  /** Home window gone but session alive: join as a new window in that session. */
+  | { mode: "newWindowInSession"; sessionId: string }
+  /** Home session gone: promote the holding window into its own new session. */
+  | { mode: "newSession" };
+
 /** A decision the reconciler emits; the executor performs the tmux side effect. */
 export type ReconcileAction =
   /** Break a live, home, desired pane out into the holding session. */

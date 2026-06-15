@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { reconcilePins } from "../../glass/reconciler";
+import { reconcilePins, planRestore } from "../../glass/reconciler";
 import type {
   ReconcileInput,
   PinnedPaneRecord,
@@ -121,5 +121,28 @@ describe("reconcilePins", () => {
       }),
     );
     expect(actions).toEqual([]);
+  });
+});
+
+describe("planRestore", () => {
+  const record = rec("%1", {
+    homeSessionId: "$2",
+    homeWindowId: "@5",
+    homeLayout: "savedlayout",
+  });
+
+  test("home window alive → rejoin + layout", () => {
+    const plan = planRestore(record, new Set(["@5", "@6"]), new Set(["$2"]));
+    expect(plan).toEqual({ mode: "rejoinWindow", windowId: "@5", layout: "savedlayout" });
+  });
+
+  test("home window gone, session alive → new window in session", () => {
+    const plan = planRestore(record, new Set(["@6"]), new Set(["$2"]));
+    expect(plan).toEqual({ mode: "newWindowInSession", sessionId: "$2" });
+  });
+
+  test("home session gone → new session (never kill the process)", () => {
+    const plan = planRestore(record, new Set(["@6"]), new Set(["$9"]));
+    expect(plan).toEqual({ mode: "newSession" });
   });
 });

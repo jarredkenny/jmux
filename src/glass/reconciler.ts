@@ -1,4 +1,4 @@
-import type { ReconcileAction, ReconcileInput } from "./types";
+import type { PinnedPaneRecord, ReconcileAction, ReconcileInput, RestorePlan } from "./types";
 
 /**
  * Pure pin reconciler. Compares desired membership (`@jmux-pinned`) against the
@@ -42,4 +42,22 @@ export function reconcilePins(input: ReconcileInput): ReconcileAction[] {
   }
 
   return actions;
+}
+
+/**
+ * Decide how to bring a checked-out pane home. Encodes the spec's three
+ * branches; never destroys the pane's process.
+ */
+export function planRestore(
+  record: PinnedPaneRecord,
+  liveWindowIds: ReadonlySet<string>,
+  liveSessionIds: ReadonlySet<string>,
+): RestorePlan {
+  if (liveWindowIds.has(record.homeWindowId)) {
+    return { mode: "rejoinWindow", windowId: record.homeWindowId, layout: record.homeLayout };
+  }
+  if (liveSessionIds.has(record.homeSessionId)) {
+    return { mode: "newWindowInSession", sessionId: record.homeSessionId };
+  }
+  return { mode: "newSession" };
 }
