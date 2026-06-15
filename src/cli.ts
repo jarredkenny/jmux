@@ -3,6 +3,9 @@ import { handleSession } from "./cli/session";
 import { handleWindow } from "./cli/window";
 import { handlePane } from "./cli/pane";
 import { handleRunClaude } from "./cli/run-claude";
+import { handleAgent, runAgentWatch } from "./cli/agent";
+import { handleStatus } from "./cli/status";
+import { handleIssue } from "./cli/issue";
 
 export interface ParsedCtlArgs {
   group: string;
@@ -11,8 +14,16 @@ export interface ParsedCtlArgs {
   positional: string[];
 }
 
-const KNOWN_GROUPS = ["session", "window", "pane", "run-claude"] as const;
-const STANDALONE_GROUPS = new Set(["run-claude"]);
+const KNOWN_GROUPS = [
+  "session",
+  "window",
+  "pane",
+  "run-claude",
+  "agent",
+  "issue",
+  "status",
+] as const;
+const STANDALONE_GROUPS = new Set(["run-claude", "status"]);
 
 // Flags that take a value argument (after group/action, or global)
 const GLOBAL_VALUE_FLAGS = new Set(["session", "socket"]);
@@ -27,8 +38,24 @@ const VALUE_FLAGS = new Set([
   "file",
   "lines",
   "window",
+  "reason",
+  "repo",
+  "base-branch",
+  "issue",
+  "worktree",
+  "interval",
 ]);
-const BOOL_FLAGS = new Set(["force", "no-enter", "enter", "raw", "clear", "stdin"]);
+const BOOL_FLAGS = new Set([
+  "force",
+  "no-enter",
+  "enter",
+  "raw",
+  "clear",
+  "stdin",
+  "all",
+  "no-launch-agent",
+  "launch-agent",
+]);
 
 const CTL_HELP = `
 jmux ctl — programmatic interface to jmux/tmux
@@ -37,10 +64,13 @@ USAGE
   jmux ctl [GLOBAL FLAGS] <group> [action] [FLAGS] [args...]
 
 GROUPS
-  session    Manage tmux sessions
+  session    Manage tmux sessions (incl. session attention set/clear)
   window     Manage tmux windows
   pane       Manage tmux panes
   run-claude Run a Claude Code agent in a session
+  agent      Inspect agent state (agent state | agent watch)
+  issue      Link/start work from issues (issue get|link|unlink|start)
+  status     One-shot orchestration snapshot of the whole workspace
 
 GLOBAL FLAGS
   --session <name>   Target session name
@@ -58,6 +88,12 @@ FLAGS
   --file <val>         File path
   --lines <val>        Number of lines
   --window <val>       Window target
+  --reason <val>       Attention reason text
+  --repo <val>         Repository path (issue start/link)
+  --base-branch <val>  Base branch for new worktree (issue start)
+  --interval <val>     Poll interval in ms (agent watch)
+  --all                Operate on all sessions (agent state/watch)
+  --no-launch-agent    Don't auto-launch Claude (issue start)
   --force              Skip confirmation prompts
   --no-enter           Don't send Enter after keys
   --enter              Send Enter after keys
@@ -166,6 +202,14 @@ export async function runCtl(argv: string[]): Promise<void> {
   const ctx = resolveContext({ env: process.env as Record<string, string | undefined>, flags: parsed.flags });
 
   try {
+    // `agent watch` is the one long-running, streaming command: it emits JSONL
+    // directly to stdout and only returns on SIGINT, so it bypasses the
+    // single-JSON-envelope path below.
+    if (parsed.group === "agent" && parsed.action === "watch") {
+      await runAgentWatch(ctx, parsed);
+      return;
+    }
+
     let result: unknown;
     switch (parsed.group) {
       case "session":
@@ -179,6 +223,15 @@ export async function runCtl(argv: string[]): Promise<void> {
         break;
       case "run-claude":
         result = handleRunClaude(ctx, parsed);
+        break;
+      case "agent":
+        result = await handleAgent(ctx, parsed);
+        break;
+      case "issue":
+        result = await handleIssue(ctx, parsed);
+        break;
+      case "status":
+        result = handleStatus(ctx, parsed);
         break;
       default:
         throw new CliError(`Unknown group: ${parsed.group}`);

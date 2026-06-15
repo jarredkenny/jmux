@@ -3565,13 +3565,24 @@ async function start(): Promise<void> {
   await fetchWindows();
   await fetchAgentState();
 
-  // One-shot cleanup: previous jmux versions wrote @jmux-attention=1 via a
-  // Stop hook. The hook will be replaced when the user re-runs
-  // --install-agent-hooks, but old stale flags may linger across sessions.
-  // Fire-and-forget; per-session failures are harmless.
-  for (const session of currentSessions) {
+  // One-time legacy migration: previous jmux versions wrote @jmux-attention=1
+  // via a Stop hook. That option is now an orchestrator/human-gate signal owned
+  // by `jmux ctl session attention`, so we must NOT clear it on every launch —
+  // that would clobber a flag Sonny set. Instead clear stale legacy flags
+  // exactly once per tmux server, guarded by a server-global marker, then leave
+  // orchestrator-set flags untouched across subsequent restarts.
+  const legacyClearedMarker = await control
+    .sendCommand("show-option -gqv @jmux-attention-legacy-cleared")
+    .catch(() => [] as string[]);
+  const alreadyCleared = legacyClearedMarker.some((l) => l.trim() === "1");
+  if (!alreadyCleared) {
+    for (const session of currentSessions) {
+      void control
+        .sendCommand(`set-option -t ${tq(session.id)} -u @jmux-attention`)
+        .catch(() => {});
+    }
     void control
-      .sendCommand(`set-option -t ${tq(session.id)} -u @jmux-attention`)
+      .sendCommand("set-option -g @jmux-attention-legacy-cleared 1")
       .catch(() => {});
   }
 

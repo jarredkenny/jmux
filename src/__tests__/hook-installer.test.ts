@@ -25,6 +25,14 @@ describe("buildHookBlock", () => {
       'show-option -qv @jmux-agent-state',
     );
   });
+
+  test("every hook records the real agent pane via @jmux-agent-pane", () => {
+    const block = buildHookBlock();
+    for (const [, entries] of Object.entries(block)) {
+      const cmd = entries[0].hooks[0].command;
+      expect(cmd).toContain('@jmux-agent-pane "$TMUX_PANE"');
+    }
+  });
 });
 
 describe("detectInstalledKind", () => {

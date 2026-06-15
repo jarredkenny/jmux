@@ -67,4 +67,65 @@ describe("parseCtlArgs", () => {
   test("errors on unknown group", () => {
     expect(() => parseCtlArgs(["bogus", "list"])).toThrow();
   });
+
+  test("parses status as a standalone group", () => {
+    const result = parseCtlArgs(["status"]);
+    expect(result.group).toBe("status");
+    expect(result.action).toBeNull();
+  });
+
+  test("parses agent state with --all", () => {
+    const result = parseCtlArgs(["agent", "state", "--all"]);
+    expect(result.group).toBe("agent");
+    expect(result.action).toBe("state");
+    expect(result.flags.all).toBe(true);
+  });
+
+  test("parses agent watch with a trailing --session", () => {
+    const result = parseCtlArgs(["agent", "watch", "--session", "TRA-1"]);
+    expect(result.action).toBe("watch");
+    expect(result.flags.session).toBe("TRA-1");
+  });
+
+  test("parses session attention set with target and reason", () => {
+    const result = parseCtlArgs([
+      "session",
+      "attention",
+      "set",
+      "--target",
+      "TRA-1",
+      "--reason",
+      "ci failed",
+    ]);
+    expect(result.group).toBe("session");
+    expect(result.action).toBe("attention");
+    expect(result.positional).toEqual(["set"]);
+    expect(result.flags.target).toBe("TRA-1");
+    expect(result.flags.reason).toBe("ci failed");
+  });
+
+  test("parses issue link with two positional args", () => {
+    const result = parseCtlArgs(["issue", "link", "TRA-1", "session-name"]);
+    expect(result.group).toBe("issue");
+    expect(result.action).toBe("link");
+    expect(result.positional).toEqual(["TRA-1", "session-name"]);
+  });
+
+  test("parses issue start with repo, base-branch and no-launch-agent", () => {
+    const result = parseCtlArgs([
+      "issue",
+      "start",
+      "TRA-1",
+      "--repo",
+      "/repo",
+      "--base-branch",
+      "develop",
+      "--no-launch-agent",
+    ]);
+    expect(result.action).toBe("start");
+    expect(result.positional).toEqual(["TRA-1"]);
+    expect(result.flags.repo).toBe("/repo");
+    expect(result.flags["base-branch"]).toBe("develop");
+    expect(result.flags["no-launch-agent"]).toBe(true);
+  });
 });

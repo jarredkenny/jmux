@@ -27,18 +27,24 @@ export interface InstallOutcome {
   settings: ClaudeSettings;
 }
 
+// `@jmux-agent-pane` records the pane actually running Claude ($TMUX_PANE),
+// distinct from a session's *active* pane (which drifts after splits). This
+// lets `jmux ctl agent state` report the real agent pane an orchestrator should
+// send keys to, rather than guessing the active one.
+const SET_AGENT_PANE =
+  'tmux set-option @jmux-agent-pane "$TMUX_PANE" 2>/dev/null';
 const SET_RUNNING =
-  "tmux set-option @jmux-agent-state running 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null || true";
+  `tmux set-option @jmux-agent-state running 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null && ${SET_AGENT_PANE} || true`;
 const SET_WAITING =
-  "tmux set-option @jmux-agent-state waiting 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null || true";
+  `tmux set-option @jmux-agent-state waiting 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null && ${SET_AGENT_PANE} || true`;
 const SET_COMPLETE =
-  "tmux set-option @jmux-agent-state complete 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null || true";
+  `tmux set-option @jmux-agent-state complete 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null && ${SET_AGENT_PANE} || true`;
 // PreToolUse fires on EVERY tool invocation mid-task. Without this guard
 // every call would overwrite @jmux-agent-state-since, resetting the row-1
 // elapsed timer and making a stuck tool invisible. The other three hooks
 // fire at clean transition points and don't need the guard.
 const SET_RUNNING_IDEMPOTENT =
-  "[ \"$(tmux show-option -qv @jmux-agent-state 2>/dev/null)\" = \"running\" ] || { tmux set-option @jmux-agent-state running 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null; } || true";
+  `[ "$(tmux show-option -qv @jmux-agent-state 2>/dev/null)" = "running" ] || { tmux set-option @jmux-agent-state running 2>/dev/null && tmux set-option @jmux-agent-state-since $(date +%s) 2>/dev/null && ${SET_AGENT_PANE}; } || true`;
 
 const TIMEOUT = 5;
 

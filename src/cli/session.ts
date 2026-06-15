@@ -29,6 +29,58 @@ export function parseSessionListOutput(lines: string[]): SessionEntry[] {
     });
 }
 
+export interface AttentionCommand {
+  args: string[];
+  /** When true, a tmux failure aborts; when false (clearing an option that may
+   * not be set), failure is ignored. */
+  required: boolean;
+}
+
+/**
+ * Pure builder for the tmux commands that set/clear the orchestration attention
+ * flag (`@jmux-attention` / `@jmux-attention-reason`). Kept pure so the exact
+ * option semantics are testable without a live tmux server.
+ *
+ * - `set` always sets `@jmux-attention 1`; with a reason it sets the reason,
+ *   without one it clears any stale reason.
+ * - `clear` unsets both options (idempotent — `-u` on an unset option is fine).
+ */
+export function buildAttentionCommands(
+  verb: string,
+  target: string,
+  reason: string | null,
+): AttentionCommand[] {
+  if (verb === "set") {
+    const cmds: AttentionCommand[] = [
+      { args: ["set-option", "-t", target, "@jmux-attention", "1"], required: true },
+    ];
+    if (reason !== null) {
+      cmds.push({
+        args: ["set-option", "-t", target, "@jmux-attention-reason", reason],
+        required: true,
+      });
+    } else {
+      cmds.push({
+        args: ["set-option", "-t", target, "-u", "@jmux-attention-reason"],
+        required: false,
+      });
+    }
+    return cmds;
+  }
+  if (verb === "clear") {
+    return [
+      { args: ["set-option", "-t", target, "-u", "@jmux-attention"], required: true },
+      {
+        args: ["set-option", "-t", target, "-u", "@jmux-attention-reason"],
+        required: false,
+      },
+    ];
+  }
+  throw new CliError(
+    `Unknown attention verb "${verb}". Use: set | clear`,
+  );
+}
+
 export function validateSessionCreate(flags: Record<string, string | boolean>): {
   name: string;
   dir: string;
@@ -177,9 +229,30 @@ export function handleSession(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
       return { renamed: newName, from: target };
     }
 
+    case "attention": {
+      const verb = parsed.positional[0] ?? "";
+      if (!flags.target || typeof flags.target !== "string") {
+        throw new CliError("--target is required");
+      }
+      const target = flags.target;
+      const reason =
+        verb === "set" && typeof flags.reason === "string" ? flags.reason : null;
+
+      const commands = buildAttentionCommands(verb, target, reason);
+      for (const cmd of commands) {
+        const result = runTmuxDirect(cmd.args, ctx.socket);
+        if (cmd.required) tmuxOrThrow(result);
+      }
+
+      if (verb === "set") {
+        return { target, attention: true, reason };
+      }
+      return { target, attention: false };
+    }
+
     default:
       throw new CliError(
-        `Unknown session action "${action}". Known actions: list, create, info, switch, kill, rename`,
+        `Unknown session action "${action}". Known actions: list, create, info, switch, kill, rename, attention`,
       );
   }
 }
