@@ -31,7 +31,11 @@ export interface TileLayout {
  * focused tile's row is kept in view.
  */
 export function computeTileLayout(input: TileLayoutInput): TileLayout {
-  const { tileCount, mainWidth, mainHeight, minTileWidth, minTileHeight, focusedIndex } = input;
+  const { tileCount, mainWidth, mainHeight, focusedIndex } = input;
+  // Guard against a zero/negative floor sneaking in from config: a 0 divisor
+  // would propagate Infinity through the column/scroll math.
+  const minTileWidth = Math.max(1, input.minTileWidth);
+  const minTileHeight = Math.max(1, input.minTileHeight);
 
   const columns = Math.max(1, Math.min(tileCount, Math.floor(mainWidth / minTileWidth) || 1));
   const totalRows = Math.max(1, Math.ceil(tileCount / columns));
