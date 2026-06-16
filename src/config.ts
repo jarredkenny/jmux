@@ -20,6 +20,17 @@ export interface SnapshotConfig {
   dir: string | null;
 }
 
+/**
+ * Agent-state indicator colors, stored as ANSI color names (e.g. "green").
+ * Resolution + validation lives in state-colors.ts; any unset or invalid name
+ * falls back to that state's default there.
+ */
+export interface StateColorConfig {
+  running?: string;
+  waiting?: string;
+  complete?: string;
+}
+
 export interface JmuxConfig {
   sidebarWidth?: number;
   infoPanelWidth?: number;
@@ -41,6 +52,8 @@ export interface JmuxConfig {
   panelViews?: PanelView[];
   issueWorkflow?: IssueWorkflowConfig;
   snapshot?: SnapshotConfig;
+  /** Per-state indicator colors (ANSI color names). */
+  stateColors?: StateColorConfig;
 }
 
 /**

@@ -2,13 +2,33 @@ import type { CellGrid, AgentState } from "../types";
 import { createGrid, writeString, cellWidth, type CellAttrs } from "../cell-grid";
 import { ColorMode } from "../types";
 
-// Border palette by agent state — matches the sidebar's agent-state colors
-// (running=green 2, waiting=yellow 3, complete=blue 4).
-const AGENT_BORDER_PALETTE: Record<AgentState, number> = {
+// Default border palette by agent state — matches the sidebar's defaults
+// (running=green 2, waiting=yellow 3, complete=blue 4). Overridable via config.
+export const DEFAULT_BORDER_PALETTE: Record<AgentState, number> = {
   running: 2,
   waiting: 3,
   complete: 4,
 };
+
+/**
+ * Resolve a tile's border cell attributes from its agent state and focus.
+ * State colors come from the configured palette; focus stays legible via
+ * bold (focused) / dim (unfocused). Panes with no state fall back to
+ * bright-white (focused) / dark-gray (unfocused).
+ */
+export function borderAttrsForState(
+  state: AgentState | null | undefined,
+  isFocused: boolean,
+  palette: Record<AgentState, number>,
+): { fg: number; fgMode: ColorMode; bold: boolean; dim: boolean } {
+  const stateFg = state ? palette[state] : undefined;
+  return {
+    fg: stateFg ?? (isFocused ? 15 : 8),
+    fgMode: ColorMode.Palette,
+    bold: stateFg !== undefined && isFocused,
+    dim: stateFg !== undefined && !isFocused,
+  };
+}
 
 // ─── Tile label chip ─────────────────────────────────────────────────────────
 // The label renders as a filled chip on the top border, like the toolbar's
@@ -49,6 +69,8 @@ export interface GlassViewOptions {
   minTileWidth: number;
   minTileHeight: number;
   onFrame: () => void; // call to request a re-render (debounced by caller)
+  /** Per-state border colors (palette indices). Defaults to green/yellow/blue. */
+  stateColors?: Record<AgentState, number>;
 }
 
 // ─── Internal tile state ──────────────────────────────────────────────────────
@@ -73,9 +95,17 @@ export class GlassView {
   private width: number = 80;
   private height: number = 24;
   private scrollRow: number = 0;
+  private stateColors: Record<AgentState, number>;
 
   constructor(opts: GlassViewOptions) {
     this.opts = opts;
+    this.stateColors = opts.stateColors ?? { ...DEFAULT_BORDER_PALETTE };
+  }
+
+  /** Set the per-state border colors (palette indices). */
+  setStateColors(palette: Record<AgentState, number>): void {
+    this.stateColors = palette;
+    this.opts.onFrame();
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -468,13 +498,8 @@ export class GlassView {
     // Border color encodes agent state (matching the sidebar). Focus stays
     // legible via bold (focused) vs dim (unfocused). Panes with no agent state
     // fall back to bright-white (focused) / dark-gray (unfocused).
-    const state = tile.spec.agentState;
-    const stateFg = state ? AGENT_BORDER_PALETTE[state] : undefined;
-    const borderFg = stateFg ?? (isFocused ? 15 : 8);
-    const borderFgMode = ColorMode.Palette;
-    const borderBold = stateFg !== undefined && isFocused;
-    const borderDim = stateFg !== undefined && !isFocused;
-    const borderAttrs = { fg: borderFg, fgMode: borderFgMode, bold: borderBold, dim: borderDim };
+    const borderAttrs = borderAttrsForState(tile.spec.agentState, isFocused, this.stateColors);
+    const { fg: borderFg, fgMode: borderFgMode, bold: borderBold, dim: borderDim } = borderAttrs;
 
     // The label pops in bold emerald when focused, dims to gray otherwise.
     const labelAttrs: CellAttrs = isFocused

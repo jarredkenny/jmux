@@ -34,6 +34,8 @@ import type { DemoContext } from "./demo/setup";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { ConfigStore, sanitizeTmuxSessionName } from "./config";
+import { resolveStateColors, STATE_COLOR_NAMES, DEFAULT_STATE_COLORS } from "./state-colors";
+import type { AgentState } from "./types";
 import { INTERNAL_SESSION_FILTER, PARK_SESSION } from "./glass/internal-sessions";
 import { PinnedPaneTracker } from "./glass/pinned-pane-tracker";
 import { parsePaneStateLines, PANE_STATE_FORMAT } from "./glass/reflect";
@@ -580,6 +582,7 @@ const pty = new TmuxPty({
 const bridge = new ScreenBridge(mainCols, ptyRows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, rows);
+sidebar.setStateColors(resolveStateColors(configStore.config.stateColors));
 const agentStateTracker = new AgentStateTracker();
 agentStateTracker.onChange((sessionId) => {
   const record = agentStateTracker.getRecord(sessionId);
@@ -2123,6 +2126,21 @@ function buildPaletteCommands(): PaletteCommand[] {
     label: `Cache timers: ${cfg.cacheTimers !== false ? "on" : "off"}`,
     category: "setting",
   });
+  commands.push({
+    id: "setting-running-color",
+    label: `Running state color: ${currentStateColorName("running")}`,
+    category: "setting",
+  });
+  commands.push({
+    id: "setting-waiting-color",
+    label: `Waiting state color: ${currentStateColorName("waiting")}`,
+    category: "setting",
+  });
+  commands.push({
+    id: "setting-complete-color",
+    label: `Complete state color: ${currentStateColorName("complete")}`,
+    category: "setting",
+  });
 
   // Adapter settings
   const adaptersCfg = cfg.adapters ?? {};
@@ -2191,6 +2209,14 @@ function buildPaletteCommands(): PaletteCommand[] {
   return commands;
 }
 
+function currentStateColorName(state: AgentState): string {
+  return configStore.config.stateColors?.[state] ?? DEFAULT_STATE_COLORS[state];
+}
+
+function persistStateColor(state: AgentState, name: string): void {
+  configStore.set("stateColors", { ...configStore.config.stateColors, [state]: name });
+}
+
 function buildSettingsCategories(): SettingsCategory[] {
   const wf = () => configStore.config.issueWorkflow;
   const adapterCfg = () => configStore.config.adapters;
@@ -2252,6 +2278,24 @@ function buildSettingsCategories(): SettingsCategory[] {
             configStore.set("agentPaneCommandRegex", v);
             refreshPinnedPanes();
           },
+        },
+        {
+          id: "running-color", label: "Running state color", type: "list" as const,
+          getValue: () => currentStateColorName("running"),
+          options: [...STATE_COLOR_NAMES],
+          onOptionSelect: (v) => persistStateColor("running", v),
+        },
+        {
+          id: "waiting-color", label: "Waiting state color", type: "list" as const,
+          getValue: () => currentStateColorName("waiting"),
+          options: [...STATE_COLOR_NAMES],
+          onOptionSelect: (v) => persistStateColor("waiting", v),
+        },
+        {
+          id: "complete-color", label: "Complete state color", type: "list" as const,
+          getValue: () => currentStateColorName("complete"),
+          options: [...STATE_COLOR_NAMES],
+          onOptionSelect: (v) => persistStateColor("complete", v),
         },
       ],
     },
@@ -2866,6 +2910,24 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
       configStore.set("cacheTimers", !current);
       return;
     }
+    case "setting-running-color":
+    case "setting-waiting-color":
+    case "setting-complete-color": {
+      const state: AgentState =
+        commandId === "setting-running-color" ? "running"
+        : commandId === "setting-waiting-color" ? "waiting"
+        : "complete";
+      const modal = new ListModal({
+        header: `${state.charAt(0).toUpperCase()}${state.slice(1)} State Color`,
+        subheader: `Current: ${currentStateColorName(state)}`,
+        items: STATE_COLOR_NAMES.map((name) => ({ id: name, label: name })),
+      });
+      modal.open();
+      openModal(modal, async (value) => {
+        persistStateColor(state, (value as ListItem).id);
+      });
+      return;
+    }
     case "setting-code-host": {
       const options = [
         { id: "gitlab", label: "GitLab" },
@@ -3279,6 +3341,12 @@ try {
       sidebar.setPinnedSessions(pinnedSessions);
       scheduleRender();
     }
+
+    // Hot-apply agent-state indicator colors to sidebar + Command Center.
+    const newStateColors = resolveStateColors(updated.stateColors);
+    sidebar.setStateColors(newStateColors);
+    glassView?.setStateColors(newStateColors);
+    scheduleRender();
 
     const needsResize = newWidth !== sidebarWidth;
 
@@ -3742,6 +3810,7 @@ function ensureGlassView(): GlassView {
       minTileWidth: 80,
       minTileHeight: 10,
       onFrame: scheduleRender,
+      stateColors: resolveStateColors(configStore.config.stateColors),
     });
   }
   return glassView;

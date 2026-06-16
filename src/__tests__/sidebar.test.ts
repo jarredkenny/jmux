@@ -185,6 +185,38 @@ describe("Sidebar", () => {
     expect(foundBang).toBe(true);
   });
 
+  test("applies configured state color to the waiting indicator, preserving bold", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.setStateColors({ running: 6, waiting: 9, complete: 7 });
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setAgentStateRecord("$0", { state: "waiting", since: Date.now() });
+    const grid = sidebar.getGrid();
+    let cell: (typeof grid.cells)[number][number] | null = null;
+    for (let r = 2; r < 20; r++) {
+      if (grid.cells[r][1].char === "!") {
+        cell = grid.cells[r][1];
+        break;
+      }
+    }
+    expect(cell).not.toBeNull();
+    expect(cell!.fg).toBe(9); // configured brightred
+    expect(cell!.bold).toBe(true); // emphasis preserved
+  });
+
+  test("defaults waiting indicator to palette yellow when unconfigured", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setAgentStateRecord("$0", { state: "waiting", since: Date.now() });
+    const grid = sidebar.getGrid();
+    for (let r = 2; r < 20; r++) {
+      if (grid.cells[r][1].char === "!") {
+        expect(grid.cells[r][1].fg).toBe(3); // yellow default
+        return;
+      }
+    }
+    throw new Error("waiting indicator not found");
+  });
+
   test("renders red error glyph when lastError is set, overriding agent-state/activity", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));

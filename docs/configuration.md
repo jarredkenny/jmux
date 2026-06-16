@@ -121,6 +121,11 @@ jmux's own settings (not tmux settings) live in `~/.config/jmux/config.json`. Ed
   "sidebarWidth": 26,
   "claudeCommand": "claude",
   "cacheTimers": true,
+  "stateColors": {
+    "running": "green",
+    "waiting": "yellow",
+    "complete": "blue"
+  },
   "pinnedSessions": [],
   "projectDirs": ["~/Code", "~/Projects"],
   "wtmIntegration": true,
@@ -142,5 +147,16 @@ jmux's own settings (not tmux settings) live in `~/.config/jmux/config.json`. Ed
   "panelViews": []
 }
 ```
+
+### Agent-state colors
+
+`stateColors` sets the color used for each agent state across every indicator —
+sidebar dots/flags/checkmarks, the Command Center `n RUN / n WAIT / n DONE`
+breakdown, and the Command Center tile borders. Each value is a named ANSI color:
+`black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, and their
+`bright*` variants (e.g. `brightblue`). Unset or unrecognized names fall back to
+the defaults (`running` green, `waiting` yellow, `complete` blue). The bold/dim
+emphasis per state is fixed; only the hue is configurable. Set these from the
+settings screen (`Ctrl-a i` → Display) or the command palette (`Ctrl-a p`).
 
 See [issue-tracking.md](issue-tracking.md) for adapter and workflow configuration details.

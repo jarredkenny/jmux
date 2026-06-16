@@ -37,20 +37,31 @@ const ACTIVITY_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
 };
-const AGENT_STATE_RUNNING_ATTRS: CellAttrs = {
-  fg: 2,
-  fgMode: ColorMode.Palette,
+// Style emphasis per state is fixed and meaningful (waiting bold = needs you,
+// complete dim = receded); only the hue is user-configurable.
+const STATE_MODIFIERS: Record<AgentState, { bold?: boolean; dim?: boolean }> = {
+  running: {},
+  waiting: { bold: true },
+  complete: { dim: true },
 };
-const AGENT_STATE_WAITING_ATTRS: CellAttrs = {
-  fg: 3,
-  fgMode: ColorMode.Palette,
-  bold: true,
+const DEFAULT_STATE_PALETTE: Record<AgentState, number> = {
+  running: 2,  // green
+  waiting: 3,  // yellow
+  complete: 4, // blue
 };
-const AGENT_STATE_COMPLETE_ATTRS: CellAttrs = {
-  fg: 4,
-  fgMode: ColorMode.Palette,
-  dim: true,
+const STATE_LABEL_TEXT: Record<AgentState, string> = {
+  running: "RUNNING",
+  waiting: "WAITING",
+  complete: "COMPLETE",
 };
+function buildStateAttrs(palette: Record<AgentState, number>): Record<AgentState, CellAttrs> {
+  const make = (state: AgentState): CellAttrs => ({
+    fg: palette[state],
+    fgMode: ColorMode.Palette,
+    ...STATE_MODIFIERS[state],
+  });
+  return { running: make("running"), waiting: make("waiting"), complete: make("complete") };
+}
 const ERROR_ATTRS: CellAttrs = {
   fg: 1,
   fgMode: ColorMode.Palette,
@@ -70,11 +81,6 @@ const MODE_ACCEPT_EDITS_ATTRS: CellAttrs = {
   fgMode: ColorMode.Palette,
 };
 const MODE_COMPACTION_ATTRS: CellAttrs = { dim: true };
-const LABEL_BY_STATE: Record<AgentState, { text: string; attrs: CellAttrs }> = {
-  running: { text: "RUNNING", attrs: AGENT_STATE_RUNNING_ATTRS },
-  waiting: { text: "WAITING", attrs: AGENT_STATE_WAITING_ATTRS },
-  complete: { text: "COMPLETE", attrs: AGENT_STATE_COMPLETE_ATTRS },
-};
 const ACTIVE_NAME_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
@@ -360,10 +366,16 @@ export class Sidebar {
   private agentStateRecords = new Map<string, AgentStateRecord>();
   cacheTimersEnabled: boolean = true;
   private sessionContexts = new Map<string, SessionContext>();
+  private stateAttrs: Record<AgentState, CellAttrs> = buildStateAttrs(DEFAULT_STATE_PALETTE);
 
   constructor(width: number, height: number) {
     this.width = width;
     this.height = height;
+  }
+
+  /** Set the per-state indicator colors (palette indices). Emphasis is fixed. */
+  setStateColors(palette: Record<AgentState, number>): void {
+    this.stateAttrs = buildStateAttrs(palette);
   }
 
   updateSessions(sessions: SessionInfo[]): void {
@@ -624,9 +636,9 @@ export class Sidebar {
             else if (p.agentState === "complete") tally.complete++;
           }
           const segs: { text: string; attrs: CellAttrs }[] = [];
-          if (tally.running > 0) segs.push({ text: `${tally.running} RUN`, attrs: AGENT_STATE_RUNNING_ATTRS });
-          if (tally.waiting > 0) segs.push({ text: `${tally.waiting} WAIT`, attrs: AGENT_STATE_WAITING_ATTRS });
-          if (tally.complete > 0) segs.push({ text: `${tally.complete} DONE`, attrs: AGENT_STATE_COMPLETE_ATTRS });
+          if (tally.running > 0) segs.push({ text: `${tally.running} RUN`, attrs: this.stateAttrs.running });
+          if (tally.waiting > 0) segs.push({ text: `${tally.waiting} WAIT`, attrs: this.stateAttrs.waiting });
+          if (tally.complete > 0) segs.push({ text: `${tally.complete} DONE`, attrs: this.stateAttrs.complete });
           if (breakdownRow < contentBottom) {
             this.paintRowChrome(grid, breakdownRow, active, false);
             let col = 3;
@@ -762,13 +774,13 @@ export class Sidebar {
         writeString(grid, nameRow, 1, "\u2298", MCP_DOWN_ATTRS);
         break;
       case "agent-running":
-        writeString(grid, nameRow, 1, "\u23F5", AGENT_STATE_RUNNING_ATTRS);
+        writeString(grid, nameRow, 1, "\u23F5", this.stateAttrs.running);
         break;
       case "agent-waiting":
-        writeString(grid, nameRow, 1, "!", AGENT_STATE_WAITING_ATTRS);
+        writeString(grid, nameRow, 1, "!", this.stateAttrs.waiting);
         break;
       case "agent-complete":
-        writeString(grid, nameRow, 1, "\u2713", AGENT_STATE_COMPLETE_ATTRS);
+        writeString(grid, nameRow, 1, "\u2713", this.stateAttrs.complete);
         break;
       case "activity":
         writeString(grid, nameRow, 1, "\u25CF", ACTIVITY_ATTRS);
@@ -913,7 +925,10 @@ export class Sidebar {
           // Repaint the state label in its specific color so it stands out
           // from the dim row-3 background attrs.
           if (agentStateRecord && result.labelCol >= 0) {
-            const labelDef = LABEL_BY_STATE[agentStateRecord.state];
+            const labelDef = {
+              text: STATE_LABEL_TEXT[agentStateRecord.state],
+              attrs: this.stateAttrs[agentStateRecord.state],
+            };
             const col = 3 + result.labelCol;
             const bgAttrs: CellAttrs = isActive
               ? { bg: ACTIVE_BG, bgMode: ColorMode.RGB }
