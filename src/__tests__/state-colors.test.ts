@@ -30,6 +30,12 @@ describe("colorNameToPalette", () => {
     expect(colorNameToPalette("#ff0000")).toBeNull();
   });
 
+  test("returns null for Object.prototype property names", () => {
+    for (const name of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+      expect(colorNameToPalette(name)).toBeNull();
+    }
+  });
+
   test("STATE_COLOR_NAMES are all resolvable", () => {
     for (const name of STATE_COLOR_NAMES) {
       expect(colorNameToPalette(name)).not.toBeNull();

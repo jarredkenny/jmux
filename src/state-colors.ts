@@ -46,8 +46,10 @@ export const DEFAULT_STATE_COLORS: Record<AgentState, StateColorName> = {
  * Case-insensitive.
  */
 export function colorNameToPalette(name: string): number | null {
-  const key = name.toLowerCase() as StateColorName;
-  return key in NAME_TO_PALETTE ? NAME_TO_PALETTE[key] : null;
+  const key = name.toLowerCase();
+  return Object.hasOwn(NAME_TO_PALETTE, key)
+    ? NAME_TO_PALETTE[key as StateColorName]
+    : null;
 }
 
 /**
