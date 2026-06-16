@@ -50,6 +50,7 @@ export interface InputRouterOptions {
   onGlassClick?: (x: number, y: number) => void;     // content-relative click → focus tile
   onGlassMouse?: (x: number, y: number, button: number, release: boolean) => void; // wheel/scroll → tile under cursor
   onGlassFocusMove?: (dir: "left" | "right" | "up" | "down") => void; // Shift+arrows
+  onGlassDetach?: () => void;                        // prefix+d in glass → detach jmux, not the focused tile
   // Diff panel additions
   onDiffPanelData?: (data: string) => void;
   onDiffPanelFocusToggle?: () => void;
@@ -167,6 +168,13 @@ export class InputRouter {
       if (this.prefixSeen) {
         this.prefixSeen = false;
         if (this.prefixTimer) { clearTimeout(this.prefixTimer); this.prefixTimer = null; }
+        // In the Command Center, keystrokes go to the focused tile's mirror
+        // client — so a bare prefix+d would detach that tile, not jmux. Intercept
+        // it and detach the main client instead, matching normal Ctrl-a d.
+        if (data === "d" && this.opts.glassActive?.()) {
+          this.opts.onGlassDetach?.();
+          return;
+        }
         if (data === "p") {
           this.opts.onModalToggle?.();
           return;

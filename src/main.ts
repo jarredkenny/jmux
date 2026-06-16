@@ -1088,6 +1088,28 @@ async function switchSession(sessionId: string): Promise<void> {
 
 let renderTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * Build the active modal's overlay grid + absolute cursor position, or null when
+ * no modal is open. Shared by every render branch so modals composite the same
+ * way over the main view, the settings screen, and the Command Center.
+ */
+function computeModalOverlay(): {
+  grid: import("./types").CellGrid;
+  cursor: { row: number; col: number } | null;
+} | null {
+  if (!activeModal?.isOpen()) return null;
+  const termCols = process.stdout.columns || 80;
+  const termRows = process.stdout.rows || 24;
+  const modalWidth = activeModal.preferredWidth(termCols);
+  const grid = activeModal.getGrid(modalWidth);
+  const pos = getModalPosition(termCols, termRows, modalWidth, grid.rows);
+  const cursorPos = activeModal.getCursorPosition();
+  const cursor = cursorPos
+    ? { row: pos.startRow + cursorPos.row, col: pos.startCol + cursorPos.col }
+    : null;
+  return { grid, cursor };
+}
+
 function renderFrame(): void {
   if (writesPending > 0) return;
 
@@ -1110,16 +1132,19 @@ function renderFrame(): void {
     return;
   }
 
-  // Pane-of-glass (Overview) replaces main content; toolbar hidden.
+  // Pane-of-glass (Overview) replaces main content; toolbar hidden. Modals
+  // (e.g. the command palette) still composite on top — otherwise they open
+  // invisibly while the Command Center is up.
   if (inGlass && glassView) {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
+    const overlay = computeModalOverlay();
     renderer.render(
       glassView.getGrid(),
       glassView.getFocusedCursor() ?? { x: 0, y: 0 },
       sidebarGrid,
       null, // no toolbar
-      null, // no modal
-      null,
+      overlay?.grid ?? null,
+      overlay?.cursor ?? null,
       undefined,
     );
     return;
@@ -1128,19 +1153,9 @@ function renderFrame(): void {
   const grid = bridge.getGrid();
   const cursor = bridge.getCursor();
   const tb = toolbarEnabled ? makeToolbar() : null;
-  let modalGrid: import("./types").CellGrid | null = null;
-  let modalCursorPos: { row: number; col: number } | null = null;
-  if (activeModal?.isOpen()) {
-    const termCols = process.stdout.columns || 80;
-    const termRows = process.stdout.rows || 24;
-    const modalWidth = activeModal.preferredWidth(termCols);
-    modalGrid = activeModal.getGrid(modalWidth);
-    const pos = getModalPosition(termCols, termRows, modalWidth, modalGrid.rows);
-    const cursorPos = activeModal.getCursorPosition();
-    if (cursorPos) {
-      modalCursorPos = { row: pos.startRow + cursorPos.row, col: pos.startCol + cursorPos.col };
-    }
-  }
+  const overlay = computeModalOverlay();
+  const modalGrid = overlay?.grid ?? null;
+  const modalCursorPos = overlay?.cursor ?? null;
   let diffPanelArg: { grid: import("./types").CellGrid; mode: "split" | "full"; focused: boolean; tabBar?: import("./types").CellGrid } | undefined;
   if (diffPanel.isActive()) {
     const dpCols = getDiffPanelCols();
@@ -1425,6 +1440,7 @@ const inputRouter = new InputRouter(
       glassView?.moveFocus(dir);
       scheduleRender();
     },
+    onGlassDetach: () => detachClient(),
     onDiffToggle: () => toggleDiffPanel(),
     onDiffZoom: () => zoomDiffPanel(),
     onPaneNavRight: async () => {
@@ -2646,10 +2662,12 @@ function getNewSessionProviders(preScannedDirs: string[]): NewSessionProviders {
 async function handlePaletteAction(result: PaletteResult): Promise<void> {
   const { commandId, sublistOptionId } = result;
 
-  // Dynamic: switch to session
+  // Dynamic: switch to session. Route through leaveGlass so selecting a session
+  // from the palette while the Command Center is up tears down the glass first —
+  // otherwise the client switches but the render stays on the overview.
   if (commandId.startsWith("switch-session:")) {
     const sessionId = commandId.slice("switch-session:".length);
-    await switchSession(sessionId);
+    await leaveGlass(sessionId);
     return;
   }
 
@@ -2755,6 +2773,9 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
               break;
             }
           }
+          // When launched from the Command Center, drop the overview chrome now
+          // that the client has switched onto the freshly created session.
+          exitGlass();
         } catch (err) {
           showNewSessionError(result, err);
         }
@@ -3540,8 +3561,17 @@ control.onEvent((event: ControlEvent) => {
         renderFrame();
       });
       break;
-    case "window-add":
     case "window-close":
+      if (startupComplete) {
+        fetchWindows();
+        // A closed window may have hosted a pinned or auto-detected pane (e.g. the
+        // user exited a Claude agent). Reconcile Command Center membership so the
+        // dead pane's tile is torn down rather than left drifting onto a surviving
+        // sibling window. When the last tile goes, the glass shows its empty state.
+        if (inGlass || pinnedTracker.size > 0 || autoPinAgentPanes) refreshPinnedPanes();
+      }
+      break;
+    case "window-add":
     case "window-renamed":
     case "session-window-changed":
       if (startupComplete) fetchWindows();
@@ -3840,14 +3870,39 @@ async function enterGlass(): Promise<void> {
   scheduleRender();
 }
 
+/**
+ * Tear down the Command Center chrome (tiles + overview highlight) without
+ * switching sessions. The caller is responsible for moving the PTY client onto
+ * a real session — otherwise the main view renders the parked session. No-op
+ * when the glass isn't up.
+ */
+function exitGlass(): void {
+  if (!inGlass) return;
+  inGlass = false;
+  glassView?.teardown();
+  sidebar.setOverviewActive(false);
+}
+
 async function leaveGlass(sessionId: string): Promise<void> {
   if (!inGlass) {
     switchSession(sessionId);
     return;
   }
-  inGlass = false;
-  glassView?.teardown();
+  exitGlass();
   await switchSession(sessionId); // unparks the main client onto the session
+}
+
+/**
+ * Detach the interactive client — the Command Center equivalent of a normal
+ * Ctrl-a d. In glass, keystrokes are routed to the focused tile's mirror client,
+ * so prefix+d would detach that tile, not jmux. We replay prefix+d straight to
+ * the main PTY instead: that detaches cleanly even while the client is parked on
+ * the internal session (verified), whereas `detach-client -c` over the control
+ * channel does NOT reliably detach the interactive client. The PTY then closes,
+ * firing pty.onExit → cleanup(), which tears down the glass tiles.
+ */
+function detachClient(): void {
+  pty.write("\x01d");
 }
 
 async function handleTabClick(windowId: string): Promise<void> {
@@ -4130,6 +4185,7 @@ async function start(): Promise<void> {
 
 function cleanupSync(): void {
   killDiffProcess();
+  glassView?.teardown(); // detach any Command Center mirror clients explicitly
   pollCoordinator.stop();
   otelReceiver.stop();
   stopCacheTimerTick();

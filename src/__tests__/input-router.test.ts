@@ -356,6 +356,44 @@ describe("diff panel routing", () => {
     expect(toggleCalled).toBe(true);
   });
 
+  test("prefix+d detaches jmux when the Command Center is active", () => {
+    let detachCalled = false;
+    let ptyData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        glassActive: () => true,
+        onGlassDetach: () => { detachCalled = true; },
+      },
+      true,
+    );
+    router.handleInput("\x01"); // prefix forwarded to focused tile
+    router.handleInput("d");
+    expect(detachCalled).toBe(true);
+    expect(ptyData).toBe("\x01"); // only the prefix reached the pty, not the "d"
+  });
+
+  test("prefix+d is a normal passthrough when not in the Command Center", () => {
+    let detachCalled = false;
+    let ptyData = "";
+    const router = new InputRouter(
+      {
+        sidebarCols: 4,
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        glassActive: () => false,
+        onGlassDetach: () => { detachCalled = true; },
+      },
+      true,
+    );
+    router.handleInput("\x01");
+    router.handleInput("d");
+    expect(detachCalled).toBe(false);
+    expect(ptyData).toBe("\x01d"); // tmux receives prefix+d → its own detach binding
+  });
+
   test("Shift+Left from focused diff panel toggles focus back to tmux", () => {
     let focusToggled = false;
     const router = new InputRouter(
