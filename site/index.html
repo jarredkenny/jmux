@@ -90,6 +90,14 @@
   .chip{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ink2); background:var(--surf); border:1px solid var(--bd2); border-radius:7px; padding:5px 10px; }
   .heroshot{ position:relative; }
   .heroshot img{ width:100%; border-radius:14px; border:1px solid var(--bd2); box-shadow:0 30px 80px rgba(0,0,0,.6); display:block; }
+  /* Cycling stacked screenshot deck */
+  .herostack{ position:relative; aspect-ratio:16/10; }
+  .herostack .card{ position:absolute; inset:0; margin:0; border-radius:14px; overflow:hidden; border:1px solid var(--bd2); box-shadow:0 30px 80px rgba(0,0,0,.6); transition:transform .9s cubic-bezier(.2,.7,.2,1), opacity .9s ease, filter .9s ease; will-change:transform,opacity; cursor:pointer; }
+  .herostack .card img{ width:100%; height:100%; object-fit:cover; object-position:top left; display:block; border:0; border-radius:0; box-shadow:none; animation:none; }
+  .herostack .card[data-pos="0"]{ transform:none; opacity:1; z-index:40; filter:none; }
+  .herostack .card[data-pos="1"]{ transform:translate(9%,10%) scale(.92); opacity:.95; z-index:30; filter:brightness(.84); }
+  .herostack .card[data-pos="2"]{ transform:translate(18%,20%) scale(.84); opacity:.8; z-index:20; filter:brightness(.66); }
+  .herostack .card[data-pos="3"]{ transform:translate(27%,30%) scale(.76); opacity:.6; z-index:10; filter:brightness(.5); }
 
   /* THESIS / DIAGRAM */
   .thesis{ padding:96px 0; }
@@ -249,6 +257,7 @@
   <div class="fx" aria-hidden="true"><div class="glowspot"></div></div>
   <div class="wrap grid">
     <div class="hero-copy">
+      <a href="#command-center" style="display:inline-flex;align-items:center;gap:.5em;align-self:flex-start;margin-bottom:16px;padding:5px 13px;border:1px solid var(--ac);border-radius:999px;color:var(--ac);font-size:13px;font-weight:600;text-decoration:none;background:rgba(52,211,153,.08)">▦ New&nbsp;·&nbsp;The Command Center&nbsp;→</a>
       <div class="eyebrow">Terminal Agent Orchestrator</div>
       <h1>Replace nothing.<br><span class="m">Orchestrate everything.</span></h1>
       <p class="lead">Agent IDEs ship their own terminal, diff viewer, and worktree manager — then lock you in. jmux conducts the tools you already run.</p>
@@ -262,7 +271,14 @@
         <span class="chip">tmux underneath</span>
       </div>
     </div>
-    <div class="heroshot"><img src="assets/hero.png" alt="jmux sidebar with grouped sessions alongside vim and Claude Code"></div>
+    <div class="heroshot">
+      <div class="herostack">
+        <figure class="card" data-pos="0"><img src="assets/command-center.png" alt="jmux Command Center: a grid of live Claude agent panes, borders colored by state"></figure>
+        <figure class="card" data-pos="1"><img src="assets/command-palette.png" alt="jmux command palette floating over a workspace"></figure>
+        <figure class="card" data-pos="2"><img src="assets/diff-panel-full.png" alt="jmux full-screen diff panel"></figure>
+        <figure class="card" data-pos="3"><img src="assets/hero.png" alt="jmux sidebar with grouped sessions alongside vim and Claude Code"></figure>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -336,7 +352,25 @@
         <h3>Command Palette</h3>
         <p><span class="kbd">Ctrl-a p</span> — fuzzy-search sessions, windows, pane actions, settings.</p>
       </div>
+      <div class="tile wide animate-in">
+        <div class="ico">▦</div>
+        <h3>Command Center</h3>
+        <p>Pin the agent pane from every session and drive them all at once in one live grid. Tile borders glow by state — type into any tile to steer that agent. Pin by hand or auto-pin every Claude &amp; Codex pane. Fully non-destructive: panes never leave their session.</p>
+      </div>
     </div>
+  </div>
+</section>
+
+<!-- 4 · SHOWCASE ·0 — Command Center -->
+<section class="sec showcase" id="command-center">
+  <div class="wrap showrow flip">
+    <div class="txt animate-in">
+      <div class="eyebrow">Single pane of glass</div>
+      <h2>The Command Center</h2>
+      <p class="lead">Pin the Claude or Codex pane from every session and they all surface as live, drivable tiles in one grid — your whole fleet on a single screen. Type into any tile to steer that agent for real.</p>
+      <p class="lead">Tile borders match the sidebar's state colors, so you see who's <span style="color:var(--green)">running</span>, <span style="color:var(--amber)">waiting</span>, or <span style="color:var(--blue)">complete</span> at a glance. Auto-pin every agent pane, or pin by hand with <span class="kbd">Pin to Command Center</span> — and it's fully non-destructive: panes never leave their own session.</p>
+    </div>
+    <img src="assets/command-center.png" alt="jmux Command Center showing a grid of live Claude agent panes, borders colored by agent state">
   </div>
 </section>
 
@@ -525,6 +559,36 @@
       x = e.clientX - r.left; y = e.clientY - r.top;
       if (!raf) raf = requestAnimationFrame(apply);
     });
+  })();
+
+  // hero screenshot deck: auto-cycle the foreground, and let clicks drive it
+  (function () {
+    var stack = document.querySelector('.herostack');
+    if (!stack) return;
+    var cards = Array.prototype.slice.call(stack.querySelectorAll('.card'));
+    if (cards.length < 2) return;
+    var n = cards.length;
+    var front = 0, timer = null;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function apply() {
+      cards.forEach(function (c, i) {
+        var pos = (i - front + n) % n;
+        c.setAttribute('data-pos', String(Math.min(pos, 3)));
+      });
+    }
+    function advance() { front = (front + 1) % n; apply(); }
+    function stop() { if (timer) { clearInterval(timer); timer = null; } }
+    function start() { stop(); if (!reduce) timer = setInterval(advance, 3800); }
+    cards.forEach(function (c, i) {
+      c.addEventListener('click', function () {
+        // click a back card to bring it forward; click the front to advance
+        front = (i === front) ? (front + 1) % n : i;
+        apply();
+        start(); // reset the auto-cycle timer after a manual pick
+      });
+    });
+    apply();
+    start();
   })();
 </script>
 </body>
