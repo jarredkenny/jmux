@@ -11,7 +11,7 @@ Run Claude Code, Codex, or any agent across isolated sessions — jmux shows you
 [![npm](https://img.shields.io/npm/v/@jx0/jmux)](https://www.npmjs.com/package/@jx0/jmux)
 [![license](https://img.shields.io/github/license/jarredkenny/jmux)](LICENSE)
 
-![jmux with sidebar sessions, window tabs toolbar, and Claude Code](docs/screenshots/hero.png)
+![jmux with sidebar sessions, window tabs toolbar, and Claude Code](docs/screenshots/hero.webp)
 
 </div>
 
@@ -32,7 +32,7 @@ Try it without credentials: `jmux --demo` runs with mock data so you can explore
 
 Connect Linear and GitLab or GitHub to manage your workflow from the terminal. Open the info panel (`Ctrl-a g`) to see your issues grouped by team and status, MRs/PRs with pipeline state, and your review queue — all in tabbed views alongside an integrated diff viewer.
 
-![jmux info panel showing Linear issues grouped by team and status](docs/screenshots/linear-issues.png)
+![jmux info panel showing Linear issues grouped by team and status](docs/screenshots/linear-issues.webp)
 
 Select an issue. Press `n`. jmux creates a worktree, opens a session, and launches your agent with the issue context — one keystroke from ticket to working code.
 
@@ -40,7 +40,7 @@ While agents work, the sidebar shows which sessions have new output (green dot),
 
 When the agent finishes, toggle the diff panel to review changes. Then flip to the MRs tab — approve, undraft, or update status without opening a browser.
 
-![jmux info panel showing GitLab merge requests with pipeline status](docs/screenshots/gitlab-mrs.png)
+![jmux info panel showing GitLab merge requests with pipeline status](docs/screenshots/gitlab-mrs.webp)
 
 Press `o` to open anything in your browser, `s` to update an issue's status, `a` to approve an MR, `r` to undraft. The keyboard shortcuts are shown at the bottom of each view.
 
@@ -105,18 +105,18 @@ Every session visible at a glance — name, window count, git branch, pipeline s
 
 Press `Ctrl-a p` to fuzzy-search sessions, windows, pane actions, settings, and issue/MR commands.
 
-![Command palette floating over a jmux workspace](docs/screenshots/command-palette.png)
+![Command palette floating over a jmux workspace](docs/screenshots/command-palette.webp)
 
 ### Integrated Diff Panel
 
 Press `Ctrl-a g` to open an embedded [hunk](https://github.com/modem-dev/hunk) diff panel — syntax-highlighted, word-level diffs with split and full-screen views.
 
-![jmux with diff panel in split mode showing code changes alongside Claude Code](docs/screenshots/diff-panel-split.png)
+![jmux with diff panel in split mode showing code changes alongside Claude Code](docs/screenshots/diff-panel-split.webp)
 
 - **Split** — diff panel docks to the right. See agent output and code changes simultaneously.
 - **Full** — `Ctrl-a z` zooms the diff to take over the main area. Sidebar stays for session switching.
 
-![jmux with diff panel in full-screen mode](docs/screenshots/diff-panel-full.png)
+![jmux with diff panel in full-screen mode](docs/screenshots/diff-panel-full.webp)
 
 ### Worktree-Native Workflows
 
