@@ -68,7 +68,7 @@ export function renderStrip(input: StripInput): CellGrid {
     const text = chipText(tab.name, hasDot);
 
     // Base chip text: bold when active, dim otherwise.
-    writeString(grid, 0, chip.x, text.slice(0, chip.width), {
+    writeString(grid, 0, chip.x, text, {
       fgMode: ColorMode.Palette,
       fg: isActive ? 15 : 8,
       bold: isActive,
@@ -77,7 +77,7 @@ export function renderStrip(input: StripInput): CellGrid {
 
     // Recolor the dot cell by the summary state.
     if (hasDot) {
-      const dotCol = chip.x + text.indexOf(DOT);
+      const dotCol = chip.x + textCols(text.slice(0, text.indexOf(DOT)));
       if (dotCol >= 0 && dotCol < input.width) {
         const cell = grid.cells[0][dotCol];
         cell.char = DOT;

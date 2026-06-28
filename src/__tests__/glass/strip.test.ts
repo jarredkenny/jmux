@@ -3,6 +3,7 @@ import {
   stripVisibleFor, layoutStrip, renderStrip, chipAtX, STRIP_ROWS,
 } from "../../glass/strip";
 import type { TabEntry, AgentState } from "../../glass/tabs";
+import { ColorMode } from "../../types";
 
 const palette: Record<AgentState, number> = { running: 2, waiting: 3, complete: 4 };
 const tabs: TabEntry[] = [
@@ -45,5 +46,47 @@ describe("renderStrip", () => {
     const row = grid.cells[0].map((c) => c.char).join("");
     expect(row).toContain("Main");
     expect(row).toContain("Backend");
+  });
+
+  test("dot cell has fg=palette[summary] and fgMode=Palette", () => {
+    const grid = renderStrip({
+      tabs,
+      activeTabId: "default",
+      summaryByTab: new Map([["backend", "running"]]),
+      width: 80,
+      palette,
+    });
+    // Scan row 0 for the dot character and assert its color.
+    const row = grid.cells[0];
+    const dotCell = row.find((c) => c.char === "●");
+    expect(dotCell).toBeDefined();
+    expect(dotCell!.fg).toBe(palette.running);
+    expect(dotCell!.fgMode).toBe(ColorMode.Palette);
+  });
+
+  test("dot lands on correct display column with a wide-character (CJK) name", () => {
+    // "汉字" — two CJK characters each with display width 2 (4 cols total).
+    const wideTabs: TabEntry[] = [
+      { id: "wide", name: "汉字" },
+      { id: "other", name: "X" },
+    ];
+    const grid = renderStrip({
+      tabs: wideTabs,
+      activeTabId: "wide",
+      summaryByTab: new Map([["wide", "running"]]),
+      width: 80,
+      palette,
+    });
+    // The dot cell must be "●", not a wide-char continuation or wrong character.
+    const row = grid.cells[0];
+    const dotCell = row.find((c) => c.char === "●");
+    expect(dotCell).toBeDefined();
+    expect(dotCell!.fg).toBe(palette.running);
+    expect(dotCell!.fgMode).toBe(ColorMode.Palette);
+    // Verify there is no stray "●" appearing at the wrong offset:
+    // chip text is ` 汉字 ● ` → display cols: 1 + 4 + 1 + 1 + 1 + 1 = 9
+    // dot is at display col: chip.x(0) + textCols(" 汉字 ") = 0 + (1+4+1) = 6
+    const dotIdx = row.findIndex((c) => c.char === "●");
+    expect(dotIdx).toBe(6);
   });
 });
