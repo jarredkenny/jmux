@@ -51,6 +51,7 @@ export interface InputRouterOptions {
   onGlassMouse?: (x: number, y: number, button: number, release: boolean) => void; // wheel/scroll → tile under cursor
   onGlassFocusMove?: (dir: "left" | "right" | "up" | "down") => void; // Shift+arrows
   onGlassDetach?: () => void;                        // prefix+d in glass → detach jmux, not the focused tile
+  onGlassTabSwitch?: (index: number) => void;       // glass-only Ctrl-a <n> → switch tab
   // Diff panel additions
   onDiffPanelData?: (data: string) => void;
   onDiffPanelFocusToggle?: () => void;
@@ -87,6 +88,7 @@ export class InputRouter {
   private modalOpen = false;
   private prefixSeen = false;
   private prefixTimer: ReturnType<typeof setTimeout> | null = null;
+  private glassPrefixDeferred = false;
   private diffPanelCols = 0;
   private diffPanelFocused = false;
   private mainCols = 0;
@@ -168,13 +170,28 @@ export class InputRouter {
       if (this.prefixSeen) {
         this.prefixSeen = false;
         if (this.prefixTimer) { clearTimeout(this.prefixTimer); this.prefixTimer = null; }
-        // In the Command Center, keystrokes go to the focused tile's mirror
-        // client — so a bare prefix+d would detach that tile, not jmux. Intercept
-        // it and detach the main client instead, matching normal Ctrl-a d.
-        if (data === "d" && this.opts.glassActive?.()) {
-          this.opts.onGlassDetach?.();
+
+        // Glass owns the post-prefix byte: digits switch tabs, jmux chords
+        // intercept, everything else flushes the deferred prefix to the tile.
+        if (this.opts.glassActive?.()) {
+          const deferred = this.glassPrefixDeferred;
+          this.glassPrefixDeferred = false;
+          if (data >= "1" && data <= "9") {
+            this.opts.onGlassTabSwitch?.(parseInt(data, 10));
+            return;
+          }
+          if (data === "d") { this.opts.onGlassDetach?.(); return; }
+          if (data === "p") { this.opts.onModalToggle?.(); return; }
+          if (data === "n") { this.opts.onNewSession?.(); return; }
+          if (data === "i") { this.opts.onSettings?.(); return; }
+          if (data === "I") { this.opts.onSettingsScreen?.(); return; }
+          // Not a jmux chord — flush the buffered prefix, then the key, to the tile.
+          if (deferred) this.opts.onPtyData("\x01");
+          this.opts.onPtyData(data);
           return;
         }
+
+        // Non-glass: existing intercepts.
         if (data === "p") {
           this.opts.onModalToggle?.();
           return;
@@ -210,9 +227,12 @@ export class InputRouter {
         // Not intercepted — forward to PTY normally (tmux handles its prefix binding)
       } else if (data === "\x01") {
         this.prefixSeen = true;
-        this.prefixTimer = setTimeout(() => { this.prefixSeen = false; this.prefixTimer = null; }, 2000);
-        // Only forward Ctrl-a to PTY when tmux is focused (not when diff panel is focused)
-        if (!this.diffPanelFocused || this.diffPanelCols === 0) {
+        this.prefixTimer = setTimeout(() => { this.prefixSeen = false; this.prefixTimer = null; this.glassPrefixDeferred = false; }, 2000);
+        if (this.opts.glassActive?.()) {
+          // In glass, defer the prefix: the next byte decides whether it's a
+          // jmux action, a tab digit, or a real in-tile prefix chord.
+          this.glassPrefixDeferred = true;
+        } else if (!this.diffPanelFocused || this.diffPanelCols === 0) {
           this.opts.onPtyData(data);
         }
         return;

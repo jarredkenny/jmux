@@ -369,10 +369,10 @@ describe("diff panel routing", () => {
       },
       true,
     );
-    router.handleInput("\x01"); // prefix forwarded to focused tile
+    router.handleInput("\x01"); // prefix is buffered (not forwarded) in glass
     router.handleInput("d");
     expect(detachCalled).toBe(true);
-    expect(ptyData).toBe("\x01"); // only the prefix reached the pty, not the "d"
+    expect(ptyData).toBe(""); // buffered prefix dropped, not forwarded
   });
 
   test("prefix+d is a normal passthrough when not in the Command Center", () => {
@@ -863,5 +863,52 @@ describe("panel filter mode", () => {
     calls.length = 0;
     router.handleInput("o");
     expect(calls).toEqual(["action:o"]);
+  });
+});
+
+describe("glass-buffered prefix + Ctrl-a <n>", () => {
+  test("Ctrl-a then digit switches tabs and forwards nothing to the tile", () => {
+    const sent: string[] = [];
+    const switched: number[] = [];
+    const router = new InputRouter({
+      sidebarCols: 26,
+      onPtyData: (d) => sent.push(d),
+      onSidebarClick: () => {},
+      glassActive: () => true,
+      onGlassTabSwitch: (n) => switched.push(n),
+    }, true);
+    router.handleInput("\x01");
+    router.handleInput("2");
+    expect(switched).toEqual([2]);
+    expect(sent).toEqual([]); // neither byte reached the tile
+  });
+
+  test("Ctrl-a then an unrecognized key flushes prefix + key to the tile", () => {
+    const sent: string[] = [];
+    const router = new InputRouter({
+      sidebarCols: 26,
+      onPtyData: (d) => sent.push(d),
+      onSidebarClick: () => {},
+      glassActive: () => true,
+    }, true);
+    router.handleInput("\x01");
+    router.handleInput("["); // tmux copy-mode in the tile
+    expect(sent).toEqual(["\x01", "["]);
+  });
+
+  test("Ctrl-a then d detaches jmux and forwards nothing", () => {
+    const sent: string[] = [];
+    let detached = 0;
+    const router = new InputRouter({
+      sidebarCols: 26,
+      onPtyData: (d) => sent.push(d),
+      onSidebarClick: () => {},
+      glassActive: () => true,
+      onGlassDetach: () => detached++,
+    }, true);
+    router.handleInput("\x01");
+    router.handleInput("d");
+    expect(detached).toBe(1);
+    expect(sent).toEqual([]); // buffered prefix dropped, not forwarded
   });
 });
