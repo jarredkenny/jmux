@@ -1159,7 +1159,7 @@ function renderFrame(): void {
       const palette = resolveStateColors(configStore.config.stateColors);
       const stripInput = { tabs: commandCenterTabs, activeTabId, summaryByTab, width: contentCols, palette };
       currentStripChips = layoutStrip(stripInput);
-      const strip = renderStrip(stripInput);
+      const strip = renderStrip(stripInput, currentStripChips);
       const combined = createGrid(contentCols, (process.stdout.rows || 24));
       // Blit strip on top rows, glass content below.
       for (let r = 0; r < STRIP_ROWS && r < combined.rows; r++)

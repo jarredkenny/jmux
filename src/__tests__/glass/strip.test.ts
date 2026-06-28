@@ -89,4 +89,58 @@ describe("renderStrip", () => {
     const dotIdx = row.findIndex((c) => c.char === "●");
     expect(dotIdx).toBe(6);
   });
+
+  test("renderStrip uses precomputed chips when provided", () => {
+    const input = {
+      tabs, activeTabId: "default",
+      summaryByTab: new Map<string, AgentState | null>([["backend", "running"]]),
+      width: 80, palette,
+    };
+    const chips = layoutStrip(input);
+    const grid = renderStrip(input, chips);
+    const row = grid.cells[0].map((c) => c.char).join("");
+    expect(row).toContain("Main");
+    expect(row).toContain("Backend");
+  });
+});
+
+describe("strip overflow", () => {
+  const many: TabEntry[] = [
+    { id: "a", name: "Alpha" }, { id: "b", name: "Bravo" },
+    { id: "c", name: "Charlie" }, { id: "d", name: "Delta" },
+    { id: "e", name: "Echo" }, { id: "f", name: "Foxtrot" },
+  ];
+
+  test("drops chips that don't fit within the width budget", () => {
+    const chips = layoutStrip({
+      tabs: many, activeTabId: "a",
+      summaryByTab: new Map(), width: 24, palette,
+    });
+    expect(chips.length).toBeLessThan(many.length);
+    // Only chips that wholly fit are kept; the first one always fits at x=0.
+    expect(chips[0].tabId).toBe("a");
+  });
+
+  test("renders a +N indicator counting the hidden tabs", () => {
+    const input = {
+      tabs: many, activeTabId: "a",
+      summaryByTab: new Map<string, AgentState | null>(), width: 24, palette,
+    };
+    const chips = layoutStrip(input);
+    const hidden = many.length - chips.length;
+    expect(hidden).toBeGreaterThan(0);
+    const grid = renderStrip(input, chips);
+    const row = grid.cells[0].map((c) => c.char).join("");
+    expect(row).toContain(`+${hidden}`);
+  });
+
+  test("no indicator when all tabs fit", () => {
+    const input = {
+      tabs, activeTabId: "default",
+      summaryByTab: new Map<string, AgentState | null>(), width: 80, palette,
+    };
+    const grid = renderStrip(input);
+    const row = grid.cells[0].map((c) => c.char).join("");
+    expect(row).not.toContain("+");
+  });
 });
