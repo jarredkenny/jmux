@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import type { AdapterConfig } from "./adapters/types";
 import type { PanelView } from "./panel-view";
+import type { TabEntry } from "./glass/tabs";
 import { logError } from "./log";
 
 export interface IssueWorkflowConfig {
@@ -54,6 +55,8 @@ export interface JmuxConfig {
   snapshot?: SnapshotConfig;
   /** Per-state indicator colors (ANSI color names). */
   stateColors?: StateColorConfig;
+  /** Ordered Command Center tab registry; index 0 is the protected default. */
+  commandCenterTabs?: TabEntry[];
 }
 
 /**
