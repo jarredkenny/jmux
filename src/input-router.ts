@@ -52,6 +52,8 @@ export interface InputRouterOptions {
   onGlassFocusMove?: (dir: "left" | "right" | "up" | "down") => void; // Shift+arrows
   onGlassDetach?: () => void;                        // prefix+d in glass → detach jmux, not the focused tile
   onGlassTabSwitch?: (index: number) => void;       // glass-only Ctrl-a <n> → switch tab
+  glassStripRows?: () => number;                    // tab-strip row count (0 when hidden)
+  onGlassTabClick?: (x: number) => void;            // content-relative click on the strip row
   // Diff panel additions
   onDiffPanelData?: (data: string) => void;
   onDiffPanelFocusToggle?: () => void;
@@ -280,6 +282,34 @@ export class InputRouter {
         return;
       }
 
+      // Pane-of-glass: forward mouse to the tile under the cursor so wheel
+      // scrollback, copy-mode text selection (press→drag→release), and app
+      // mouse interaction all work. A fresh press also focuses that tile.
+      // Checked before toolbar so that glass strip row 1 isn't eaten by the
+      // toolbar handler (there is no toolbar visible in glass mode).
+      if (this.opts.glassActive?.()) {
+        const stripRows = this.opts.glassStripRows?.() ?? 0;
+        const cx = mouse.x - this.opts.sidebarCols - 1;
+        const yInContent = mouse.y - 1; // 0-indexed within the content column
+        const bareMotion = isMotion && (mouse.button & 0x03) === 3;
+        if (bareMotion) return; // ignore hover motion (no button held)
+
+        // Strip row: a button-down switches tabs; ignore wheel/release/motion here.
+        if (yInContent < stripRows) {
+          if (!mouse.release && !isMotion && !isWheel) {
+            this.opts.onGlassTabClick?.(cx);
+          }
+          return;
+        }
+
+        const cy = yInContent - stripRows; // tile-area row
+        if (!mouse.release && !isMotion && !isWheel) {
+          this.opts.onGlassClick?.(cx, cy); // focus on button-down
+        }
+        this.opts.onGlassMouse?.(cx, cy, mouse.button, mouse.release);
+        return;
+      }
+
       // Toolbar click — rows 1..toolbarRows in main area
       if (mouse.y <= this.toolbarRows && !mouse.release && !isMotion && !isWheel) {
         const mainCol = mouse.x - this.opts.sidebarCols - 1; // 0-indexed in main area
@@ -339,21 +369,6 @@ export class InputRouter {
           }
           return;
         }
-      }
-
-      // Pane-of-glass: forward mouse to the tile under the cursor so wheel
-      // scrollback, copy-mode text selection (press→drag→release), and app
-      // mouse interaction all work. A fresh press also focuses that tile.
-      if (this.opts.glassActive?.()) {
-        const cx = mouse.x - this.opts.sidebarCols - 1; // toolbar hidden in glass
-        const cy = mouse.y - 1;
-        const bareMotion = isMotion && (mouse.button & 0x03) === 3;
-        if (bareMotion) return; // ignore hover motion (no button held)
-        if (!mouse.release && !isMotion && !isWheel) {
-          this.opts.onGlassClick?.(cx, cy); // focus on button-down
-        }
-        this.opts.onGlassMouse?.(cx, cy, mouse.button, mouse.release);
-        return;
       }
 
       // Mouse in main area — translate X coordinate and Y (offset by toolbar)

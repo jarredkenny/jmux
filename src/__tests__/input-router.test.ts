@@ -912,3 +912,40 @@ describe("glass-buffered prefix + Ctrl-a <n>", () => {
     expect(sent).toEqual([]); // buffered prefix dropped, not forwarded
   });
 });
+
+describe("glass strip mouse routing", () => {
+  // SGR press at row 1 (top), col 30 → content x = 30 - 26 - 1 = 3
+  const press = (col: number, row: number) => `\x1b[<0;${col};${row}M`;
+
+  test("a click on the strip row routes to onGlassTabClick", () => {
+    const tabClicks: number[] = [];
+    const tileClicks: Array<[number, number]> = [];
+    const router = new InputRouter({
+      sidebarCols: 26,
+      onPtyData: () => {},
+      onSidebarClick: () => {},
+      glassActive: () => true,
+      glassStripRows: () => 1,
+      onGlassTabClick: (x) => tabClicks.push(x),
+      onGlassClick: (x, y) => tileClicks.push([x, y]),
+    }, true);
+    router.handleInput(press(30, 1)); // row 1 = strip
+    expect(tabClicks).toEqual([3]);
+    expect(tileClicks).toEqual([]);
+  });
+
+  test("a click below the strip routes to the tile with cy offset by strip rows", () => {
+    const tileClicks: Array<[number, number]> = [];
+    const router = new InputRouter({
+      sidebarCols: 26,
+      onPtyData: () => {},
+      onSidebarClick: () => {},
+      glassActive: () => true,
+      glassStripRows: () => 1,
+      onGlassClick: (x, y) => tileClicks.push([x, y]),
+      onGlassTabClick: () => {},
+    }, true);
+    router.handleInput(press(30, 5)); // row 5: cy = (5-1) - 1 stripRow = 3
+    expect(tileClicks).toEqual([[3, 3]]);
+  });
+});
