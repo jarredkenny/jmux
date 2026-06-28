@@ -2742,8 +2742,8 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
   }
 
   // Pin the current session's active pane (or move the focused tile) to a
-  // chosen/created tab. Writers only set/unset the option; the reconciler does
-  // the break/join.
+  // chosen/created tab. Writers only set/unset `@jmux-pinned`; the TUI reflects
+  // it into Command Center live-mirror tiles — no pane is ever moved or broken.
   if (commandId === "pin-pane" || commandId === "move-tile") {
     const paneId = commandId === "pin-pane"
       ? glassRunner.run(["display-message", "-p", "-t", currentSessionId!, "#{pane_id}"]).lines[0]

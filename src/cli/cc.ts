@@ -3,7 +3,7 @@ import { tmuxOrThrow, CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
 import { loadUserConfig } from "../config";
 import { normalizeTabs, resolveTabId, type TabEntry } from "../glass/tabs";
-import { parsePinnedListWithTab } from "./pane";
+import { parsePinnedListWithTab, PINNED_LIST_FORMAT } from "./pane";
 
 export interface TabSummary {
   id: string;
@@ -30,8 +30,6 @@ export function buildTabSummaries(
 export function loadTabRegistry(): TabEntry[] {
   return normalizeTabs(loadUserConfig().commandCenterTabs);
 }
-
-const PINNED_LIST_FORMAT = "#{pane_id}:#{@jmux-pinned}";
 
 export function handleCc(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
   switch (parsed.action) {

@@ -8,7 +8,7 @@ import { resolveTabId } from "../glass/tabs";
 const PANE_FORMAT =
   "#{pane_id}:#{window_id}:#{pane_active}:#{pane_width}:#{pane_height}:#{pane_current_command}:#{pane_current_path}";
 
-const PINNED_LIST_FORMAT = "#{pane_id}:#{@jmux-pinned}";
+export const PINNED_LIST_FORMAT = "#{pane_id}:#{@jmux-pinned}";
 
 export interface PaneOptionCommand {
   args: string[];
@@ -17,8 +17,9 @@ export interface PaneOptionCommand {
 
 /**
  * Build the tmux command(s) to set/unset the per-pane `@jmux-pinned` option.
- * This is the *only* thing pin/unpin do — the running TUI reconciler observes
- * the option change and performs the break-pane/join-pane itself.
+ * Pin/unpin only write this option (to a tab id, or unset); the running TUI
+ * observes the change and updates the Command Center live-mirror tiles. No
+ * pane is ever moved, broken, or joined.
  */
 export function buildPinCommands(
   verb: "pin" | "unpin",
