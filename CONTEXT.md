@@ -14,8 +14,11 @@ Command Center without ever moving the pane out of its own session / window /
 layout. To remove a pane from the Command Center, you unpin it.
 
 **Source of truth.** Pin state lives in a **per-pane** tmux user option
-`@jmux-pinned`, and that option is the *sole* source of truth. The TUI reflects
-it via a per-pane `#{P:...}` control-channel subscription (the same family of
+`@jmux-pinned`, and that option is the *sole* source of truth. The value stored
+is a **tab id** (e.g. `"default"`, `"backend"`) — not a bare `"1"`. Legacy
+values of `"1"` and any id not present in the tab registry are silently resolved
+to the **default tab** (index 0) by `resolveTabId`. The TUI reflects the option
+via a per-pane `#{P:...}` control-channel subscription (the same family of
 mechanism as `@jmux-agent-state`). Pins are deliberately **tmux-server-lifetime**
 — the option is re-read on TUI restart, and a server restart that would clear it
 also kills the agent processes the pins pointed at, so there is nothing to
@@ -31,6 +34,32 @@ control Command Center *membership* (pins), never the user's *view*.** Pinning a
 pane makes it appear as a tile; it does not force the user's screen into the
 glass. Choosing to look at the Command Center is always the human's sidebar
 selection.
+
+### Tab
+
+A **registry-backed named bucket** in the Command Center. Each tab has a stable
+**id** (e.g. `"default"`, `"backend"`) and a human-readable **name**
+(e.g. `"Main"`, `"Backend"`). The ordered list of `{id, name}` entries lives in
+`~/.config/jmux/config.json` under `commandCenterTabs` and is the sole authority
+for tab order and display names.
+
+A pane belongs to exactly **one tab**: the id stored in `@jmux-pinned`. Because
+the pane stores the id — not the display name — **renaming a tab is a
+registry-only edit** and never touches any pane option. Tab id assignment and
+name/order changes can never drift apart.
+
+Tabs render as a horizontal strip above the tile grid inside the Command Center.
+The strip is hidden when only one tab exists (the default). All tab operations
+(create, rename, delete, reorder, pin-to-tab, move-pane, switch) are
+command-palette driven (`Ctrl-a p`).
+
+### Default tab
+
+The **index-0 tab**, always present, always first, non-deletable. It is seeded
+with id `"default"` and name `"Main"`. It acts as the **fallback bucket**: any
+pane whose `@jmux-pinned` value is the legacy literal `"1"` or an id not found
+in the current registry is automatically routed here by `resolveTabId`, preserving
+backward compatibility without rewriting pane options.
 
 ### Command Center
 

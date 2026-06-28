@@ -127,6 +127,9 @@ jmux's own settings (not tmux settings) live in `~/.config/jmux/config.json`. Ed
     "complete": "blue"
   },
   "pinnedSessions": [],
+  "commandCenterTabs": [
+    { "id": "default", "name": "Main" }
+  ],
   "projectDirs": ["~/Code", "~/Projects"],
   "wtmIntegration": true,
   "diffPanel": {
@@ -158,5 +161,22 @@ breakdown, and the Command Center tile borders. Each value is a named ANSI color
 the defaults (`running` green, `waiting` yellow, `complete` blue). The bold/dim
 emphasis per state is fixed; only the hue is configurable. Set these from the
 settings screen (`Ctrl-a i` → Display) or the command palette (`Ctrl-a p`).
+
+### Command Center tabs
+
+`commandCenterTabs` is an ordered array of `{ "id": string, "name": string }`
+entries that define the named tab buckets inside the Command Center. The first
+entry (index 0) is the **default tab** — it is protected: non-deletable and always
+first. Its seeded id is `"default"` and its default name is `"Main"`.
+
+Each pinned pane stores the **id** of its assigned tab in the per-pane tmux option
+`@jmux-pinned`. Renaming or reordering tabs only updates this config field — no
+pane options are rewritten. Any pane whose stored id is not found in the registry
+(including legacy `"1"` values from older versions) is silently routed to the
+default tab.
+
+Manage tabs from the command palette (`Ctrl-a p`): create, rename, delete, reorder,
+pin a pane to a tab, or move a pane between tabs. The file is hot-reloaded — edits
+applied externally take effect immediately without restarting jmux.
 
 See [issue-tracking.md](issue-tracking.md) for adapter and workflow configuration details.
