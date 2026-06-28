@@ -22,6 +22,20 @@ describe("parseAgentDetectLines", () => {
       "#{pane_id}\x1f#{@jmux-agent-state}\x1f#{pane_active}\x1f#{pane_current_command}",
     );
   });
+
+  test("parses + detects on tmux 3.4 output where the separator is octal-escaped (issue #7)", () => {
+    // The whole-line garble was why auto-pin found nothing on tmux 3.4.
+    const rows = parseAgentDetectLines([
+      "%1\\037running\\0371\\037claude",
+      "%2\\037\\0370\\037zsh",
+    ]);
+    expect(rows).toEqual([
+      { paneId: "%1", agentState: "running", active: true, command: "claude" },
+      { paneId: "%2", agentState: "", active: false, command: "zsh" },
+    ]);
+    // The active agent pane is now correctly auto-pinned.
+    expect([...detectAgentPanes(rows, "claude|codex")]).toEqual(["%1"]);
+  });
 });
 
 describe("detectAgentPanes", () => {

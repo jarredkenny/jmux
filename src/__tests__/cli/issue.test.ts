@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { US } from "../../cli/agent";
+import { US } from "../../tmux-fields";
 import {
   parseIssueLinkRow,
   findSessionForIssue,
@@ -46,6 +46,15 @@ describe("parseIssueLinkRow", () => {
 
   test("returns null on a short line", () => {
     expect(parseIssueLinkRow("$1\x1fname")).toBeNull();
+  });
+
+  test("parses tmux 3.4 output where the separator is octal-escaped (issue #7)", () => {
+    expect(parseIssueLinkRow(["$1", "TRA-1", "TRA-1", "/p"].join("\\037"))).toEqual({
+      id: "$1",
+      name: "TRA-1",
+      issue: "TRA-1",
+      path: "/p",
+    });
   });
 });
 

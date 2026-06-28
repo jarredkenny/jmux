@@ -1,15 +1,8 @@
 import { runTmuxDirect } from "./tmux";
 import { INTERNAL_SESSION_FILTER } from "../glass/internal-sessions";
 import { CliError, type CliContext } from "./context";
+import { US, splitFields } from "../tmux-fields";
 import type { ParsedCtlArgs } from "../cli";
-
-/**
- * Field separator for structured tmux `-F` output. tmux session names cannot
- * contain it and `pane_current_path` / option values realistically never do,
- * so unlike the legacy `:`-splitting parsers we can split with an exact field
- * count and no rejoin gymnastics. ASCII Unit Separator (US, 0x1f).
- */
-export const US = "\x1f";
 
 export type CtlAgentState = "running" | "waiting" | "complete";
 
@@ -59,7 +52,7 @@ export function parseAgentStateLine(
   line: string,
   nowSeconds: number,
 ): AgentRecord | null {
-  const parts = line.split(US);
+  const parts = splitFields(line);
   if (parts.length < 7) return null;
 
   const sessionId = parts[0];

@@ -30,4 +30,13 @@ describe("parsePaneStateLines", () => {
   test("PANE_STATE_FORMAT requests the four fields, US-separated", () => {
     expect(PANE_STATE_FORMAT).toBe("#{pane_id}\x1f#{@jmux-pinned}\x1f#{session_id}\x1f#{window_id}");
   });
+
+  test("parses tmux 3.4 output where the separator is octal-escaped (issue #7)", () => {
+    const { pinned, pins, live } = parsePaneStateLines([
+      "%1\\037backend\\037$3\\037@9",
+    ]);
+    expect(pinned.has("%1")).toBe(true);
+    expect(pins.get("%1")).toBe("backend");
+    expect(live.get("%1")).toEqual({ sessionId: "$3", windowId: "@9" });
+  });
 });

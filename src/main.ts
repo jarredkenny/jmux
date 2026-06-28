@@ -38,6 +38,7 @@ import { resolveStateColors, STATE_COLOR_NAMES, DEFAULT_STATE_COLORS } from "./s
 import { INTERNAL_SESSION_FILTER, PARK_SESSION } from "./glass/internal-sessions";
 import { PinnedPaneTracker } from "./glass/pinned-pane-tracker";
 import { parsePaneStateLines, PANE_STATE_FORMAT } from "./glass/reflect";
+import { US, splitFields } from "./tmux-fields";
 import { buildPaneLabel } from "./glass/pane-label";
 import { AGENT_DETECT_FORMAT, parseAgentDetectLines, detectAgentPanes } from "./glass/auto-detect";
 import { GlassView, type GlassTileSpec } from "./glass/view";
@@ -3845,7 +3846,7 @@ const PIN_LABEL_FORMAT = [
   "#{pane_title}",
   "#{pane_current_command}",
   "#{pane_current_path}",
-].join("\x1f");
+].join(US);
 
 function refreshPinnedPanes(): void {
   const state = parsePaneStateLines(
@@ -3860,7 +3861,7 @@ function refreshPinnedPanes(): void {
   // Per-pane labels + home session names for building entries/specs.
   const labelByPane = new Map<string, { label: string; sessionName: string }>();
   for (const row of glassRunner.run(["list-panes", "-a", "-F", PIN_LABEL_FORMAT]).lines) {
-    const [paneId, sessionName, paneTitle, cmd, path] = row.split("\x1f");
+    const [paneId, sessionName, paneTitle, cmd, path] = splitFields(row);
     if (!paneId) continue;
     labelByPane.set(paneId, {
       sessionName: sessionName ?? "",

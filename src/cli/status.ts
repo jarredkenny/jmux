@@ -4,7 +4,8 @@ import { runTmuxDirect } from "./tmux";
 import { loadUserConfig } from "../config";
 import { INTERNAL_SESSION_FILTER } from "../glass/internal-sessions";
 import { SessionState, type SessionLink } from "../session-state";
-import { US, type CtlAgentState } from "./agent";
+import { type CtlAgentState } from "./agent";
+import { US, splitFields } from "../tmux-fields";
 import type { CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
 
@@ -37,7 +38,7 @@ const STATUS_FORMAT = [
 ].join(US);
 
 export function parseStatusLine(line: string): StatusSessionRow | null {
-  const p = line.split(US);
+  const p = splitFields(line);
   if (p.length < 8) return null;
   return {
     id: p[0],

@@ -11,7 +11,7 @@
  *     jmux hooks.
  */
 
-const US = "\x1f";
+import { US, splitFields } from "../tmux-fields";
 
 /** `list-panes -a -F` format that feeds {@link parseAgentDetectLines}. */
 export const AGENT_DETECT_FORMAT = [
@@ -33,7 +33,7 @@ export function parseAgentDetectLines(lines: string[]): AgentPaneRow[] {
   const out: AgentPaneRow[] = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    const [paneId, agentState, active, command] = line.split(US);
+    const [paneId, agentState, active, command] = splitFields(line);
     if (!paneId) continue;
     out.push({
       paneId,

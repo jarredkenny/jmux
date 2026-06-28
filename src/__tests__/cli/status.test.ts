@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { US } from "../../cli/agent";
+import { US } from "../../tmux-fields";
 import {
   parseStatusLine,
   buildStatusSnapshot,
@@ -31,6 +31,21 @@ describe("parseStatusLine", () => {
 
   test("returns null on a short line", () => {
     expect(parseStatusLine("$1\x1fname")).toBeNull();
+  });
+
+  test("parses tmux 3.4 output where the separator is octal-escaped (issue #7)", () => {
+    // tmux 3.4 emits the literal text `\037` in place of the raw 0x1F byte.
+    const line = ["$1", "TRA-123", "running", "1781480000", "1", "ci failed", "", "/repo/wt"].join("\\037");
+    expect(parseStatusLine(line)).toEqual({
+      id: "$1",
+      name: "TRA-123",
+      agentState: "running",
+      agentSince: "1781480000",
+      attention: "1",
+      attentionReason: "ci failed",
+      linearIssue: "",
+      path: "/repo/wt",
+    });
   });
 });
 

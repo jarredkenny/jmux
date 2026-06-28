@@ -1,6 +1,5 @@
 import type { PaneLocation } from "./types";
-
-const US = "\x1f";
+import { US, splitFields } from "../tmux-fields";
 
 /** Format for `list-panes -a -F` to read pin flag + location for every pane. */
 export const PANE_STATE_FORMAT =
@@ -21,7 +20,7 @@ export function parsePaneStateLines(lines: string[]): PaneState {
   const live = new Map<string, PaneLocation>();
   for (const line of lines) {
     if (!line.trim()) continue;
-    const [paneId, pin, sessionId, windowId] = line.split(US);
+    const [paneId, pin, sessionId, windowId] = splitFields(line);
     if (!paneId) continue;
     live.set(paneId, { sessionId: sessionId ?? "", windowId: windowId ?? "" });
     if (pin) {

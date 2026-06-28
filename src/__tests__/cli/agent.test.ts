@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test";
 import {
-  US,
   parseAgentStateLine,
   diffAgentStates,
   type WatchEntry,
 } from "../../cli/agent";
+import { US } from "../../tmux-fields";
 
 function line(parts: string[]): string {
   return parts.join(US);
@@ -65,6 +65,24 @@ describe("parseAgentStateLine", () => {
 
   test("returns null when fields are missing", () => {
     expect(parseAgentStateLine("$1\x1fonly-two", 0)).toBeNull();
+  });
+
+  test("parses tmux 3.4 output where the separator is octal-escaped (issue #7)", () => {
+    // tmux 3.4 emits the literal text `\037` in place of the raw 0x1F byte.
+    const rec = parseAgentStateLine(
+      ["$1", "TRA-123", "running", "1781480000", "%12", "%99", "/repo/wt"].join("\\037"),
+      1781480123,
+    );
+    expect(rec).toEqual({
+      session: "TRA-123",
+      sessionId: "$1",
+      state: "running",
+      since: 1781480000,
+      ageSeconds: 123,
+      agentPane: "%12",
+      activePane: "%99",
+      path: "/repo/wt",
+    });
   });
 });
 

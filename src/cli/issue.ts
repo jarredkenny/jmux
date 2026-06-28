@@ -13,7 +13,7 @@ import { INTERNAL_SESSION_FILTER } from "../glass/internal-sessions";
 import { LinearAdapter } from "../adapters/linear";
 import { buildLinearPrompt } from "../adapters/linear-prompt";
 import { buildClaudeLaunchCommand } from "./run-claude";
-import { US } from "./agent";
+import { US, splitFields } from "../tmux-fields";
 import type { Issue } from "../adapters/types";
 import type { ParsedCtlArgs } from "../cli";
 
@@ -41,7 +41,7 @@ const ISSUE_LINK_FORMAT = [
 ].join(US);
 
 export function parseIssueLinkRow(line: string): IssueLinkRow | null {
-  const p = line.split(US);
+  const p = splitFields(line);
   if (p.length < 4) return null;
   return { id: p[0], name: p[1], issue: p[2], path: p[3] };
 }
