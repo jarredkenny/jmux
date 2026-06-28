@@ -21,10 +21,11 @@ export interface PaneOptionCommand {
 export function buildPinCommands(
   verb: "pin" | "unpin",
   target: string,
+  tabId?: string,
 ): PaneOptionCommand[] {
   if (verb === "pin") {
     return [
-      { args: ["set-option", "-p", "-t", target, "@jmux-pinned", "1"], required: true },
+      { args: ["set-option", "-p", "-t", target, "@jmux-pinned", tabId ?? "1"], required: true },
     ];
   }
   return [
@@ -32,9 +33,14 @@ export function buildPinCommands(
   ];
 }
 
-/** Parse `list-panes -a -F '#{pane_id}:#{@jmux-pinned}'` into pinned pane ids. */
+/** Parse `list-panes -a -F '#{pane_id}:#{@jmux-pinned}'` into pinned pane ids (any non-empty value). */
 export function parsePinnedListOutput(lines: string[]): string[] {
-  const out: string[] = [];
+  return parsePinnedListWithTab(lines).map((e) => e.id);
+}
+
+/** Like parsePinnedListOutput but keeps each pane's raw tab value. */
+export function parsePinnedListWithTab(lines: string[]): { id: string; tab: string }[] {
+  const out: { id: string; tab: string }[] = [];
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -42,7 +48,7 @@ export function parsePinnedListOutput(lines: string[]): string[] {
     if (idx < 0) continue;
     const id = trimmed.slice(0, idx);
     const val = trimmed.slice(idx + 1);
-    if (val === "1") out.push(id);
+    if (val !== "") out.push({ id, tab: val });
   }
   return out;
 }
