@@ -1,5 +1,7 @@
 import type { AgentState } from "../types";
 
+export type { AgentState } from "../types";
+
 export interface TabEntry {
   id: string;
   name: string;
