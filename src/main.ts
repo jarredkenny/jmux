@@ -44,6 +44,7 @@ import { GlassView, type GlassTileSpec } from "./glass/view";
 import { normalizeTabs, defaultTabId, resolveTabId, summarizeTabState, addTab, renameTab, deleteTab, moveTab, type TabEntry } from "./glass/tabs";
 import { buildCcCommands, NEW_TAB_OPTION_ID } from "./glass/cc-commands";
 import { stripVisibleFor, renderStrip, layoutStrip, chipAtX, STRIP_ROWS, type StripChip } from "./glass/strip";
+import { clampTabSelection } from "./glass/reload";
 import { OtelReceiver } from "./otel-receiver";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
@@ -3435,6 +3436,22 @@ try {
     sidebar.setStateColors(newStateColors);
     glassView?.setStateColors(newStateColors);
     scheduleRender();
+
+    // Reload the Command Center tab registry (palette CRUD + hand-edits land here).
+    {
+      const before = stripVisibleFor(commandCenterTabs);
+      commandCenterTabs = normalizeTabs(updated.commandCenterTabs);
+      const clamped = clampTabSelection(commandCenterTabs, activeTabId, lastActiveTabId);
+      activeTabId = clamped.activeTabId;
+      lastActiveTabId = clamped.lastActiveTabId;
+      if (inGlass) {
+        refreshPinnedPanes();         // re-fold vanished tab ids; rebuild specs + summary
+        glassView?.setActiveTab(activeTabId);
+      }
+      const after = stripVisibleFor(commandCenterTabs);
+      if (before !== after) { resizeGlass(); }  // strip appeared/disappeared → glass height changed
+      scheduleRender();
+    }
 
     const needsResize = newWidth !== sidebarWidth;
 
