@@ -193,3 +193,24 @@ describe("moveTab", () => {
     expect(moveTab(tabs, "ghost", "right").map(t => t.id)).toEqual(["default", "a", "b"]);
   });
 });
+
+import { summarizeTabState } from "../../glass/tabs";
+
+describe("summarizeTabState", () => {
+  test("waiting beats running and complete", () => {
+    expect(summarizeTabState(["complete", "running", "waiting"])).toBe("waiting");
+  });
+  test("running beats complete when no waiting", () => {
+    expect(summarizeTabState(["complete", "running", "complete"])).toBe("running");
+  });
+  test("complete when only completes", () => {
+    expect(summarizeTabState(["complete", "complete"])).toBe("complete");
+  });
+  test("null when empty or all null", () => {
+    expect(summarizeTabState([])).toBeNull();
+    expect(summarizeTabState([null, null])).toBeNull();
+  });
+  test("ignores nulls amongst real states", () => {
+    expect(summarizeTabState([null, "running", null])).toBe("running");
+  });
+});

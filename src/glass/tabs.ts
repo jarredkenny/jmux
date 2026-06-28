@@ -1,3 +1,5 @@
+import type { AgentState } from "../types";
+
 export interface TabEntry {
   id: string;
   name: string;
@@ -119,4 +121,24 @@ export function moveTab(tabs: TabEntry[], id: string, dir: "left" | "right"): Ta
   const next = [...tabs];
   [next[idx], next[target]] = [next[target], next[idx]];
   return next;
+}
+
+/**
+ * Reduce a tab's tile states to one summary state for its strip chip dot:
+ * most-attention-needed wins (waiting → running → complete). Null when the tab
+ * holds no agents (plain shells / empty).
+ */
+export function summarizeTabState(
+  states: ReadonlyArray<AgentState | null>,
+): AgentState | null {
+  let hasRunning = false;
+  let hasComplete = false;
+  for (const s of states) {
+    if (s === "waiting") return "waiting";
+    if (s === "running") hasRunning = true;
+    else if (s === "complete") hasComplete = true;
+  }
+  if (hasRunning) return "running";
+  if (hasComplete) return "complete";
+  return null;
 }
