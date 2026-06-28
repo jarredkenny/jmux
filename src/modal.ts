@@ -1,6 +1,7 @@
 import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
 import type { CellAttrs } from "./cell-grid";
+import { theme, neutralFg } from "./theme";
 
 // --- Modal interface ---
 
@@ -18,128 +19,79 @@ export interface Modal {
   close(): void;
 }
 
-// --- Shared color constants ---
+// --- Shared color attrs ---
+//
+// These objects are imported by reference across the modals and read by
+// writeString() on every render, so mutating them in place (see
+// rebuildModalAttrs) re-themes every modal without re-importing. They start
+// populated from DEFAULT_THEME and are rebuilt once a terminal background is
+// detected. Neutral text (white/gray) follows `neutralFg`; accent colors
+// (green prompt/match, yellow tag) are palette and theme-independent.
 
-export const MODAL_BG = (0x16 << 16) | (0x1b << 8) | 0x22; // #161b22
-export const SELECTED_BG = (0x1e << 16) | (0x2a << 8) | 0x35; // #1e2a35
+export const HEADER_ATTRS: CellAttrs = {};
+export const SUBHEADER_ATTRS: CellAttrs = {};
+export const PROMPT_ATTRS: CellAttrs = {};
+export const INPUT_ATTRS: CellAttrs = {};
+export const RESULT_ATTRS: CellAttrs = {};
+export const SELECTED_RESULT_ATTRS: CellAttrs = {};
+export const MATCH_ATTRS: CellAttrs = {};
+export const SELECTED_MATCH_ATTRS: CellAttrs = {};
+export const CATEGORY_ATTRS: CellAttrs = {};
+export const SELECTED_CATEGORY_ATTRS: CellAttrs = {};
+export const CURRENT_TAG_ATTRS: CellAttrs = {};
+export const SELECTED_CURRENT_TAG_ATTRS: CellAttrs = {};
+export const BREADCRUMB_ATTRS: CellAttrs = {};
+export const NO_MATCHES_ATTRS: CellAttrs = {};
+export const DIM_ATTRS: CellAttrs = {};
+export const BG_ATTRS: CellAttrs = {};
+export const SELECTED_BG_ATTRS: CellAttrs = {};
 
-export const HEADER_ATTRS: CellAttrs = {
-  fg: 7,
-  fgMode: ColorMode.Palette,
-  bold: true,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
+/**
+ * Repopulate every shared attr object from the current `theme`. Called once at
+ * module load (default theme) and again whenever the terminal background is
+ * detected. Each object's identity is preserved so existing imports stay live.
+ */
+export function rebuildModalAttrs(): void {
+  const surface = theme.surface;
+  const selected = theme.selected;
+  const onSurface = { bg: surface, bgMode: ColorMode.RGB };
+  const onSelected = { bg: selected, bgMode: ColorMode.RGB };
+  const primary = neutralFg(7);
+  const secondary = neutralFg(8);
 
-export const SUBHEADER_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
+  const assign = (target: CellAttrs, src: CellAttrs): void => {
+    // Reset attrs that vary between roles so a rebuild can't leave stale flags.
+    delete target.bold;
+    delete target.dim;
+    Object.assign(target, src);
+  };
 
-export const PROMPT_ATTRS: CellAttrs = {
-  fg: 2,
-  fgMode: ColorMode.Palette,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
+  assign(HEADER_ATTRS, { ...primary, bold: true, ...onSurface });
+  assign(SUBHEADER_ATTRS, { ...secondary, ...onSurface });
+  assign(PROMPT_ATTRS, { fg: 2, fgMode: ColorMode.Palette, ...onSurface });
+  assign(INPUT_ATTRS, { ...primary, bold: true, ...onSurface });
+  assign(RESULT_ATTRS, { ...primary, dim: true, ...onSurface });
+  assign(SELECTED_RESULT_ATTRS, { ...primary, ...onSelected });
+  assign(MATCH_ATTRS, { fg: 2, fgMode: ColorMode.Palette, ...onSurface });
+  assign(SELECTED_MATCH_ATTRS, {
+    fg: 2,
+    fgMode: ColorMode.Palette,
+    bold: true,
+    ...onSelected,
+  });
+  assign(CATEGORY_ATTRS, { ...secondary, ...onSurface });
+  assign(SELECTED_CATEGORY_ATTRS, { ...secondary, ...onSelected });
+  assign(CURRENT_TAG_ATTRS, { fg: 3, fgMode: ColorMode.Palette, ...onSurface });
+  assign(SELECTED_CURRENT_TAG_ATTRS, {
+    fg: 3,
+    fgMode: ColorMode.Palette,
+    ...onSelected,
+  });
+  assign(BREADCRUMB_ATTRS, { ...secondary, ...onSurface });
+  assign(NO_MATCHES_ATTRS, { ...secondary, dim: true, ...onSurface });
+  assign(DIM_ATTRS, { ...secondary, dim: true, ...onSurface });
+  assign(BG_ATTRS, { ...onSurface });
+  assign(SELECTED_BG_ATTRS, { ...onSelected });
+}
 
-export const INPUT_ATTRS: CellAttrs = {
-  fg: 7,
-  fgMode: ColorMode.Palette,
-  bold: true,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const RESULT_ATTRS: CellAttrs = {
-  fg: 7,
-  fgMode: ColorMode.Palette,
-  dim: true,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const SELECTED_RESULT_ATTRS: CellAttrs = {
-  fg: 7,
-  fgMode: ColorMode.Palette,
-  bg: SELECTED_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const MATCH_ATTRS: CellAttrs = {
-  fg: 2,
-  fgMode: ColorMode.Palette,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const SELECTED_MATCH_ATTRS: CellAttrs = {
-  fg: 2,
-  fgMode: ColorMode.Palette,
-  bold: true,
-  bg: SELECTED_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const CATEGORY_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const SELECTED_CATEGORY_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  bg: SELECTED_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const CURRENT_TAG_ATTRS: CellAttrs = {
-  fg: 3,
-  fgMode: ColorMode.Palette,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const SELECTED_CURRENT_TAG_ATTRS: CellAttrs = {
-  fg: 3,
-  fgMode: ColorMode.Palette,
-  bg: SELECTED_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const BREADCRUMB_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const NO_MATCHES_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  dim: true,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const DIM_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  dim: true,
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const BG_ATTRS: CellAttrs = {
-  bg: MODAL_BG,
-  bgMode: ColorMode.RGB,
-};
-
-export const SELECTED_BG_ATTRS: CellAttrs = {
-  bg: SELECTED_BG,
-  bgMode: ColorMode.RGB,
-};
+rebuildModalAttrs();

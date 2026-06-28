@@ -3,7 +3,7 @@ import { TmuxPty } from "./tmux-pty";
 import { ScreenBridge } from "./screen-bridge";
 import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
-import { Sidebar, type PinnedPaneEntry } from "./sidebar";
+import { Sidebar, rebuildSidebarColors, type PinnedPaneEntry } from "./sidebar";
 import { CommandPalette } from "./command-palette";
 import { InputModal } from "./input-modal";
 import { ListModal, type ListItem } from "./list-modal";
@@ -20,10 +20,18 @@ import { buildPinCommands } from "./cli/pane";
 import type { CellAttrs } from "./cell-grid";
 import { createGrid } from "./cell-grid";
 import type { Modal } from "./modal";
-import { MODAL_BG } from "./modal";
+import { rebuildModalAttrs } from "./modal";
+import {
+  theme,
+  neutralFg,
+  setTheme,
+  deriveTheme,
+  scanForOsc11,
+  OSC11_QUERY,
+} from "./theme";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
-import { InfoPanel } from "./info-panel";
+import { InfoPanel, rebuildInfoPanelColors } from "./info-panel";
 import { parseViews, cycleGroupBy, cycleSortBy, toggleSortOrder, type PanelView } from "./panel-view";
 import { transformIssues, transformMrs, buildViewNodes, renderView, createViewState, filterItems, type ViewState, type ViewNode, type IssueSessionInfo } from "./panel-view-renderer";
 import { createAdapters } from "./adapters/registry";
@@ -533,6 +541,13 @@ if (process.stdin.setRawMode) {
   process.stdin.setRawMode(true);
 }
 process.stdin.resume();
+
+// Ask the terminal for its background color so modal/sidebar surfaces can be
+// derived from the real theme rather than a hardcoded dark palette. The reply
+// arrives asynchronously on stdin and is peeled off by the input handler below
+// (see applyTerminalBackground); terminals that don't support OSC 11 simply
+// never answer and we keep DEFAULT_THEME.
+process.stdout.write(OSC11_QUERY);
 
 // SessionState must be constructed before performBoot so restore can populate links.
 const sessionStatePath = demoCtx?.statePath ?? resolve(homedir(), ".config", "jmux", "state.json");
@@ -1748,11 +1763,11 @@ const inputRouter = new InputRouter(
           const message = err instanceof Error ? err.message : String(err);
           const lines: StyledLine[] = [
             [],
-            [{ text: `Failed to create session for ${issue.identifier}`, attrs: { fg: 1, fgMode: 1, bg: MODAL_BG, bgMode: 2 } }],
+            [{ text: `Failed to create session for ${issue.identifier}`, attrs: { fg: 1, fgMode: 1, bg: theme.surface, bgMode: 2 } }],
             [],
-            [{ text: message, attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }],
+            [{ text: message, attrs: { ...neutralFg(8), dim: true, bg: theme.surface, bgMode: 2 } }],
             [],
-            [{ text: "Press q or Esc to close.", attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }],
+            [{ text: "Press q or Esc to close.", attrs: { ...neutralFg(8), dim: true, bg: theme.surface, bgMode: 2 } }],
           ];
           const errorModal = new ContentModal({ lines, title: "Session Creation Failed" });
           errorModal.setTermRows(process.stdout.rows || 24);
@@ -2035,11 +2050,11 @@ function showNewSessionError(result: NewSessionResult, err: unknown): void {
     : "The session name may already exist.";
   const lines: StyledLine[] = [
     [],
-    [{ text: message, attrs: { fg: 1, fgMode: 1, bg: MODAL_BG, bgMode: 2 } }],
+    [{ text: message, attrs: { fg: 1, fgMode: 1, bg: theme.surface, bgMode: 2 } }],
     [],
-    [{ text: hint, attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }],
+    [{ text: hint, attrs: { ...neutralFg(8), dim: true, bg: theme.surface, bgMode: 2 } }],
     [],
-    [{ text: "Press q or Esc to close.", attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }],
+    [{ text: "Press q or Esc to close.", attrs: { ...neutralFg(8), dim: true, bg: theme.surface, bgMode: 2 } }],
   ];
   const modal = new ContentModal({ lines, title });
   modal.setTermRows(process.stdout.rows || 24);
@@ -3362,9 +3377,35 @@ pty.onData((data: string) => {
 
 // --- Stdin ---
 
+// Until the terminal's OSC 11 background reply is consumed (or the terminal
+// proves it won't answer), each stdin chunk is scanned for the reply so it can
+// be peeled off before reaching tmux. A reply can split across reads, so the
+// pending buffer threads between chunks. Once resolved, input flows untouched.
+let terminalBgResolved = false;
+let osc11Pending = "";
+
 process.stdin.on("data", (data: Buffer) => {
+  let str = data.toString();
+  if (!terminalBgResolved) {
+    const scan = scanForOsc11(osc11Pending, str);
+    osc11Pending = scan.pending;
+    if (scan.rgb) {
+      // Re-theme every surface in place from the detected background, then
+      // repaint. Modal attrs and sidebar highlights are shared mutable objects
+      // read at render time, so a rebuild is all that's needed.
+      terminalBgResolved = true;
+      setTheme(deriveTheme(scan.rgb));
+      rebuildModalAttrs();
+      rebuildSidebarColors();
+      rebuildInfoPanelColors();
+      scheduleRender();
+    }
+    if (scan.forward === null) return; // holding a split reply
+    str = scan.forward;
+    if (str.length === 0) return;
+  }
   markInputActivity();
-  inputRouter.handleInput(data.toString());
+  inputRouter.handleInput(str);
 });
 
 // --- Resize ---
@@ -3565,29 +3606,29 @@ async function showVersionInfo(): Promise<void> {
 
       if (isCurrent) {
         lines.push([
-          { text: name, attrs: { fg: 2, fgMode: 1, bold: true, bg: MODAL_BG, bgMode: 2 } },
-          { text: "  \u2190 current", attrs: { fg: 2, fgMode: 1, bg: MODAL_BG, bgMode: 2 } },
+          { text: name, attrs: { fg: 2, fgMode: 1, bold: true, bg: theme.surface, bgMode: 2 } },
+          { text: "  \u2190 current", attrs: { fg: 2, fgMode: 1, bg: theme.surface, bgMode: 2 } },
         ]);
       } else {
-        lines.push([{ text: name, attrs: { bold: true, bg: MODAL_BG, bgMode: 2 } }]);
+        lines.push([{ text: name, attrs: { bold: true, bg: theme.surface, bgMode: 2 } }]);
       }
-      lines.push([{ text: date, attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }]);
+      lines.push([{ text: date, attrs: { ...neutralFg(8), dim: true, bg: theme.surface, bgMode: 2 } }]);
       lines.push([]);
 
       const body = (r.body || "").trim();
       if (body) {
         const rendered = renderMarkdownToStyledLines(body, contentWidth, {
-          baseAttrs: { bg: MODAL_BG, bgMode: 2 },
+          baseAttrs: { bg: theme.surface, bgMode: 2 },
         });
         for (const line of rendered) {
           lines.push(line);
         }
         lines.push([]);
       }
-      lines.push([{ text: "\u2500".repeat(40), attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }]);
+      lines.push([{ text: "\u2500".repeat(40), attrs: { ...neutralFg(8), dim: true, bg: theme.surface, bgMode: 2 } }]);
       lines.push([]);
     }
-    lines.push([{ text: "github.com/jarredkenny/jmux/releases", attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }]);
+    lines.push([{ text: "github.com/jarredkenny/jmux/releases", attrs: { ...neutralFg(8), dim: true, bg: theme.surface, bgMode: 2 } }]);
 
     const modal = new ContentModal({ lines, title: "jmux changelog" });
     modal.setTermRows(process.stdout.rows || 24);
@@ -4016,9 +4057,9 @@ function switchCommandCenterTabRelative(delta: number): void {
 function showCcError(message: string): void {
   const lines: StyledLine[] = [
     [],
-    [{ text: message, attrs: { fg: 1, fgMode: 1, bg: MODAL_BG, bgMode: 2 } }],
+    [{ text: message, attrs: { fg: 1, fgMode: 1, bg: theme.surface, bgMode: 2 } }],
     [],
-    [{ text: "Press q or Esc to close.", attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }],
+    [{ text: "Press q or Esc to close.", attrs: { ...neutralFg(8), dim: true, bg: theme.surface, bgMode: 2 } }],
   ];
   const modal = new ContentModal({ lines, title: "Command Center" });
   modal.setTermRows(process.stdout.rows || 24);
@@ -4310,12 +4351,12 @@ async function start(): Promise<void> {
   // First-run welcome screen
   if (configStore.ensureExists()) {
 
-    const g: CellAttrs = { fg: 2, fgMode: 1, bg: MODAL_BG, bgMode: 2 };
-    const b: CellAttrs = { bold: true, bg: MODAL_BG, bgMode: 2 };
-    const d: CellAttrs = { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 };
-    const n: CellAttrs = { bg: MODAL_BG, bgMode: 2 };
-    const c: CellAttrs = { fg: 6, fgMode: 1, bg: MODAL_BG, bgMode: 2 };
-    const y: CellAttrs = { fg: 3, fgMode: 1, bg: MODAL_BG, bgMode: 2 };
+    const g: CellAttrs = { fg: 2, fgMode: 1, bg: theme.surface, bgMode: 2 };
+    const b: CellAttrs = { bold: true, bg: theme.surface, bgMode: 2 };
+    const d: CellAttrs = { ...neutralFg(8), dim: true, bg: theme.surface, bgMode: 2 };
+    const n: CellAttrs = { bg: theme.surface, bgMode: 2 };
+    const c: CellAttrs = { fg: 6, fgMode: 1, bg: theme.surface, bgMode: 2 };
+    const y: CellAttrs = { fg: 3, fgMode: 1, bg: theme.surface, bgMode: 2 };
 
     const welcomeLines: StyledLine[] = [
       [{ text: "The terminal workspace for agentic development", attrs: d }],

@@ -1,6 +1,7 @@
 import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeString, textCols, type CellAttrs } from "./cell-grid";
+import { theme } from "./theme";
 
 export type InfoTab = "diff" | string; // "diff" is special, others are view IDs
 
@@ -21,10 +22,17 @@ const HOVERED_TAB: CellAttrs = {
   fgMode: ColorMode.RGB,
 };
 
+// The tab-bar surface tracks the detected terminal background (defaults to the
+// original #161b22 until/unless OSC 11 detection succeeds). Read at render time
+// from this object, so rebuildInfoPanelColors() re-themes it in place.
 const TAB_BG: CellAttrs = {
-  bg: (0x16 << 16) | (0x1b << 8) | 0x22,
+  bg: theme.surface,
   bgMode: ColorMode.RGB,
 };
+
+export function rebuildInfoPanelColors(): void {
+  TAB_BG.bg = theme.surface;
+}
 
 export interface InfoPanelConfig {
   viewIds: string[];      // ordered list of view IDs to show as tabs

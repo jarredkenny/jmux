@@ -3,6 +3,7 @@ import { ColorMode, makeSessionOtelState } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
 import type { SessionContext } from "./adapters/types";
 import { buildSessionView, buildSessionRow3 } from "./session-view";
+import { theme } from "./theme";
 
 export interface PinnedPaneEntry {
   paneId: string;
@@ -24,8 +25,12 @@ const ACCENT_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
 };
-// #1e2a35 as packed RGB for subtle active row background
-const ACTIVE_BG = (0x1e << 16) | (0x2a << 8) | 0x35;
+// Active/hover row highlight backgrounds. These sit on top of the terminal's
+// own background, so they track the detected theme (selection/hover tints).
+// Under DEFAULT_THEME they equal the original #1e2a35 / #1a1f26 values, so
+// terminals that don't answer the OSC 11 query are visually unchanged. Both are
+// reassigned by rebuildSidebarColors() once a background is detected.
+let ACTIVE_BG = theme.selected;
 const ACTIVE_MARKER_ATTRS: CellAttrs = {
   fg: 2,
   fgMode: ColorMode.Palette,
@@ -97,8 +102,8 @@ const INACTIVE_NAME_ATTRS: CellAttrs = {
   fg: 7,
   fgMode: ColorMode.Palette,
 };
-// Subtle hover background — slightly lighter than the default terminal bg
-const HOVER_BG = (0x1a << 16) | (0x1f << 8) | 0x26;
+// Subtle hover background — a gentle lift off the terminal background.
+let HOVER_BG = theme.hover;
 const HOVER_NAME_ATTRS: CellAttrs = {
   fg: 7,
   fgMode: ColorMode.Palette,
@@ -110,6 +115,19 @@ const HOVER_DETAIL_ATTRS: CellAttrs = {
   bg: HOVER_BG,
   bgMode: ColorMode.RGB,
 };
+
+/**
+ * Re-sync the sidebar's highlight backgrounds from the current theme. Called
+ * after a terminal background is detected. The bare consts (ACTIVE_BG/HOVER_BG)
+ * are read at render time, but the cached HOVER_* attr objects must be patched
+ * in place since they captured HOVER_BG at module load.
+ */
+export function rebuildSidebarColors(): void {
+  ACTIVE_BG = theme.selected;
+  HOVER_BG = theme.hover;
+  HOVER_NAME_ATTRS.bg = HOVER_BG;
+  HOVER_DETAIL_ATTRS.bg = HOVER_BG;
+}
 const GROUP_HEADER_ATTRS: CellAttrs = {
   fg: 8,
   fgMode: ColorMode.Palette,

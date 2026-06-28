@@ -1,6 +1,7 @@
 import type { Cell, CellGrid, CursorPosition, WindowTab } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, DEFAULT_CELL, cellWidth } from "./cell-grid";
+import { theme, neutralFg } from "./theme";
 
 export const BORDER_CHAR = "\u2502"; // │
 
@@ -241,7 +242,7 @@ export function compositeGrids(
       } else if (y === 0) {
       // Toolbar row — always render (palette no longer replaces it)
       const hoverBg = (0x2a << 16) | (0x2f << 8) | 0x38;
-      const activeBg = (0x1e << 16) | (0x2a << 8) | 0x35;
+      const activeBg = theme.selected;
 
       // Render window tabs (left side)
       const peachFg = (0xfb << 16) | (0xd4 << 8) | 0xb8;
@@ -421,15 +422,19 @@ export function compositeGrids(
       }
     }
 
-    // Border positions (absolute grid coordinates)
-    const paletteBg = (0x16 << 16) | (0x1b << 8) | 0x22; // #161b22
-    const shadowBg = (0x06 << 16) | (0x08 << 8) | 0x0c; // very dark
+    // Border positions (absolute grid coordinates). Colors track the detected
+    // terminal theme: surface for the border fill, a derived darkening for the
+    // shadow, and the terminal's default foreground for the border glyph once a
+    // background is known (so the outline stays visible on light themes too).
+    const paletteBg = theme.surface;
+    const shadowBg = theme.shadow;
+    const borderFg = neutralFg(8);
     const bTop = pos.startRow - 1;
     const bLeft = pos.startCol - 1;
     const bRight = pos.startCol + modalOverlay.cols;
     const bBottom = pos.startRow + modalOverlay.rows;
     const borderCell = (ch: string) => ({
-      ...DEFAULT_CELL, char: ch, fg: 8, fgMode: ColorMode.Palette as number,
+      ...DEFAULT_CELL, char: ch, fg: borderFg.fg, fgMode: borderFg.fgMode as number,
       bg: paletteBg, bgMode: ColorMode.RGB as number,
     });
 
