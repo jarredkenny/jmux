@@ -42,6 +42,7 @@ import { ScreenBridge } from "../screen-bridge";
 import { TmuxPty } from "../tmux-pty";
 import { computeTileLayout } from "./layout";
 import type { TileRect } from "./layout";
+import { planTiles } from "./tile-plan";
 
 // ─── Box-drawing characters ──────────────────────────────────────────────────
 const BOX_H  = "─"; // ─
@@ -59,6 +60,7 @@ export interface GlassTileSpec {
   windowId: string;    // its home window id, e.g. "@5"
   label: string;       // pre-built display label
   agentState?: AgentState | null; // drives the border color (matches sidebar)
+  tabId: string;       // which Command Center tab this tile belongs to
 }
 
 export interface GlassViewOptions {
@@ -92,6 +94,8 @@ export class GlassView {
   private tiles: Map<string, TileState> = new Map(); // keyed by paneId
   private tileOrder: string[] = [];                  // paneId insertion order → index
   private focusedIndex: number = 0;
+  private allSpecs: GlassTileSpec[] = []; // full membership across all tabs
+  private activeTabId = "";
   private width: number = 80;
   private height: number = 24;
   private scrollRow: number = 0;
@@ -110,44 +114,45 @@ export class GlassView {
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
-  setTiles(specs: GlassTileSpec[]): void {
-    const incoming = new Set(specs.map((s) => s.paneId));
+  setTiles(specs: GlassTileSpec[], activeTabId: string): void {
+    this.allSpecs = specs;
+    this.activeTabId = activeTabId;
 
-    // Tear down tiles that are no longer in the spec list.
-    for (const paneId of [...this.tiles.keys()]) {
-      if (!incoming.has(paneId)) {
-        this.teardownTile(paneId);
-      }
+    const warm = new Set(this.tiles.keys());
+    const plan = planTiles(
+      specs.map((s) => ({ paneId: s.paneId, tabId: s.tabId })),
+      activeTabId,
+      warm,
+    );
+
+    // Tear down panes that left membership entirely.
+    for (const paneId of plan.teardown) this.teardownTile(paneId);
+
+    // Spawn newly-visible active-tab panes; update labels for survivors.
+    const specById = new Map(specs.map((s) => [s.paneId, s]));
+    for (const paneId of plan.spawn) {
+      const spec = specById.get(paneId);
+      if (spec) this.ensureTile(spec);
+    }
+    for (const [paneId, tile] of this.tiles) {
+      const spec = specById.get(paneId);
+      if (spec) tile.spec = spec; // refresh label/agentState/tabId
     }
 
-    // Determine stable order: keep existing order for survivors, append new ones.
-    const newOrder: string[] = this.tileOrder.filter((id) => incoming.has(id));
-    for (const spec of specs) {
-      if (!newOrder.includes(spec.paneId)) {
-        newOrder.push(spec.paneId);
-      }
-    }
-    this.tileOrder = newOrder;
-
-    // Spawn tiles that are newly added.
-    for (const spec of specs) {
-      if (!this.tiles.has(spec.paneId)) {
-        this.ensureTile(spec);
-      } else {
-        // Update the label in case it changed.
-        this.tiles.get(spec.paneId)!.spec.label = spec.label;
-      }
-    }
-
-    // Clamp focused index.
+    // Active tab is the render/focus order.
+    this.tileOrder = plan.render;
     if (this.tileOrder.length > 0) {
       this.focusedIndex = Math.min(this.focusedIndex, this.tileOrder.length - 1);
     } else {
       this.focusedIndex = 0;
     }
-
-    // Resize all tiles to match current geometry.
     this.resizeAllTiles();
+  }
+
+  /** Switch the active tab's render filter, spawning its tiles on first visit. */
+  setActiveTab(activeTabId: string): void {
+    this.focusedIndex = 0;
+    this.setTiles(this.allSpecs, activeTabId);
   }
 
   resize(width: number, height: number): void {
