@@ -63,6 +63,22 @@ Shift-arrow pane navigation is smart-splits.nvim aware — if the active pane is
 
 ---
 
+## Command Center
+
+A grid of live, drivable mirror tiles of pinned panes — borders colored by agent state. Non-destructive: panes never leave their own session. Open it from the **Command Center** entry at the top of the sidebar.
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-a <number>` | Switch to tab N (when open) |
+| `Ctrl-a [` / `Ctrl-a ]` | Previous / next tab, wrapping (when open) |
+| Click a tab chip | Switch to that tab |
+| Shift-arrows | Move focus between tiles |
+| Mouse wheel | Scroll the tile under the cursor |
+
+Pin panes and manage tabs from the command palette (`Ctrl-a p`): **Pin to Command Center**, **Move tile to tab…**, **Unpin tile**, **New / Rename / Delete tab**, **Switch to tab…**. Tabs let you group pinned panes from *different sessions* into named buckets; a pane lives in exactly one tab and tabs persist in `~/.config/jmux/config.json`. The `Ctrl-a [` / `]` chords are scoped to the Command Center, so copy-mode/paste in normal panes is untouched.
+
+---
+
 ## Command Palette
 
 Press `Ctrl-a p` to open the command palette — a floating overlay for fuzzy-searching all actions.
@@ -75,7 +91,7 @@ Press `Ctrl-a p` to open the command palette — a floating overlay for fuzzy-se
 | `Escape` | Back out of sub-list, or close palette |
 | `Ctrl-a p` | Close palette |
 
-**Available commands:** switch sessions, switch windows, new session/window, kill session, close window/pane, split horizontal/vertical, zoom pane, rename session, move window, window picker, open Claude, sidebar width, Claude command, project directories.
+**Available commands:** switch sessions, switch windows, new session/window, kill session, close window/pane, split horizontal/vertical, zoom pane, rename session, move window, window picker, open Claude, Command Center (pin/unpin, move tile to tab, switch tab, new/rename/delete/reorder tab), sidebar width, Claude command, project directories.
 
 ---
 

@@ -101,6 +101,17 @@ Every session visible at a glance — name, window count, git branch, pipeline s
 - Pipeline glyphs: `✓` passed, `⟳` running, `✗` failed, `◆` merged
 - Linked issue identifiers (e.g., `ENG-1234`) and MR count
 
+### Command Center
+
+A single grid view of every agent you care about — each tile is a **live, drivable mirror** of a pinned pane, with borders colored by agent state (running / waiting / complete) so you see who needs you at a glance. It's fully **non-destructive**: panes never leave their own session, window, or layout.
+
+![jmux Command Center: a grid of live Claude agent panes, borders colored by state](docs/screenshots/command-center.webp)
+
+- **Pin any pane** — "Pin to Command Center" from the palette, or auto-pin every detected agent pane (a setting).
+- **Named tabs** — organize pinned panes from *different sessions* into named tabs (e.g. `Backend`, `Review`). A pane lives in exactly one tab; create, rename, delete, reorder, and move panes between tabs entirely from the command palette. Tabs persist in your config.
+- **Switch tabs** — `Ctrl-a <number>` to jump, `Ctrl-a [` / `Ctrl-a ]` for previous / next (while the Command Center is open), or click a tab chip.
+- **Lazy & live** — tiles spawn when you first visit a tab and stay warm; per-tab status dots come from the agent-state metadata.
+
 ### Command Palette
 
 Press `Ctrl-a p` to fuzzy-search sessions, windows, pane actions, settings, and issue/MR commands.
@@ -209,6 +220,19 @@ Use any editor. Any Git tool. Any AI agent. Any shell. No Electron. No proprieta
 | `Ctrl-a Left/Right/Up/Down` | Resize panes |
 | `Ctrl-a z` | Toggle pane zoom |
 
+### Command Center
+
+| Key | Action |
+| --- | --- |
+| Sidebar **Command Center** entry | Open / close the Command Center |
+| `Ctrl-a <number>` | Switch to tab N (when open) |
+| `Ctrl-a [` / `Ctrl-a ]` | Previous / next tab (when open) |
+| Click a tab chip | Switch to that tab |
+| `Ctrl-a p` → "Pin to Command Center" | Pin the active pane to a tab |
+| `Ctrl-a p` → "Move tile to tab…" | Move the focused tile to another tab |
+| `Ctrl-a p` → "New/Rename/Delete tab" | Manage tabs |
+
+Tab switches with `Ctrl-a [` / `]` are scoped to the Command Center, so they don't affect tmux copy-mode/paste in normal panes.
 
 ### Info Panel
 

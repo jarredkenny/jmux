@@ -224,6 +224,10 @@ When you have several agents running in different sessions:
 
 Switch to a session to check on it. The indicators clear when you type something in that session — not when you're just passing through.
 
+For a bird's-eye view, open the **Command Center** from the entry at the top of the sidebar: a grid of live, drivable tiles mirroring your pinned panes, with borders colored by agent state. Pin a pane with `Ctrl-a p` → **Pin to Command Center** (or turn on auto-pin in settings to surface every agent automatically). It's non-destructive — panes stay in their own sessions.
+
+When you're juggling a lot, group pinned panes from different sessions into **named tabs** (e.g. `Backend`, `Review`). Everything is palette-driven: **Pin to Command Center**, **Move tile to tab…**, **New / Rename / Delete tab**. While the Command Center is open, switch tabs with `Ctrl-a <number>`, or `Ctrl-a [` / `Ctrl-a ]` for previous / next.
+
 ---
 
 ## Claude Code integration
