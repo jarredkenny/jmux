@@ -55,4 +55,38 @@ describe("PinnedPaneTracker", () => {
     t.pruneExcept(["%1", "%9"]);
     expect(fired).toBe(0);
   });
+
+  test("stores the raw value and exposes it via getValue", () => {
+    const t = new PinnedPaneTracker();
+    t.apply("%1", "backend");
+    expect(t.has("%1")).toBe(true);
+    expect(t.getValue("%1")).toBe("backend");
+  });
+
+  test("a changed value fires onChange (e.g. moved between tabs)", () => {
+    const t = new PinnedPaneTracker();
+    t.apply("%1", "backend");
+    let fired = 0;
+    t.onChange(() => fired++);
+    t.apply("%1", "review"); // moved tab
+    expect(fired).toBe(1);
+    expect(t.getValue("%1")).toBe("review");
+  });
+
+  test("unset clears the value and getValue returns undefined", () => {
+    const t = new PinnedPaneTracker();
+    t.apply("%1", "backend");
+    t.apply("%1", null);
+    expect(t.has("%1")).toBe(false);
+    expect(t.getValue("%1")).toBeUndefined();
+  });
+
+  test("idempotent same-value re-apply does not fire", () => {
+    const t = new PinnedPaneTracker();
+    t.apply("%1", "backend");
+    let fired = 0;
+    t.onChange(() => fired++);
+    t.apply("%1", "backend");
+    expect(fired).toBe(0);
+  });
 });
