@@ -41,7 +41,8 @@ import { parsePaneStateLines, PANE_STATE_FORMAT } from "./glass/reflect";
 import { buildPaneLabel } from "./glass/pane-label";
 import { AGENT_DETECT_FORMAT, parseAgentDetectLines, detectAgentPanes } from "./glass/auto-detect";
 import { GlassView, type GlassTileSpec } from "./glass/view";
-import { normalizeTabs, defaultTabId, resolveTabId, summarizeTabState, type TabEntry } from "./glass/tabs";
+import { normalizeTabs, defaultTabId, resolveTabId, summarizeTabState, addTab, renameTab, deleteTab, moveTab, type TabEntry } from "./glass/tabs";
+import { buildCcCommands, NEW_TAB_OPTION_ID } from "./glass/cc-commands";
 import { stripVisibleFor, renderStrip, layoutStrip, chipAtX, STRIP_ROWS, type StripChip } from "./glass/strip";
 import { OtelReceiver } from "./otel-receiver";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
@@ -2099,18 +2100,28 @@ function buildPaletteCommands(): PaletteCommand[] {
     }
   }
 
-  // Dynamic: pin/unpin the current pane (the active pane of the current session)
-  if (currentSessionId) {
-    const activePane = glassRunner.run(
-      ["display-message", "-p", "-t", currentSessionId, "#{pane_id}"],
-    ).lines[0];
-    if (activePane) {
-      commands.push(
-        pinnedTracker.has(activePane)
-          ? { id: "unpin-pane", label: "Unpin from Command Center", category: "pane" }
-          : { id: "pin-pane", label: "Pin to Command Center", category: "pane" },
-      );
+  // Command Center commands (context-aware: in-glass vs session).
+  {
+    const focusedPaneId = inGlass ? (glassView?.focusedPaneId() ?? null) : null;
+    const focusedTabId = focusedPaneId
+      ? resolveTabId(pinnedTracker.getValue(focusedPaneId) ?? null, commandCenterTabs)
+      : null;
+    const focusedIsAuto = focusedPaneId ? !pinnedTracker.has(focusedPaneId) : false;
+    let sessionActivePinned = false;
+    if (!inGlass && currentSessionId) {
+      const activePane = glassRunner.run(["display-message", "-p", "-t", currentSessionId, "#{pane_id}"]).lines[0];
+      sessionActivePinned = activePane ? pinnedTracker.has(activePane) : false;
     }
+    const tabCounts = new Map<string, number>();
+    for (const tab of commandCenterTabs) tabCounts.set(tab.id, 0);
+    for (const paneId of pinnedTracker.all()) {
+      const tid = resolveTabId(pinnedTracker.getValue(paneId) ?? null, commandCenterTabs);
+      tabCounts.set(tid, (tabCounts.get(tid) ?? 0) + 1);
+    }
+    commands.push(...buildCcCommands({
+      inGlass, tabs: commandCenterTabs, activeTabId, tabCounts,
+      focusedPaneId, focusedTabId, focusedIsAuto, sessionActivePinned,
+    }));
   }
 
   // Static commands
@@ -2729,19 +2740,49 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     return;
   }
 
-  if (commandId === "pin-pane" || commandId === "unpin-pane") {
-    if (currentSessionId) {
-      const activePane = glassRunner.run(
-        ["display-message", "-p", "-t", currentSessionId, "#{pane_id}"],
-      ).lines[0];
-      if (activePane) {
-        // Writers only set/unset the option; the reconciler does the break/join.
-        for (const cmd of buildPinCommands(commandId === "pin-pane" ? "pin" : "unpin", activePane)) {
-          glassRunner.run(cmd.args);
-        }
-        refreshPinnedPanes();
-      }
+  // Pin the current session's active pane (or move the focused tile) to a
+  // chosen/created tab. Writers only set/unset the option; the reconciler does
+  // the break/join.
+  if (commandId === "pin-pane" || commandId === "move-tile") {
+    const paneId = commandId === "pin-pane"
+      ? glassRunner.run(["display-message", "-p", "-t", currentSessionId!, "#{pane_id}"]).lines[0]
+      : (glassView?.focusedPaneId() ?? null);
+    if (!paneId) return;
+    const applyTab = (tabId: string) => {
+      for (const cmd of buildPinCommands("pin", paneId, tabId)) glassRunner.run(cmd.args);
+      if (commandId === "move-tile") switchCommandCenterTab(tabId); // follow the moved tile
+      refreshPinnedPanes();
+    };
+    if (sublistOptionId === NEW_TAB_OPTION_ID) {
+      openInputModalForNewTab((newTabId) => applyTab(newTabId));
+    } else if (sublistOptionId) {
+      applyTab(sublistOptionId);
     }
+    return;
+  }
+
+  if (commandId === "unpin-pane" || commandId === "unpin-tile") {
+    const paneId = commandId === "unpin-tile"
+      ? (glassView?.focusedPaneId() ?? null)
+      : glassRunner.run(["display-message", "-p", "-t", currentSessionId!, "#{pane_id}"]).lines[0];
+    if (!paneId) return;
+    for (const cmd of buildPinCommands("unpin", paneId)) glassRunner.run(cmd.args);
+    refreshPinnedPanes();
+    return;
+  }
+
+  if (commandId === "switch-cc-tab" && sublistOptionId) {
+    if (!inGlass) { await enterGlass(); }
+    switchCommandCenterTab(sublistOptionId);
+    return;
+  }
+
+  if (commandId === "new-cc-tab") { openInputModalForNewTab((id) => switchCommandCenterTab(id)); return; }
+  if (commandId === "rename-cc-tab") { openInputModalForRenameTab(); return; }
+  if (commandId === "delete-cc-tab") { tryDeleteActiveTab(); return; }
+  if (commandId === "move-tab-left" || commandId === "move-tab-right") {
+    persistTabs(moveTab(commandCenterTabs, activeTabId, commandId === "move-tab-left" ? "left" : "right"));
+    scheduleRender();
     return;
   }
 
@@ -3921,6 +3962,68 @@ function switchCommandCenterTab(tabId: string): void {
   lastActiveTabId = tabId;
   glassView?.setActiveTab(tabId);
   scheduleRender();
+}
+
+/**
+ * Surface a Command-Center validation error (empty/duplicate/too-long tab name,
+ * non-empty/default tab delete) using the same short-lived ContentModal pattern
+ * as session-creation failures — jmux has no toast system.
+ */
+function showCcError(message: string): void {
+  const lines: StyledLine[] = [
+    [],
+    [{ text: message, attrs: { fg: 1, fgMode: 1, bg: MODAL_BG, bgMode: 2 } }],
+    [],
+    [{ text: "Press q or Esc to close.", attrs: { fg: 8, fgMode: 1, dim: true, bg: MODAL_BG, bgMode: 2 } }],
+  ];
+  const modal = new ContentModal({ lines, title: "Command Center" });
+  modal.setTermRows(process.stdout.rows || 24);
+  modal.open();
+  openModal(modal, () => {});
+  scheduleRender();
+}
+
+function persistTabs(next: TabEntry[]): void {
+  commandCenterTabs = next;
+  configStore.set("commandCenterTabs", next);
+  // Clamp active/last-active if they vanished.
+  if (!next.some((t) => t.id === activeTabId)) activeTabId = defaultTabId(next);
+  if (!next.some((t) => t.id === lastActiveTabId)) lastActiveTabId = defaultTabId(next);
+  if (inGlass) refreshPinnedPanes();
+}
+
+function openInputModalForNewTab(then: (tabId: string) => void): void {
+  const modal = new InputModal({ header: "New tab name", placeholder: "e.g. Backend" });
+  modal.open();
+  openModal(modal, (value) => {
+    const result = addTab(commandCenterTabs, String(value));
+    if (!result.ok) { showCcError(result.error); return; }
+    const created = result.tabs[result.tabs.length - 1];
+    persistTabs(result.tabs);
+    then(created.id);
+  });
+}
+
+function openInputModalForRenameTab(): void {
+  const current = commandCenterTabs.find((t) => t.id === activeTabId);
+  if (!current) return;
+  const modal = new InputModal({ header: "Rename tab", value: current.name });
+  modal.open();
+  openModal(modal, (value) => {
+    const result = renameTab(commandCenterTabs, activeTabId, String(value));
+    if (!result.ok) { showCcError(result.error); return; }
+    persistTabs(result.tabs);
+  });
+}
+
+function tryDeleteActiveTab(): void {
+  const memberCount = pinnedTracker.all().filter(
+    (p) => resolveTabId(pinnedTracker.getValue(p) ?? null, commandCenterTabs) === activeTabId,
+  ).length;
+  const result = deleteTab(commandCenterTabs, activeTabId, memberCount);
+  if (!result.ok) { showCcError(result.error); return; }
+  persistTabs(result.tabs);
+  switchCommandCenterTab(defaultTabId(commandCenterTabs));
 }
 
 /**
