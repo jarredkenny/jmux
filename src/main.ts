@@ -41,6 +41,8 @@ import { parsePaneStateLines, PANE_STATE_FORMAT } from "./glass/reflect";
 import { buildPaneLabel } from "./glass/pane-label";
 import { AGENT_DETECT_FORMAT, parseAgentDetectLines, detectAgentPanes } from "./glass/auto-detect";
 import { GlassView, type GlassTileSpec } from "./glass/view";
+import { normalizeTabs, defaultTabId, resolveTabId, summarizeTabState, type TabEntry } from "./glass/tabs";
+import { stripVisibleFor, renderStrip, layoutStrip, chipAtX, STRIP_ROWS, type StripChip } from "./glass/strip";
 import { OtelReceiver } from "./otel-receiver";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
@@ -610,6 +612,12 @@ const pinnedTracker = new PinnedPaneTracker();
 let inGlass = false;
 let glassView: GlassView | null = null;
 
+let commandCenterTabs: TabEntry[] = normalizeTabs(configStore.config.commandCenterTabs);
+let activeTabId: string = defaultTabId(commandCenterTabs);
+let lastActiveTabId: string = activeTabId;
+let currentStripChips: StripChip[] = [];
+let summaryByTab = new Map<string, AgentState | null>();
+
 const glassRunner = {
   run: (args: string[]): { ok: boolean; lines: string[] } => {
     const socketArgs = socketName ? ["-L", socketName] : [];
@@ -1138,15 +1146,31 @@ function renderFrame(): void {
   if (inGlass && glassView) {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
     const overlay = computeModalOverlay();
-    renderer.render(
-      glassView.getGrid(),
-      glassView.getFocusedCursor() ?? { x: 0, y: 0 },
-      sidebarGrid,
-      null, // no toolbar
-      overlay?.grid ?? null,
-      overlay?.cursor ?? null,
-      undefined,
-    );
+    const stripVisible = stripVisibleFor(commandCenterTabs);
+    const totalCols = process.stdout.columns || 80;
+    const contentCols = sidebarShown ? totalCols - sidebarTotal() : totalCols;
+
+    let content = glassView.getGrid();
+    let cursor = glassView.getFocusedCursor() ?? { x: 0, y: 0 };
+
+    if (stripVisible) {
+      const palette = resolveStateColors(configStore.config.stateColors);
+      const stripInput = { tabs: commandCenterTabs, activeTabId, summaryByTab, width: contentCols, palette };
+      currentStripChips = layoutStrip(stripInput);
+      const strip = renderStrip(stripInput);
+      const combined = createGrid(contentCols, (process.stdout.rows || 24));
+      // Blit strip on top rows, glass content below.
+      for (let r = 0; r < STRIP_ROWS && r < combined.rows; r++)
+        for (let c = 0; c < contentCols; c++) combined.cells[r][c] = strip.cells[r][c];
+      for (let r = 0; r < content.rows && r + STRIP_ROWS < combined.rows; r++)
+        for (let c = 0; c < content.cols && c < contentCols; c++) combined.cells[r + STRIP_ROWS][c] = content.cells[r][c];
+      content = combined;
+      cursor = { x: cursor.x, y: cursor.y + STRIP_ROWS };
+    } else {
+      currentStripChips = [];
+    }
+
+    renderer.render(content, cursor, sidebarGrid, null, overlay?.grid ?? null, overlay?.cursor ?? null, undefined);
     return;
   }
 
@@ -1440,6 +1464,9 @@ const inputRouter = new InputRouter(
       glassView?.moveFocus(dir);
       scheduleRender();
     },
+    glassStripRows: () => (inGlass && stripVisibleFor(commandCenterTabs) ? STRIP_ROWS : 0),
+    onGlassTabClick: (x) => { const id = chipAtX(currentStripChips, x); if (id) switchCommandCenterTab(id); },
+    onGlassTabSwitch: (n) => { const tab = commandCenterTabs[n - 1]; if (tab) switchCommandCenterTab(tab.id); },
     onGlassDetach: () => detachClient(),
     onDiffToggle: () => toggleDiffPanel(),
     onDiffZoom: () => zoomDiffPanel(),
@@ -3765,8 +3792,9 @@ function refreshPinnedPanes(): void {
   const state = parsePaneStateLines(
     glassRunner.run(["list-panes", "-a", "-F", PANE_STATE_FORMAT]).lines,
   );
+  // Reflect raw @jmux-pinned values into the tracker (value, not just presence).
   for (const paneId of state.live.keys()) {
-    pinnedTracker.apply(paneId, state.pinned.has(paneId) ? "1" : null);
+    pinnedTracker.apply(paneId, state.pins.get(paneId) ?? null);
   }
   pinnedTracker.pruneExcept([...state.live.keys()]);
 
@@ -3812,20 +3840,32 @@ function refreshPinnedPanes(): void {
 
   const entries: PinnedPaneEntry[] = [];
   const specs: GlassTileSpec[] = [];
+  const stateByTab = new Map<string, (AgentState | null)[]>();
   for (const paneId of orderedPaneIds) {
     const loc = state.live.get(paneId)!;
     const meta = labelByPane.get(paneId)!;
     const agentState = agentStateTracker.getState(loc.sessionId);
+    const tabId = resolveTabId(pinnedTracker.getValue(paneId) ?? null, commandCenterTabs);
     entries.push({
       paneId,
       homeSessionName: meta.sessionName,
       label: meta.label,
       agentState,
     });
-    specs.push({ paneId, sessionId: loc.sessionId, windowId: loc.windowId, label: meta.label, agentState });
+    specs.push({ paneId, sessionId: loc.sessionId, windowId: loc.windowId, label: meta.label, agentState, tabId });
+    const arr = stateByTab.get(tabId) ?? [];
+    arr.push(agentState);
+    stateByTab.set(tabId, arr);
   }
   sidebar.setPinnedPanes(entries);
-  if (inGlass) glassView?.setTiles(specs);
+
+  // Per-tab summary for the strip dots.
+  summaryByTab = new Map<string, AgentState | null>();
+  for (const tab of commandCenterTabs) {
+    summaryByTab.set(tab.id, summarizeTabState(stateByTab.get(tab.id) ?? []));
+  }
+
+  if (inGlass) glassView?.setTiles(specs, activeTabId);
   scheduleRender();
 }
 
@@ -3849,13 +3889,18 @@ function resizeGlass(): void {
   if (!glassView) return;
   const totalCols = process.stdout.columns || 80;
   const contentCols = sidebarShown ? totalCols - sidebarTotal() : totalCols;
-  const contentRows = process.stdout.rows || 24;
+  const stripRows = stripVisibleFor(commandCenterTabs) ? STRIP_ROWS : 0;
+  const contentRows = (process.stdout.rows || 24) - stripRows;
   glassView.resize(contentCols, contentRows);
 }
 
 async function enterGlass(): Promise<void> {
   ensureGlassView();
   inGlass = true;
+  // Restore last-active tab; fall back to default if it no longer exists.
+  activeTabId = commandCenterTabs.some((t) => t.id === lastActiveTabId)
+    ? lastActiveTabId
+    : defaultTabId(commandCenterTabs);
   sidebar.setActiveSession(""); // clear the session highlight while in the glass
   sidebar.setOverviewActive(true);
   // Park the main client so it doesn't constrain the pinned sessions' sizes.
@@ -3867,6 +3912,14 @@ async function enterGlass(): Promise<void> {
   }
   resizeGlass();
   refreshPinnedPanes(); // builds + applies tile specs (inGlass is true)
+  scheduleRender();
+}
+
+function switchCommandCenterTab(tabId: string): void {
+  if (!commandCenterTabs.some((t) => t.id === tabId)) return;
+  activeTabId = tabId;
+  lastActiveTabId = tabId;
+  glassView?.setActiveTab(tabId);
   scheduleRender();
 }
 
