@@ -1319,9 +1319,24 @@ function openCreateIssueModal(): void {
 
 // --- Input Router ---
 
+// Open a URL with the OS default handler. jmux opens links itself (see the
+// InputRouter link-click path) so clicking works identically across terminals
+// instead of depending on each terminal's mouse-capture bypass.
+function openUrl(url: string): void {
+  const opener =
+    process.platform === "darwin"
+      ? ["open", url]
+      : process.platform === "win32"
+        ? ["cmd", "/c", "start", "", url]
+        : ["xdg-open", url];
+  Bun.spawn(opener, { stdout: "ignore", stderr: "ignore" });
+}
+
 const inputRouter = new InputRouter(
   {
     sidebarCols: sidebarWidth,
+    getLinkAt: (x, y) => renderer.getLinkAt(x, y),
+    onOpenLink: openUrl,
     onPtyData: (data) => {
       if (inGlass) {
         glassView?.writeFocused(data);

@@ -98,3 +98,40 @@ describe("Renderer cursor repositioning", () => {
     expect(captured).toContain("aéb");
   });
 });
+
+describe("Renderer.getLinkAt", () => {
+  let renderer: Renderer;
+  let originalWrite: typeof process.stdout.write;
+
+  beforeEach(() => {
+    renderer = new Renderer();
+    originalWrite = process.stdout.write;
+    process.stdout.write = (() => true) as typeof process.stdout.write;
+  });
+  afterEach(() => { process.stdout.write = originalWrite; });
+
+  test("returns the link at the composited absolute coords a click maps to", () => {
+    // A link in the main grid must be findable by getLinkAt at its ABSOLUTE
+    // composited position (shifted right by sidebar.cols + 1 border). This is
+    // the contract the input router relies on: getLinkAt(mouse.x-1, mouse.y-1).
+    const main = createGrid(40, 3);
+    const url = "https://example.com";
+    const mainX = 2;
+    for (let i = 0; i < url.length; i++) {
+      main.cells[1][mainX + i] = { ...makeCell(url[i]), link: url };
+    }
+    const sidebar = createGrid(6, 3); // cols 0..5, border at col 6
+
+    renderer.render(main, { x: 0, y: 0 }, sidebar);
+
+    const absX = sidebar.cols + 1 + mainX; // 6 + 1 + 2 = 9
+    expect(renderer.getLinkAt(absX, 1)).toBe(url);
+    expect(renderer.getLinkAt(absX + url.length - 1, 1)).toBe(url); // last char
+    expect(renderer.getLinkAt(absX - 1, 1)).toBeUndefined(); // border/no-link
+    expect(renderer.getLinkAt(absX, 0)).toBeUndefined(); // different row
+  });
+
+  test("returns undefined before any frame is rendered", () => {
+    expect(renderer.getLinkAt(0, 0)).toBeUndefined();
+  });
+});

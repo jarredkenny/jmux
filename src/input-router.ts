@@ -83,6 +83,12 @@ export interface InputRouterOptions {
   onPanelFilterBackspace?: () => void;
   onPanelFilterClear?: () => void;
   onPanelRefresh?: () => void;
+  // Link clicking — jmux opens links itself rather than relying on the
+  // terminal's (fragile, per-terminal) mouse-capture bypass. getLinkAt looks up
+  // a rendered cell's URL by absolute 0-indexed grid coords; onOpenLink hands it
+  // off to the OS opener.
+  getLinkAt?: (x: number, y: number) => string | undefined;
+  onOpenLink?: (url: string) => void;
 }
 
 export class InputRouter {
@@ -260,6 +266,30 @@ export class InputRouter {
           } else {
             this.opts.onHover(null);
           }
+        }
+      }
+
+      // Link click: a clean left-click on a rendered link cell opens the URL
+      // directly. jmux owns this rather than depending on the terminal's
+      // mouse-capture bypass (which varies per terminal and has historically
+      // drifted out of working). Checked before area routing so it works in the
+      // main pane, glass tiles, diff and panels alike — getLinkAt reads the
+      // composited grid by absolute coords. Only a bare left button event (no
+      // motion/drag, not wheel) over the content area qualifies, so drag-to-
+      // select and sidebar/toolbar clicks are untouched. The press opens; the
+      // matching release over the same link cell is swallowed so tmux never
+      // sees a stray event.
+      if (
+        !this.modalOpen &&
+        mouse.x > this.opts.sidebarCols &&
+        !isMotion &&
+        !isWheel &&
+        (mouse.button & 0x03) === 0
+      ) {
+        const url = this.opts.getLinkAt?.(mouse.x - 1, mouse.y - 1);
+        if (url) {
+          if (!mouse.release) this.opts.onOpenLink?.(url);
+          return;
         }
       }
 

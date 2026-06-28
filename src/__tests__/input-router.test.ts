@@ -227,6 +227,75 @@ describe("modal mode", () => {
   });
 });
 
+describe("link click", () => {
+  // getLinkAt is queried with 0-indexed grid coords (mouse.x-1, mouse.y-1).
+  // The link cell here is the main-area cell at absolute mouse (30, 5).
+  const makeRouter = (sink: { pty: string; opened: string[] }) =>
+    new InputRouter(
+      {
+        sidebarCols: 24,
+        onPtyData: (d) => { sink.pty += d; },
+        onSidebarClick: () => {},
+        getLinkAt: (x, y) => (x === 29 && y === 4 ? "https://example.com" : undefined),
+        onOpenLink: (url) => { sink.opened.push(url); },
+      },
+      true,
+    );
+
+  test("clean left-click on a link cell opens the URL and is not forwarded to tmux", () => {
+    const sink = { pty: "", opened: [] as string[] };
+    const router = makeRouter(sink);
+    router.setMainCols(60);
+    router.handleInput("\x1b[<0;30;5M");
+    expect(sink.opened).toEqual(["https://example.com"]);
+    expect(sink.pty).toBe("");
+  });
+
+  test("the matching release over the link cell is also consumed", () => {
+    const sink = { pty: "", opened: [] as string[] };
+    const router = makeRouter(sink);
+    router.setMainCols(60);
+    router.handleInput("\x1b[<0;30;5M"); // press → opens
+    router.handleInput("\x1b[<0;30;5m"); // release → swallowed
+    expect(sink.opened).toEqual(["https://example.com"]); // opened exactly once
+    expect(sink.pty).toBe("");
+  });
+
+  test("left-click on a non-link cell forwards to tmux and does not open", () => {
+    const sink = { pty: "", opened: [] as string[] };
+    const router = makeRouter(sink);
+    router.setMainCols(60);
+    router.handleInput("\x1b[<0;40;5M"); // not the link cell
+    expect(sink.opened).toEqual([]);
+    expect(sink.pty.length).toBeGreaterThan(0); // translated event forwarded
+  });
+
+  test("wheel over a link cell does not open the link", () => {
+    const sink = { pty: "", opened: [] as string[] };
+    const router = makeRouter(sink);
+    router.setMainCols(60);
+    router.handleInput("\x1b[<64;30;5M"); // wheel up at the link cell
+    expect(sink.opened).toEqual([]);
+  });
+
+  test("motion (drag) over a link cell does not open the link", () => {
+    const sink = { pty: "", opened: [] as string[] };
+    const router = makeRouter(sink);
+    router.setMainCols(60);
+    router.handleInput("\x1b[<32;30;5M"); // button 0 + motion bit (drag)
+    expect(sink.opened).toEqual([]);
+  });
+
+  test("link click is not intercepted while a modal is open", () => {
+    const sink = { pty: "", opened: [] as string[] };
+    const router = makeRouter(sink);
+    router.setMainCols(60);
+    router.setModalOpen(true);
+    router.handleInput("\x1b[<0;30;5M");
+    expect(sink.opened).toEqual([]);
+  });
+});
+
 describe("diff panel routing", () => {
   test("mouse click in diff panel region forwards translated SGR to onDiffPanelData", () => {
     let diffData = "";

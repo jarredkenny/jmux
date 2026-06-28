@@ -527,6 +527,15 @@ export class Renderer {
   private prevGrid: CellGrid | null = null;
   private lastMouseModeTime = 0;
 
+  /**
+   * URL of the hyperlink at the given absolute (0-indexed) cell of the last
+   * composited frame, or undefined. Backs jmux-owned link clicking — the input
+   * router maps a click's coordinates straight onto what was rendered there.
+   */
+  getLinkAt(col: number, row: number): string | undefined {
+    return this.prevGrid?.cells[row]?.[col]?.link;
+  }
+
   render(
     main: CellGrid,
     cursor: CursorPosition,
@@ -638,13 +647,13 @@ export class Renderer {
       buf.push("\x1b[?25h");
     }
 
-    // Re-assert mouse tracking modes periodically rather than every
-    // frame.  Per-frame re-assertion sent ?1003h 60x/sec, which
-    // interfered with terminal URL detection — terminals that
-    // re-process the mode switch on each occurrence could briefly
-    // drop Cmd+click bypass during the transition.  2s interval
-    // still recovers from corruption but leaves the terminal's URL
-    // handler undisturbed during normal operation.
+    // Re-assert mouse tracking modes periodically to keep jmux's own mouse
+    // reception alive against mode drift — link clicking now depends on jmux
+    // receiving the click (see InputRouter's getLinkAt path), so these modes
+    // must stay on. Throttled to 2s rather than per-frame: per-frame re-assert
+    // sent ?1003h 60x/sec, churn that could disrupt terminals' URL detection.
+    // (We no longer depend on the terminal's own click bypass, so reasserting
+    // here is purely upside.)
     const now = Date.now();
     if (now - this.lastMouseModeTime >= MOUSE_MODE_INTERVAL_MS) {
       buf.push("\x1b[?1000h\x1b[?1003h\x1b[?1006h");
