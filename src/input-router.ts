@@ -52,6 +52,7 @@ export interface InputRouterOptions {
   onGlassFocusMove?: (dir: "left" | "right" | "up" | "down") => void; // Shift+arrows
   onGlassDetach?: () => void;                        // prefix+d in glass → detach jmux, not the focused tile
   onGlassTabSwitch?: (index: number) => void;       // glass-only Ctrl-a <n> → switch tab
+  onGlassTabRelative?: (delta: number) => void;     // glass-only Ctrl-a [ / ] → prev/next tab
   glassStripRows?: () => number;                    // tab-strip row count (0 when hidden)
   onGlassTabClick?: (x: number) => void;            // content-relative click on the strip row
   // Diff panel additions
@@ -182,6 +183,8 @@ export class InputRouter {
             this.opts.onGlassTabSwitch?.(parseInt(data, 10));
             return;
           }
+          if (data === "[") { this.opts.onGlassTabRelative?.(-1); return; }
+          if (data === "]") { this.opts.onGlassTabRelative?.(1); return; }
           if (data === "d") { this.opts.onGlassDetach?.(); return; }
           if (data === "p") { this.opts.onModalToggle?.(); return; }
           if (data === "n") { this.opts.onNewSession?.(); return; }

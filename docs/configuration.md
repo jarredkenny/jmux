@@ -176,7 +176,10 @@ pane options are rewritten. Any pane whose stored id is not found in the registr
 default tab.
 
 Manage tabs from the command palette (`Ctrl-a p`): create, rename, delete, reorder,
-pin a pane to a tab, or move a pane between tabs. The file is hot-reloaded — edits
-applied externally take effect immediately without restarting jmux.
+pin a pane to a tab, or move a pane between tabs. While the Command Center is open,
+switch tabs with `Ctrl-a <number>` (jump to tab N), or `Ctrl-a [` / `Ctrl-a ]`
+(previous / next, wrapping around) — these chords are scoped to the Command Center,
+so they don't affect tmux copy-mode/paste in normal panes. The config file is
+hot-reloaded — edits applied externally take effect immediately without restarting jmux.
 
 See [issue-tracking.md](issue-tracking.md) for adapter and workflow configuration details.

@@ -1469,6 +1469,7 @@ const inputRouter = new InputRouter(
     glassStripRows: () => (inGlass && stripVisibleFor(commandCenterTabs) ? STRIP_ROWS : 0),
     onGlassTabClick: (x) => { const id = chipAtX(currentStripChips, x); if (id) switchCommandCenterTab(id); },
     onGlassTabSwitch: (n) => { const tab = commandCenterTabs[n - 1]; if (tab) switchCommandCenterTab(tab.id); },
+    onGlassTabRelative: (delta) => switchCommandCenterTabRelative(delta),
     onGlassDetach: () => detachClient(),
     onDiffToggle: () => toggleDiffPanel(),
     onDiffZoom: () => zoomDiffPanel(),
@@ -3979,6 +3980,16 @@ function switchCommandCenterTab(tabId: string): void {
   lastActiveTabId = tabId;
   glassView?.setActiveTab(tabId);
   scheduleRender();
+}
+
+/** Switch to the prev/next tab relative to the active one, wrapping around. */
+function switchCommandCenterTabRelative(delta: number): void {
+  const n = commandCenterTabs.length;
+  if (n === 0) return;
+  const cur = commandCenterTabs.findIndex((t) => t.id === activeTabId);
+  const base = cur < 0 ? 0 : cur;
+  const next = ((base + delta) % n + n) % n; // wrap in both directions
+  switchCommandCenterTab(commandCenterTabs[next].id);
 }
 
 /**

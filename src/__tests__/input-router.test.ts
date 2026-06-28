@@ -892,8 +892,26 @@ describe("glass-buffered prefix + Ctrl-a <n>", () => {
       glassActive: () => true,
     }, true);
     router.handleInput("\x01");
-    router.handleInput("["); // tmux copy-mode in the tile
-    expect(sent).toEqual(["\x01", "["]);
+    router.handleInput("k"); // not a glass chord → flushed to the tile
+    expect(sent).toEqual(["\x01", "k"]);
+  });
+
+  test("Ctrl-a then [ / ] switch to prev/next tab and forward nothing", () => {
+    const sent: string[] = [];
+    const deltas: number[] = [];
+    const router = new InputRouter({
+      sidebarCols: 26,
+      onPtyData: (d) => sent.push(d),
+      onSidebarClick: () => {},
+      glassActive: () => true,
+      onGlassTabRelative: (delta) => deltas.push(delta),
+    }, true);
+    router.handleInput("\x01");
+    router.handleInput("[");
+    router.handleInput("\x01");
+    router.handleInput("]");
+    expect(deltas).toEqual([-1, 1]);
+    expect(sent).toEqual([]); // nothing leaked to the tile
   });
 
   test("Ctrl-a then d detaches jmux and forwards nothing", () => {
