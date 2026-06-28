@@ -2,6 +2,8 @@ import { readFileSync } from "fs";
 import { runTmuxDirect } from "./tmux";
 import { requireSession, tmuxOrThrow, CliError, type CliContext } from "./context";
 import type { ParsedCtlArgs } from "../cli";
+import { loadTabRegistry } from "./cc";
+import { resolveTabId } from "../glass/tabs";
 
 const PANE_FORMAT =
   "#{pane_id}:#{window_id}:#{pane_active}:#{pane_width}:#{pane_height}:#{pane_current_command}:#{pane_current_path}";
@@ -51,6 +53,17 @@ export function parsePinnedListWithTab(lines: string[]): { id: string; tab: stri
     if (val !== "") out.push({ id, tab: val });
   }
   return out;
+}
+
+/** Resolve a --tab argument (id or display name) to a tab id. Unknown values
+ *  pass through verbatim — they resolve to the default tab at read time. */
+function resolveTabFlagToId(tabFlag: string | undefined): string | undefined {
+  if (!tabFlag) return undefined;
+  const tabs = loadTabRegistry();
+  if (tabs.some((t) => t.id === tabFlag)) return tabFlag;
+  const lower = tabFlag.toLowerCase();
+  const byName = tabs.find((t) => t.name.toLowerCase() === lower);
+  return byName ? byName.id : tabFlag;
 }
 
 function resolvePaneTarget(ctx: CliContext, flags: ParsedCtlArgs["flags"]): string {
@@ -209,18 +222,26 @@ export function handlePane(ctx: CliContext, parsed: ParsedCtlArgs): unknown {
     case "pin":
     case "unpin": {
       const target = resolvePaneTarget(ctx, flags);
-      for (const cmd of buildPinCommands(action as "pin" | "unpin", target)) {
+      const tabId = action === "pin"
+        ? resolveTabFlagToId(typeof flags.tab === "string" ? flags.tab : undefined)
+        : undefined;
+      for (const cmd of buildPinCommands(action as "pin" | "unpin", target, tabId)) {
         const result = runTmuxDirect(cmd.args, ctx.socket);
         if (cmd.required) tmuxOrThrow(result);
       }
-      return { target, pinned: action === "pin" };
+      return { target, pinned: action === "pin", tab: tabId ?? null };
     }
 
     case "pinned": {
       const lines = tmuxOrThrow(
         runTmuxDirect(["list-panes", "-a", "-F", PINNED_LIST_FORMAT], ctx.socket),
       );
-      return { pinned: parsePinnedListOutput(lines) };
+      const tabs = loadTabRegistry();
+      const pinned = parsePinnedListWithTab(lines).map((e) => ({
+        id: e.id,
+        tab: resolveTabId(e.tab, tabs),
+      }));
+      return { pinned };
     }
 
     default:

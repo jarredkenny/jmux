@@ -6,6 +6,7 @@ import { handleRunClaude } from "./cli/run-claude";
 import { handleAgent, runAgentWatch } from "./cli/agent";
 import { handleStatus } from "./cli/status";
 import { handleIssue } from "./cli/issue";
+import { handleCc } from "./cli/cc";
 
 export interface ParsedCtlArgs {
   group: string;
@@ -22,6 +23,7 @@ const KNOWN_GROUPS = [
   "agent",
   "issue",
   "status",
+  "cc",
 ] as const;
 const STANDALONE_GROUPS = new Set(["run-claude", "status"]);
 
@@ -44,6 +46,7 @@ const VALUE_FLAGS = new Set([
   "issue",
   "worktree",
   "interval",
+  "tab",
 ]);
 const BOOL_FLAGS = new Set([
   "force",
@@ -71,6 +74,7 @@ GROUPS
   agent      Inspect agent state (agent state | agent watch)
   issue      Link/start work from issues (issue get|link|unlink|start)
   status     One-shot orchestration snapshot of the whole workspace
+  cc         Command Center tabs (cc tabs)
 
 GLOBAL FLAGS
   --session <name>   Target session name
@@ -92,6 +96,7 @@ FLAGS
   --repo <val>         Repository path (issue start/link)
   --base-branch <val>  Base branch for new worktree (issue start)
   --interval <val>     Poll interval in ms (agent watch)
+  --tab <val>          Command Center tab id or name (pane pin)
   --all                Operate on all sessions (agent state/watch)
   --no-launch-agent    Don't auto-launch Claude (issue start)
   --force              Skip confirmation prompts
@@ -232,6 +237,9 @@ export async function runCtl(argv: string[]): Promise<void> {
         break;
       case "status":
         result = handleStatus(ctx, parsed);
+        break;
+      case "cc":
+        result = handleCc(ctx, parsed);
         break;
       default:
         throw new CliError(`Unknown group: ${parsed.group}`);
