@@ -344,3 +344,31 @@ describe("CommandPalette rendering", () => {
     expect(palette.getCursorCol()).toBe(4); // "▷ ab" = 4
   });
 });
+
+describe("disabled palette rows", () => {
+  test("Enter on a disabled command is a no-op (consumed, not result)", () => {
+    const p = new CommandPalette();
+    p.open([{ id: "noop", label: "Unpin tile", category: "pane", disabled: true }]);
+    const action = p.handleInput("\r");
+    expect(action.type).toBe("consumed");
+  });
+
+  test("Enter on an enabled command still returns a result", () => {
+    const p = new CommandPalette();
+    p.open([{ id: "go", label: "Do it", category: "pane" }]);
+    const action = p.handleInput("\r");
+    expect(action).toEqual({ type: "result", value: { commandId: "go" } });
+  });
+
+  test("a disabled command renders its hint appended to the label", () => {
+    const p = new CommandPalette();
+    p.open([{
+      id: "noop", label: "Unpin tile", category: "pane",
+      disabled: true, hint: "auto-pinned; disable auto-pin",
+    }]);
+    const grid = p.getGrid(80);
+    // Row 1 is the first result row; read its text back.
+    const row = grid.cells[1].map((c) => c.char).join("");
+    expect(row).toContain("Unpin tile — auto-pinned; disable auto-pin");
+  });
+});

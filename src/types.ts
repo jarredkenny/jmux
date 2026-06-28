@@ -94,6 +94,10 @@ export interface PaletteCommand {
   label: string;
   category: string;
   sublist?: PaletteSublistOption[];
+  /** Non-selectable, dimmed row; Enter is a no-op. */
+  disabled?: boolean;
+  /** Explanatory suffix rendered after the label (e.g. on a disabled row). */
+  hint?: string;
 }
 
 export interface PaletteSublistOption {

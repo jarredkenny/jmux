@@ -136,6 +136,11 @@ export class CommandPalette {
 
       const selected = this.filtered[this.selectedIndex];
 
+      // Disabled rows are inert: never execute, never drill in.
+      if (selected.command.disabled) {
+        return CONSUMED;
+      }
+
       if (this.sublistParent) {
         // In sublist: execute with sublistOptionId
         return {
@@ -282,7 +287,10 @@ export class CommandPalette {
         // Label with match highlighting
         const labelStart = 3;
         const maxLabelLen = width - labelStart - tagWidth;
-        const label = truncateLabel(item.command.label, maxLabelLen);
+        const rawLabel = item.command.hint
+          ? `${item.command.label} — ${item.command.hint}`
+          : item.command.label;
+        const label = truncateLabel(rawLabel, maxLabelLen);
         const matchIndices = new Set(item.match.indices);
 
         for (let ci = 0; ci < label.length; ci++) {
