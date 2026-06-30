@@ -70,9 +70,44 @@ export class ScreenBridge {
       }
     }
 
+    this.applyOscLinks(buffer, rows, grid);
     detectUrlsInGrid(buffer, cols, rows, grid);
 
     return grid;
+  }
+
+  // Read OSC 8 hyperlinks straight from the terminal's link state. The URL regex
+  // only ever sees visible text, so a hyperlink whose display text isn't itself
+  // a URL (e.g. Claude Code's "!6019" pointing at a merge-request URL) is
+  // invisible to it. xterm parses OSC 8 and stores the target per cell as an
+  // extended-attr urlId resolved through the OscLinkService; we read it back so
+  // those links are both re-emitted (terminal hover) and clickable. Applied
+  // before the regex pass so an explicit OSC 8 target always wins; failures
+  // degrade to regex-only detection rather than crashing. xterm stores extended
+  // attrs as a sparse map keyed by column, so we iterate only the populated
+  // columns — plain lines (the overwhelming majority every frame) cost nothing.
+  private applyOscLinks(buffer: IBuffer, rows: number, grid: CellGrid): void {
+    const oscLinkService = (this.terminal as unknown as {
+      _core?: { _oscLinkService?: { getLinkData(id: number): { uri?: string } | undefined } };
+    })._core?._oscLinkService;
+    if (!oscLinkService) return;
+
+    for (let y = 0; y < rows; y++) {
+      const apiLine = buffer.getLine(y) as unknown as {
+        _line?: { _extendedAttrs?: Record<number, { urlId?: number } | undefined> };
+      } | undefined;
+      const extendedAttrs = apiLine?._line?._extendedAttrs;
+      if (!extendedAttrs) continue;
+      for (const key in extendedAttrs) {
+        const urlId = extendedAttrs[key]?.urlId;
+        if (!urlId) continue;
+        const uri = oscLinkService.getLinkData(urlId)?.uri;
+        if (uri) {
+          const x = Number(key);
+          if (grid.cells[y]?.[x]) grid.cells[y][x].link = uri;
+        }
+      }
+    }
   }
 
   getCursor(): CursorPosition {
@@ -127,7 +162,10 @@ function detectUrlsInGrid(
       const end = start + trimmed.length;
       for (let i = start; i < end && i < cellMap.length; i++) {
         const { y: cy, x: cx } = cellMap[i];
-        grid.cells[cy][cx].link = trimmed;
+        // An explicit OSC 8 target already on the cell wins over regex guesses.
+        if (grid.cells[cy][cx].link === undefined) {
+          grid.cells[cy][cx].link = trimmed;
+        }
       }
     }
   }

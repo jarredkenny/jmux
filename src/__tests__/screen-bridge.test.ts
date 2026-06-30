@@ -203,4 +203,34 @@ describe("ScreenBridge", () => {
       expect(grid.cells[0][x].link).toBeUndefined();
     }
   });
+
+  test("captures an OSC 8 hyperlink whose display text is not itself a URL", async () => {
+    // Claude Code renders MR/issue references as OSC 8 links: the visible text
+    // is "!6019" but the target is a real URL. The URL regex can't see this, so
+    // the link must come from the terminal's OSC 8 state.
+    const bridge = new ScreenBridge(40, 1);
+    const url = "https://gitlab.com/x/y/-/merge_requests/6019";
+    await bridge.write(`done \x1b]8;;${url}\x1b\\!6019\x1b]8;;\x1b\\ ok`);
+    const grid = bridge.getGrid();
+    // "done " (5) is plain; the link covers cols 5..9 ("!6019").
+    expect(grid.cells[0][5].char).toBe("!");
+    expect(grid.cells[0][5].link).toBe(url);
+    expect(grid.cells[0][9].char).toBe("9");
+    expect(grid.cells[0][9].link).toBe(url);
+    // text before and after the link carries no link
+    expect(grid.cells[0][4].link).toBeUndefined();
+    expect(grid.cells[0][10].link).toBeUndefined();
+    expect(grid.cells[0][11].link).toBeUndefined();
+  });
+
+  test("OSC 8 link survives an autowrapped line boundary", async () => {
+    const bridge = new ScreenBridge(20, 3);
+    const url = "https://gl/mr/6019";
+    // 18 chars of link text wrapping a 20-col pane after a 6-col prefix.
+    await bridge.write(`open: \x1b]8;;${url}\x1b\\linked-text-here!!\x1b]8;;\x1b\\`);
+    const grid = bridge.getGrid();
+    expect(grid.cells[0][6].link).toBe(url); // first link char, row 0
+    expect(grid.cells[0][19].link).toBe(url); // last col of row 0
+    expect(grid.cells[1][0].link).toBe(url); // wrapped onto row 1
+  });
 });
