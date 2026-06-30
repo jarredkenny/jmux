@@ -101,11 +101,16 @@ export class ScreenBridge {
       for (const key in extendedAttrs) {
         const urlId = extendedAttrs[key]?.urlId;
         if (!urlId) continue;
+        const x = Number(key);
+        const cell = grid.cells[y]?.[x];
+        // Only visible glyphs are clickable. A program that opens a hyperlink
+        // and writes spaces (or never closes it) leaves the urlId on blank
+        // padding cells; linkifying those would make empty terminal background
+        // open the URL. Whitespace/continuation cells are skipped, matching the
+        // regex pass, which only ever marks real URL text.
+        if (!cell || !/\S/.test(cell.char)) continue;
         const uri = oscLinkService.getLinkData(urlId)?.uri;
-        if (uri) {
-          const x = Number(key);
-          if (grid.cells[y]?.[x]) grid.cells[y][x].link = uri;
-        }
+        if (uri) cell.link = uri;
       }
     }
   }

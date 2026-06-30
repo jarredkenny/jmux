@@ -233,4 +233,24 @@ describe("ScreenBridge", () => {
     expect(grid.cells[0][19].link).toBe(url); // last col of row 0
     expect(grid.cells[1][0].link).toBe(url); // wrapped onto row 1
   });
+
+  test("blank cells under an open OSC 8 link are not clickable", async () => {
+    // A program that opens a hyperlink and writes spaces (or never closes it)
+    // makes every following cell inherit the urlId. Those blank cells must not
+    // become clickable, or empty terminal background opens the link.
+    const bridge = new ScreenBridge(40, 2);
+    const url = "https://gl/mr/2";
+    // open link, write "LINK", then spaces, never closed
+    await bridge.write(`\x1b]8;;${url}\x1b\\LINK          \n          `);
+    const grid = bridge.getGrid();
+    // the visible link text is clickable
+    expect(grid.cells[0][0].char).toBe("L");
+    expect(grid.cells[0][0].link).toBe(url);
+    // trailing spaces on the same line carry the urlId but must not be links
+    expect(grid.cells[0][5].char).toBe(" ");
+    expect(grid.cells[0][5].link).toBeUndefined();
+    // blank cells on the next line likewise are not clickable
+    expect(grid.cells[1][3].char).toBe(" ");
+    expect(grid.cells[1][3].link).toBeUndefined();
+  });
 });
