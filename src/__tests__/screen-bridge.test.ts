@@ -253,4 +253,32 @@ describe("ScreenBridge", () => {
     expect(grid.cells[1][3].char).toBe(" ");
     expect(grid.cells[1][3].link).toBeUndefined();
   });
+
+  test("plain text overwriting a former OSC 8 link is not clickable", async () => {
+    // A redrawing TUI (Claude Code) overwrites linked cells with plain text via
+    // \r and cursor moves. xterm keeps the old urlId in the line's sparse attr
+    // map even though the cell no longer references it, so reading the map
+    // directly would linkify unrelated words. We must trust the live cell.
+    const bridge = new ScreenBridge(40, 1);
+    await bridge.write("\x1b]8;;https://stale/link\x1b\\LINKS\x1b]8;;\x1b\\");
+    await bridge.write("\r\x1b[0mhello"); // overwrite cols 0..4 with plain text
+    const grid = bridge.getGrid();
+    expect(grid.cells[0][0].char).toBe("h");
+    for (let x = 0; x < 5; x++) {
+      expect(grid.cells[0][x].link).toBeUndefined();
+    }
+  });
+
+  test("a live OSC 8 link written after an overwrite still resolves", async () => {
+    // Guards against over-correcting: a genuinely-linked region must survive.
+    const bridge = new ScreenBridge(40, 1);
+    const url = "https://live/link";
+    await bridge.write("\x1b]8;;https://stale/link\x1b\\LINKS\x1b]8;;\x1b\\");
+    await bridge.write("\r\x1b[0mhello"); // overwrite cols 0..4
+    await bridge.write(`\r\x1b[10C\x1b]8;;${url}\x1b\\LIVE\x1b]8;;\x1b\\`); // link at 10..13
+    const grid = bridge.getGrid();
+    expect(grid.cells[0][10].char).toBe("L");
+    expect(grid.cells[0][10].link).toBe(url);
+    expect(grid.cells[0][13].link).toBe(url);
+  });
 });

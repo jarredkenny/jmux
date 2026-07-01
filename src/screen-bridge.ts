@@ -83,9 +83,18 @@ export class ScreenBridge {
   // extended-attr urlId resolved through the OscLinkService; we read it back so
   // those links are both re-emitted (terminal hover) and clickable. Applied
   // before the regex pass so an explicit OSC 8 target always wins; failures
-  // degrade to regex-only detection rather than crashing. xterm stores extended
-  // attrs as a sparse map keyed by column, so we iterate only the populated
-  // columns — plain lines (the overwhelming majority every frame) cost nothing.
+  // degrade to regex-only detection rather than crashing.
+  //
+  // Two subtleties, both learned the hard way:
+  //   - The line's `_extendedAttrs` sparse map is NOT cleared when a cell is
+  //     overwritten with plain text — it keeps the stale urlId at that column.
+  //     A redrawing TUI overwrites linked cells constantly, so trusting the map
+  //     alone linkifies unrelated words. We use the map only to find candidate
+  //     columns cheaply, then read the LIVE cell's `extended.urlId` (which xterm
+  //     resets to 0 on overwrite) to confirm the link is real.
+  //   - A hyperlink opened over spaces (or never closed) leaves a valid urlId on
+  //     blank padding; linkifying those makes empty background clickable. Only
+  //     visible glyphs qualify, matching the regex pass.
   private applyOscLinks(buffer: IBuffer, rows: number, grid: CellGrid): void {
     const oscLinkService = (this.terminal as unknown as {
       _core?: { _oscLinkService?: { getLinkData(id: number): { uri?: string } | undefined } };
@@ -93,24 +102,21 @@ export class ScreenBridge {
     if (!oscLinkService) return;
 
     for (let y = 0; y < rows; y++) {
-      const apiLine = buffer.getLine(y) as unknown as {
-        _line?: { _extendedAttrs?: Record<number, { urlId?: number } | undefined> };
-      } | undefined;
-      const extendedAttrs = apiLine?._line?._extendedAttrs;
-      if (!extendedAttrs) continue;
+      const apiLine = buffer.getLine(y);
+      const extendedAttrs = (apiLine as unknown as {
+        _line?: { _extendedAttrs?: Record<number, unknown> };
+      } | undefined)?._line?._extendedAttrs;
+      if (!apiLine || !extendedAttrs) continue;
       for (const key in extendedAttrs) {
-        const urlId = extendedAttrs[key]?.urlId;
-        if (!urlId) continue;
         const x = Number(key);
-        const cell = grid.cells[y]?.[x];
-        // Only visible glyphs are clickable. A program that opens a hyperlink
-        // and writes spaces (or never closes it) leaves the urlId on blank
-        // padding cells; linkifying those would make empty terminal background
-        // open the URL. Whitespace/continuation cells are skipped, matching the
-        // regex pass, which only ever marks real URL text.
-        if (!cell || !/\S/.test(cell.char)) continue;
+        const gridCell = grid.cells[y]?.[x];
+        if (!gridCell || !/\S/.test(gridCell.char)) continue;
+        // Trust the live cell, not the (possibly stale) attr-map entry.
+        const urlId = (apiLine.getCell(x) as unknown as { extended?: { urlId?: number } } | undefined)
+          ?.extended?.urlId;
+        if (!urlId) continue;
         const uri = oscLinkService.getLinkData(urlId)?.uri;
-        if (uri) cell.link = uri;
+        if (uri) gridCell.link = uri;
       }
     }
   }
