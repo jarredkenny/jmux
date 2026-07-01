@@ -28,7 +28,7 @@
     "cli"
   ],
   "author": "Jarred Kenny",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jarredkenny/jmux.git"

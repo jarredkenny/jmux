@@ -140,4 +140,4 @@ jmux drives a real tmux process over two channels (an interactive PTY client and
 
 ## License
 
-[MIT](LICENSE)
+[AGPL-3.0](LICENSE)
