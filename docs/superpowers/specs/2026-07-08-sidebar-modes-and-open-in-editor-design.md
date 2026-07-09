@@ -58,7 +58,18 @@ interface:
    retains the maps": `Sidebar` owns their *lifecycle and storage*; the active
    view owns their *population*.
 
+Row chrome today (active `▎`+`ACTIVE_BG`, hover tint) is computed *inside*
+`renderSession` (sidebar.ts:760, 830), and the text/background attrs depend on
+`isActive`/`isHovered`. A view cannot style rows without that state. So
+`renderItem` receives a `RenderItemState`:
+
 ```ts
+interface RenderItemState {
+  screenRow: number;      // top row of this item on screen
+  isActive: boolean;      // this item holds the active session/worktree
+  isHovered: boolean;     // hovered (and not active)
+}
+
 interface SidebarView {
   /** Mode-specific render plan (analogous to today's buildRenderPlan). */
   buildItems(ctx: SidebarViewContext): RenderItem[];
@@ -67,8 +78,8 @@ interface SidebarView {
   /** Paint one item's rows; write click/selection maps into the sink. */
   renderItem(
     grid: CellGrid,
-    screenRow: number,
     item: RenderItem,
+    state: RenderItemState,
     ctx: SidebarViewContext,
     sink: RowSink,
   ): void;
@@ -76,6 +87,11 @@ interface SidebarView {
   activeItemIndex(ctx: SidebarViewContext): number | null;
 }
 ```
+
+`Sidebar` computes `isActive`/`isHovered` from the state it owns (active session
+id, hovered row) and the view's `activeItemIndex`, and passes them down; the view
+owns the *painting* (glyphs, name/branch attrs, diff stat), the `Sidebar` owns
+*deciding* active/hover and the outer chrome fill.
 
 `Sidebar` retains and continues to own:
 
@@ -117,15 +133,29 @@ jmux
    admin-app-ux    ^1
 ```
 
-- Costs one sidebar row (plus its separator, matching the existing header
-  separator style).
 - The active tab is highlighted; the inactive tab is dim.
 - Clicking a tab switches modes. Tab hit-regions are mapped like the existing
   group-header rows.
 - A prefix chord also cycles modes, following the existing soft-prefix intercept
-  pattern in `input-router.ts` (`Ctrl-a` then a key). The binding is `Ctrl-a m`
-  ("mode") — `p`/`n`/`i` are already claimed by palette / new-session / settings.
+  pattern in `input-router.ts` (`Ctrl-a` then a key, intercepted before tmux —
+  the p/n/i/I/g/z/Tab branch around input-router.ts:206). The binding is
+  **`Ctrl-a v`** ("view"). `m` is **not** available — `config/defaults.conf:59`
+  binds `Ctrl-a m` to the move-window popup; `g`/`i`/`I`/`r`/`k`/`y` are likewise
+  claimed. `v` is unbound in `defaults.conf` and not a jmux intercept. Adding it
+  means a new branch in the intercept block.
 - The active mode persists across restarts via `config.sidebarMode`.
+
+**Sidebar geometry must change.** Today content starts after `HEADER_ROWS = 2`
+(sidebar.ts:21), and that constant drives `viewportHeight()` (sidebar.ts:586),
+viewport clipping (sidebar.ts:607), and scroll-indicator placement
+(sidebar.ts:708). The tab row is **not one row**: the chrome is `jmux` +
+separator + tab row + separator = **4 rows** when the switcher is present.
+Replace the fixed `HEADER_ROWS` constant with a computed chrome height
+(`headerRows()`), and route every current `HEADER_ROWS` reference through it so
+viewport height, clipping, scroll math, and screen-row→selection mapping all
+shift down consistently. Add tests asserting viewport height, scroll clamp, and
+click-row mapping with the tab row present (a regression here silently
+mis-maps every click in the sidebar).
 
 ### `SidebarSelection`
 
@@ -165,45 +195,63 @@ interface RepoIdentity {
 }
 ```
 
-Today `lookupSessionDetails` (main.ts:3737) derives only a display `project`
-string for linked worktrees and does not produce reusable repo identity;
-`--git-common-dir` can be **relative** (`../.git`) when run from a subdir, so it
-must be resolved against `cwd` to an absolute path. `resolveRepo` centralizes
-this so both `lookupSessionDetails` and the worktree index share one correct
-implementation. Repo identity for dedup/enumeration is keyed on the absolute
-`commonGitDir`.
+Today `lookupSessionDetails` (main.ts:3737) already runs, per session,
+`display-message` for cwd, `git branch --show-current`, and
+`rev-parse --git-common-dir` / `--git-dir` (main.ts:3741, 3749, 3757), but only
+derives a display `project` string and does **not** produce reusable repo
+identity; `--git-common-dir` can be **relative** (`../.git`) from a subdir, so it
+must be resolved against `cwd`. `resolveRepo` centralizes this. Crucially, to
+avoid re-running git per session in two places, **`lookupSessionDetails` calls
+`resolveRepo` once and stores the enriched result** (`rawCwd`, `RepoIdentity`,
+`worktreeRoot`) in the session-detail cache; the worktree index **consumes that
+snapshot** and only runs additional git (worktree list, diff) per *repo* on cache
+miss — never re-deriving per-session identity. Repo identity for
+dedup/enumeration is keyed on the absolute `commonGitDir`.
 
-**Repo discovery — repos of live sessions.** No new config. For each session,
-run `resolveRepo` on the session's **raw pane cwd** (not the `~`-normalized
-display `directory`; see matching below). Dedupe by `commonGitDir`. Consequence:
-a repo with no active session anywhere is invisible until the user opens a
-session in it (accepted).
+This means the session-detail cache (`sessionDetailsCache`, main.ts:783) grows
+from display fields to a full snapshot: `{ rawCwd, directory, gitBranch,
+repo: RepoIdentity, worktreeRoot }`.
+
+**Repo discovery — repos of live sessions.** No new config. Dedupe the snapshot's
+`repo.commonGitDir` across sessions. Consequence: a repo with no active session
+anywhere is invisible until the user opens a session in it (accepted).
+
+### Generation guard (owns the whole detail snapshot)
+
+The race is not only in the index — `lookupSessionDetails` itself runs
+fire-and-forget after `fetchSessions` renders (main.ts:993, 1050) and mutates
+`sessionDetailsCache` + `currentSessions` afterward, so a *slow* detail lookup
+from an earlier `fetchSessions` can overwrite a newer session set. The generation
+number therefore lives at the **session-detail boundary, not just the index**:
+
+- Each `fetchSessions` bumps a generation counter and captures it.
+- A `lookupSessionDetails` completion applies to the cache / `currentSessions` /
+  sidebar **only if its generation still matches**; otherwise it is dropped.
+- Accepted completions call `scheduleRender()` (the existing coalescing path,
+  which respects `writesPending`), never a direct synchronous render.
+- The worktree index is built from the *applied* snapshot and inherits the same
+  generation, so stale worktree-list / diff completions are discarded the same
+  way.
 
 ### `WorktreeIndex`
 
-A new module (`src/worktree-index.ts`) builds and caches the worktree list.
-
-**Generation guard.** The index consumes a *versioned session snapshot*, not the
-live `currentSessions`. `lookupSessionDetails` runs fire-and-forget after
-`fetchSessions` renders (main.ts:1050), so raw cwds arrive asynchronously. The
-index build takes a monotonically increasing generation number; any async diff
-job or rebuild that completes after a newer generation has started is discarded
-before it can overwrite fresher data. This prevents stale-cwd builds and
-out-of-order diff completions from clobbering the render.
+A new module (`src/worktree-index.ts`) builds and caches the worktree list from
+the applied session snapshot.
 
 Build steps:
 
-1. Resolve the deduped repo set from the session snapshot (above).
+1. Resolve the deduped repo set from the snapshot (above) — no per-session git.
 2. For each repo: `git --git-dir <commonGitDir> worktree list --porcelain -z`.
    Parse the **full** porcelain state model, not just `{path, branch, head}`:
    `worktree` (path), `HEAD` (oid), `branch` (absent ⇒ **detached**), and the
    `bare`, `detached`, `locked`, `prunable` flags.
-3. Match each worktree to a session by **canonical worktree root**: resolve each
-   session's `--show-toplevel` from its raw cwd (a session often sits in a
-   *subdirectory* of the worktree, so matching the displayed `directory` text
-   would miss). Map worktreeRoot → `sessionId | null`. A worktree has at most one
-   *primary* session; if several sessions sit under one worktree, the
-   attached/first wins, the rest remain reachable in Session mode.
+3. Match each worktree to sessions by **canonical worktree root** (each session's
+   `worktreeRoot` is already in the snapshot from step 1 of discovery — no new
+   `--show-toplevel` call). Store **`{ primarySessionId, sessionIds[] }`** per
+   worktree, not a single id: several sessions can sit under one worktree, and
+   the *active* session may be a secondary one. `primarySessionId` (attached/first)
+   is the click target; `sessionIds[]` drives active-highlight and scroll-to
+   (`activeItemIndex` returns this worktree if `activeSessionId ∈ sessionIds`).
 4. Compute the diff stat **asynchronously** against the resolved base *ref*:
    `git -C <path> diff --shortstat <baseRef>...HEAD`. Detached/bare/locked rows
    skip the diff (see rendering). Parse `--shortstat` into `{ adds, dels }`,
@@ -211,14 +259,26 @@ Build steps:
 
 **Base ref resolution (per repo), in order:**
 
-1. `config.worktreeMode.baseBranch` (if set) → `origin/<name>`, else the name.
+1. `config.worktreeMode.baseBranch` (if set). Parse tolerantly: accept either a
+   bare branch (`main`) or an already-qualified ref (`origin/main`) and don't
+   double-prefix (`origin/main` must not become `origin/origin/main`). Prefer the
+   remote-qualified form if that ref exists, else the local branch.
 2. `git symbolic-ref --short refs/remotes/origin/HEAD` → use the **full remote
    ref** (`origin/main`), not the stripped local branch (a local `main` may be
    missing or stale).
 3. Fallbacks: `origin/main`, `origin/master`, then local `main`/`master`.
 
-Diff against the remote ref directly, and only if `git merge-base <baseRef> HEAD`
-succeeds; otherwise the row shows no stat rather than a misleading number.
+Diff against the resolved ref directly, and only if `git merge-base <baseRef>
+HEAD` succeeds; otherwise the row shows no stat rather than a misleading number.
+This also covers **no-remote / never-fetched / brand-new** repos: if none of the
+candidate refs resolve, or there is no merge-base, the worktree simply shows no
+diff stat (not `Default`, not `+0 −0`).
+
+**`Default` detection is a branch comparison, normalized.** The porcelain
+`branch` field is a full ref (`refs/heads/main`); the base ref is remote-form
+(`origin/main`). Normalize both to a short branch name (`main`) before comparing
+to decide whether a row is "on the base branch" and should show `Default`.
+Detached/bare rows are never `Default`.
 
 **Caching / cost:** diff stats are cached keyed by
 `(worktreePath, head, baseRefOid, configBaseOverride)` so a moved base branch or
@@ -284,45 +344,73 @@ Via the `{ type: "worktree" }` selection:
   to it. The row shows as session-backed on the next refresh.
 - **Non-openable** rows (bare primary, prunable) are no-ops.
 
-**`createSessionForDir(dir, nameHint)` helper.** Session creation currently
-lives inline in several places in `main.ts` (e.g. the new-session-modal handler
-around main.ts:2851) and sets OTEL resource env, switches the client, and
-refreshes. Extract a single helper so worktree-launch reuses it exactly. It must:
+**`createSessionForDir(dir, nameHint)` helper.** This path attaches a tmux
+session to an **already-existing** worktree directory — it does **not** run
+`wtm create`, so it is distinct from, and does not touch, the new-worktree flow.
+That matters because the CLAUDE.md invariant (one sanitized name reused for
+directory + `wtm create` arg + session, main.ts:2863) applies only to
+*worktree creation*, where the name becomes a directory. Here the directory
+already exists and is passed by path; the session name is display-only and need
+not equal any directory. Extract the common "make a tmux session in a dir"
+tail — currently duplicated across `main.ts` (new-session-modal handler
+~main.ts:2851, worktree-issue flow) — that sets OTEL env, switches, and
+refreshes. It must:
 
-- Generate a **unique, repo-qualified** session name. `sanitizeTmuxSessionName`
-  only rewrites `.`/`:` (config.ts:69); two repos with a `main` (or the same
-  feature branch) would collide. Qualify with the repo display name
-  (`<repo>/<branch>` → sanitized) and de-duplicate against existing session names
-  with a numeric suffix.
+- Generate a **unique** session name. `sanitizeTmuxSessionName` only rewrites
+  `.`/`:` (config.ts:69), **not `/`** — so a raw `<repo>/<branch>` hint would
+  leave a slash that tmux target specs choke on. The helper must additionally
+  collapse `/` (and whitespace) to `-`, then de-duplicate against existing
+  session names with a numeric suffix. Qualify with the repo display name so a
+  `main`/`master` (or the same feature branch) in two repos does not collide.
 - Handle detached HEAD (name from short SHA).
 - Set `OTEL_RESOURCE_ATTRIBUTES` via `buildOtelResourceAttrs`, create with
   `-c <worktreeRoot>`, `switch-client -c <ptyClientName>`, refresh sessions,
   and surface failures through the existing error-modal path.
 
+**Launch/open ordering.** Sidebar clicks start async switches without awaiting
+(main.ts:1363, 1382) and `switchSession` updates `currentSessionId` only after
+the control command resolves (main.ts:1088). So "click a session-less worktree,
+then immediately click Open-in-Editor" could open the *previous* active cwd.
+Guard it: track a pending worktree-launch promise; Open-in-Editor resolves the
+target cwd from the active `ptyClientName`'s `#{pane_current_path}` **after** any
+in-flight launch/switch settles (or is disabled until it does), so the editor
+always opens the cwd of the session actually attached.
+
 ## Feature 2 — Open in Editor
 
 ### Editor registry (`src/editors.ts`)
 
-A built-in list. Each entry: `{ id, name, probe, open }`.
+A built-in list. Each entry is `{ id, name, probe, launch }` where **`launch`
+builds an argv array** (`string[]`), never a shell string — so directories with
+spaces (`Visual Studio Code.app`, `~/My Repos/x`) and `$EDITOR` with flags can't
+break or inject. GUI/file-manager entries are spawned via `Bun.spawn(argv, {…})`
+(detached); the `$EDITOR` entry is the one deliberately-tmux path.
 
-| id | probe | open (`{dir}` = current dir) |
-|----|-------|------------------------------|
-| `zed` | `which zed` \|\| `/Applications/Zed.app` | `zed {dir}` or `open -a Zed {dir}` |
-| `vscode` | `which code` \|\| `Visual Studio Code.app` | `code {dir}` |
-| `cursor` | `which cursor` \|\| `Cursor.app` | `cursor {dir}` |
-| `subl` | `which subl` \|\| `Sublime Text.app` | `subl {dir}` |
-| `editor` | `$EDITOR` set | new tmux window in the current session running `$EDITOR` at `{dir}` |
-| `finder` | macOS | `open {dir}` (→ `xdg-open` on Linux) |
-| `terminal` | macOS | `open -a Terminal {dir}` |
+| id | probe (mac: CLI on PATH, else app bundle) | launch argv |
+|----|-------|------|
+| `zed` | `which zed` \|\| `Zed.app` | `["zed", dir]` else `["open","-a","Zed",dir]` |
+| `vscode` | `which code` \|\| `Visual Studio Code.app` | `["code", dir]` else `["open","-a","Visual Studio Code",dir]` |
+| `cursor` | `which cursor` \|\| `Cursor.app` | `["cursor", dir]` else `["open","-a","Cursor",dir]` |
+| `subl` | `which subl` \|\| `Sublime Text.app` | `["subl", dir]` else `["open","-a","Sublime Text",dir]` |
+| `editor` | `$EDITOR` set | tmux `new-window` (below) |
+| `finder` | macOS only | `["open", dir]` |
+| `terminal` | macOS only | `["open","-a","Terminal",dir]` |
 
-- Probes run once at startup: `which` lookups + a couple of app-bundle
-  `existsSync` checks. Only detected editors enter the picker.
-- GUI editors prefer the CLI when present, else `open -a`.
-- `$EDITOR` is the terminal-editor path: it opens a **new tmux window in the
-  current session** running `$EDITOR` at the dir (`new-window -c {dir} $EDITOR`),
-  consistent with how jmux creates windows. It appears as a new window tab.
-- On non-macOS, `finder`/`terminal` probes fail and the entries don't appear;
-  the file-manager `open` degrades to `xdg-open`.
+- Every GUI editor defines **both** a CLI argv and an `open -a <AppName>`
+  fallback, chosen by which probe matched (earlier draft only gave Zed a
+  fallback). App-bundle probe checks `/Applications` and `~/Applications`.
+- Probes run once at startup: cheap `which` lookups + a couple of `existsSync`
+  bundle checks. Only detected editors enter the picker.
+- **`$EDITOR`** opens a **new tmux window in the active session** running the
+  editor at the dir. `$EDITOR` may itself contain flags (`nvim -u ...`), so the
+  window command is built by shell-quoting the resolved cwd and appending it to
+  the raw `$EDITOR` string: `new-window -c <dir> "$EDITOR <quoted-dir>"` via the
+  existing tmux-quoting helper (`tq`, new-session-modal.ts:17). It appears as a
+  new window tab.
+- **Platform:** `finder`/`terminal` are macOS-only and simply absent elsewhere
+  (no false `xdg-open` claim). If cross-platform "reveal in file manager" is ever
+  wanted it will be a *separate* entry with an `xdg-open`/`explorer` argv — out
+  of scope here.
 
 ### What directory opens
 
@@ -400,20 +488,27 @@ Pure unit tests over the logic modules, matching the repo's no-tmux discipline
   including detached (no `branch`), `bare`, `locked`, `prunable`.
 - **Diff-stat parser** — `git diff --shortstat` output → `{ adds, dels }`,
   including the "0 files changed", insertions-only, and deletions-only shapes.
-- **Base-ref resolver** — `origin/HEAD` → full remote ref, config override,
-  fallback chain, and merge-base-missing → no stat.
+- **Base-ref resolver** — `origin/HEAD` → full remote ref, config override
+  (bare vs `origin/`-qualified, no double-prefix), fallback chain,
+  merge-base-missing → no stat, `Default` branch-name normalization
+  (`refs/heads/main` vs `origin/main`).
 - **`resolveRepo`** — relative `--git-common-dir` resolved to absolute; bare vs
   non-bare; display-name derivation.
-- **Session-name qualifier** — repo-qualified uniqueness + numeric de-dup for
-  colliding branch names across repos; detached-HEAD naming.
-- **Editor registry** — probe resolution given a mocked `which` / bundle-exists,
-  and `open`-command templating for each entry.
+- **Session-name qualifier** — repo-qualified uniqueness, `/`→`-` collapse, and
+  numeric de-dup for colliding branch names across repos; detached-HEAD naming.
+- **Editor registry** — probe resolution given a mocked `which` / bundle-exists;
+  argv construction for CLI vs `open -a` fallback; `$EDITOR`-with-flags quoting;
+  `finder`/`terminal` absent off-macOS.
 - **`ListModal` preselect** — `initialSelectedId` highlights the right row;
   absent → index 0.
 - **`InputRouter`** — left vs right button dispatch through `onToolbarClick`,
   row-0 gating (branch row does not fire buttons), existing behavior unchanged.
-- **`WorktreeIndex` generation guard** — a stale async completion does not
-  overwrite a newer generation's result.
+- **Sidebar geometry** — `headerRows()` with the tab row present: viewport
+  height, scroll clamp, and screen-row→selection mapping stay aligned.
+- **Generation guard** — a stale `lookupSessionDetails`/worktree completion does
+  not overwrite a newer generation's session set or index.
+- **Worktree↔session mapping** — active-highlight when `activeSessionId` is a
+  *secondary* session under a worktree; click targets `primarySessionId`.
 - **`SidebarView` selection mapping** — row → `{ type: "worktree" }` selection,
   and the tab-row → mode-switch mapping.
 
@@ -427,22 +522,25 @@ Pure unit tests over the logic modules, matching the repo's no-tmux discipline
 
 ## Affected files
 
-- `src/sidebar.ts` — extract chrome; add `SidebarViewContext` + `RowSink`;
-  delegate to `SidebarView`; add tab row.
+- `src/sidebar.ts` — extract chrome; add `SidebarViewContext` + `RowSink` +
+  `RenderItemState`; replace `HEADER_ROWS` with computed `headerRows()`; delegate
+  to `SidebarView`; add tab row + geometry updates.
 - `src/sidebar-views/session-view.ts` (new) — lift-and-shift of current session
   rendering.
 - `src/sidebar-views/worktree-view.ts` (new) — worktree rendering.
 - `src/git-repo.ts` (new) — `resolveRepo(cwd)` canonical identity resolver.
 - `src/worktree-index.ts` (new) — worktree enumeration, porcelain parse,
   diff-stat cache, generation guard.
-- `src/editors.ts` (new) — editor registry + probes + open.
-- `src/main.ts` — use `resolveRepo` in `lookupSessionDetails`; toolbar button;
-  mode switching + persistence (with watcher echo guard); editor open wiring;
-  worktree click handling; extract `createSessionForDir`.
+- `src/editors.ts` (new) — editor registry + probes + argv `launch` builders.
+- `src/main.ts` — `resolveRepo` in `lookupSessionDetails` + enriched
+  `sessionDetailsCache` snapshot; generation counter at the detail boundary;
+  toolbar button; mode switching + persistence (watcher echo guard); editor open
+  wiring (with launch-ordering guard); worktree click handling; extract
+  `createSessionForDir`.
 - `src/list-modal.ts` — `initialSelectedId` in `ListModalConfig`.
 - `src/renderer.ts` — editor toolbar button.
 - `src/input-router.ts` — thread `{ col, row, button }` through `onToolbarClick`;
-  row-0 gating; right-click → picker.
+  row-0 gating; right-click → picker; add `Ctrl-a v` intercept branch for mode.
 - `src/config.ts` / `JmuxConfig` — `editor`, `worktreeMode`, `sidebarMode`;
   watcher handling for each.
 - `src/types.ts` — `SidebarSelection` worktree variant.
