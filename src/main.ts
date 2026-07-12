@@ -852,6 +852,7 @@ let ptyClientName: string | null = null;
 let sidebarShown = sidebarVisible;
 let currentSessions: SessionInfo[] = [];
 let snapshotter: import("./snapshot").Snapshotter | null = null;
+let lockRetrier: import("./snapshot").LockRetrier | null = null;
 let controlChannelLost = false;
 
 sidebar.setVersion(VERSION);
@@ -4315,111 +4316,146 @@ async function start(): Promise<void> {
   startupComplete = true;
 
   // --- Snapshotter wiring ---
-  // Skip if snapshot is disabled OR if another jmux process owns the lock.
-  if (configStore.config.snapshot?.enabled !== false && !boot.lockedOut) {
+  if (configStore.config.snapshot?.enabled !== false) {
     const {
       Snapshotter,
       SnapshotModel,
       ProductionFileSystem: SnapFs,
       ProductionTmuxRunner: SnapRunner,
       ProductionClock: SnapClock,
+      LockRetrier,
     } = await import("./snapshot");
 
-    const snapshotModel = new SnapshotModel(process.env.JMUX_VERSION ?? "dev");
-    snapshotModel.setSocket(socketName ?? "default");
+    const snapFs = new SnapFs();
+    const snapClock = new SnapClock();
+    const lockPath = `${boot.snapshotDir}/.lock`;
 
-    snapshotter = new Snapshotter({
-      dir: boot.snapshotDir,
-      model: snapshotModel,
-      fs: new SnapFs(),
-      runner: new SnapRunner(socketName ?? null),
-      clock: new SnapClock(),
-      debounceMs: 200,
-      scrollbackIntervalMs: configStore.config.snapshot?.scrollbackIntervalMs ?? 5000,
-      scrollbackMaxBytes: configStore.config.snapshot?.scrollbackMaxBytes ?? 2 * 1024 * 1024,
-      lock: boot.snapshotLock ?? undefined,
-      staleMs: 60_000,
-      captureIntervalMs: 15_000,
-      healthPersistPath: `${boot.snapshotDir}/health.json`,
-      onHealthChange: () => scheduleRender(),
-    });
+    // Construct + wire the Snapshotter around an already-acquired lock. Called
+    // immediately when boot holds the lock, or later by the LockRetrier once a
+    // locked-out boot reclaims it.
+    const startSnapshotter = async (
+      lock: import("./snapshot/deps").Lock,
+    ): Promise<void> => {
+      const snapshotModel = new SnapshotModel(process.env.JMUX_VERSION ?? "dev");
+      snapshotModel.setSocket(socketName ?? "default");
 
-    await snapshotter.start();
-    // Ownership of the lock has transferred to the Snapshotter; clear the boot
-    // copy so cleanup() releases via snapshotter.stop() and never double-releases.
-    boot.snapshotLock = null;
-
-    // Seed the model with current live tmux state
-    await snapshotter.onSessionsChanged();
-
-    // Seed the snapshot model with current agent-state records. fetchAgentState()
-    // ran before snapshotter existed, so its updates went through the optional
-    // chain (`snapshotter?.onAgentState(...)`) and were no-ops. Replay them now
-    // so a capture-then-restart-then-restore cycle preserves agent state.
-    for (const session of currentSessions) {
-      const record = agentStateTracker.getRecord(session.id);
-      if (!record) continue;
-      snapshotter.onAgentState(session.name, {
-        state: record.state,
-        since: new Date(record.since).toISOString(),
+      snapshotter = new Snapshotter({
+        dir: boot.snapshotDir,
+        model: snapshotModel,
+        fs: snapFs,
+        runner: new SnapRunner(socketName ?? null),
+        clock: snapClock,
+        debounceMs: 200,
+        scrollbackIntervalMs: configStore.config.snapshot?.scrollbackIntervalMs ?? 5000,
+        scrollbackMaxBytes: configStore.config.snapshot?.scrollbackMaxBytes ?? 2 * 1024 * 1024,
+        lock,
+        staleMs: 60_000,
+        captureIntervalMs: 15_000,
+        healthPersistPath: `${boot.snapshotDir}/health.json`,
+        onHealthChange: () => scheduleRender(),
       });
-    }
 
-    // Subscribe to TmuxControl events that affect the model
-    control.onEvent((e: ControlEvent) => {
-      switch (e.type) {
-        case "sessions-changed":
-          void snapshotter!.onSessionsChanged();
-          break;
-        case "session-renamed":
-          // Model rename + re-derive in one pass
-          if (e.args) {
-            const parts = e.args.split(" ");
-            if (parts.length >= 2) {
-              const sessionId = parts[0];
-              const newName = parts.slice(1).join(" ");
-              const oldName = currentSessions.find((s) => s.id === sessionId)?.name;
-              if (oldName && oldName !== newName) {
-                void snapshotter!.onSessionRenamed(oldName, newName);
+      await snapshotter.start();
+
+      // Seed the model with current live tmux state
+      await snapshotter.onSessionsChanged();
+
+      // Seed the snapshot model with current agent-state records. fetchAgentState()
+      // ran before snapshotter existed, so its updates went through the optional
+      // chain (`snapshotter?.onAgentState(...)`) and were no-ops. Replay them now
+      // so a capture-then-restart-then-restore cycle preserves agent state.
+      for (const session of currentSessions) {
+        const record = agentStateTracker.getRecord(session.id);
+        if (!record) continue;
+        snapshotter.onAgentState(session.name, {
+          state: record.state,
+          since: new Date(record.since).toISOString(),
+        });
+      }
+
+      // Subscribe to TmuxControl events that affect the model
+      control.onEvent((e: ControlEvent) => {
+        switch (e.type) {
+          case "sessions-changed":
+            void snapshotter!.onSessionsChanged();
+            break;
+          case "session-renamed":
+            // Model rename + re-derive in one pass
+            if (e.args) {
+              const parts = e.args.split(" ");
+              if (parts.length >= 2) {
+                const sessionId = parts[0];
+                const newName = parts.slice(1).join(" ");
+                const oldName = currentSessions.find((s) => s.id === sessionId)?.name;
+                if (oldName && oldName !== newName) {
+                  void snapshotter!.onSessionRenamed(oldName, newName);
+                }
               }
             }
-          }
-          void snapshotter!.onSessionsChanged();
-          break;
-        case "window-add":
-        case "window-close":
-        case "window-renamed":
-          void snapshotter!.onSessionsChanged();
-          break;
-      }
-    });
+            void snapshotter!.onSessionsChanged();
+            break;
+          case "window-add":
+          case "window-close":
+          case "window-renamed":
+            void snapshotter!.onSessionsChanged();
+            break;
+        }
+      });
 
-    // On control reconnect, do a full re-derivation
-    control.onReconnected(() => {
-      void snapshotter!.onSessionsChanged();
-    });
+      // On control reconnect, do a full re-derivation
+      control.onReconnected(() => {
+        void snapshotter!.onSessionsChanged();
+      });
 
-    // On permanent control channel loss, surface the degraded chip and stop captures
-    control.onLost(() => {
-      controlChannelLost = true;
-      void snapshotter?.stop();
-      scheduleRender();
-    });
+      // On permanent control channel loss, surface the degraded chip and stop captures
+      control.onLost(() => {
+        controlChannelLost = true;
+        void snapshotter?.stop();
+        scheduleRender();
+      });
 
-    // SessionState link changes
-    sessionState.onChange((name) => {
-      snapshotter!.onLinks(name, sessionState.getLinks(name));
-    });
+      // SessionState link changes
+      sessionState.onChange((name) => {
+        snapshotter!.onLinks(name, sessionState.getLinks(name));
+      });
 
-    // OtelReceiver updates
-    otelReceiver.onSessionUpdate((name) => {
-      const snap = otelReceiver.getSessionSnapshot(name);
-      snapshotter!.onOtel(name, snap);
-    });
+      // OtelReceiver updates
+      otelReceiver.onSessionUpdate((name) => {
+        const snap = otelReceiver.getSessionSnapshot(name);
+        snapshotter!.onOtel(name, snap);
+      });
 
-    // Seed focus with the initial session
-    const initialFocusName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? null;
-    snapshotter.onFocused(initialFocusName);
+      // Seed focus with the initial session
+      const initialFocusName = currentSessions.find((s) => s.id === currentSessionId)?.name ?? null;
+      snapshotter.onFocused(initialFocusName);
+      scheduleRender(); // reflect the now-healthy snapshot chip
+    };
+
+    if (!boot.lockedOut && boot.snapshotLock) {
+      const lock = boot.snapshotLock;
+      // Ownership transfers to the Snapshotter; clear the boot copy so cleanup()
+      // releases via snapshotter.stop() and never double-releases.
+      boot.snapshotLock = null;
+      await startSnapshotter(lock);
+    } else if (boot.lockedOut) {
+      // Locked out at boot. A held lock is not necessarily a LIVE holder — an
+      // orphaned lock left by a crashed instance looks live until it ages past
+      // the stale window, and boot decides lockedOut only once. Retry in the
+      // background so snapshotting starts as soon as the lock is reclaimable
+      // (stale orphan) or freed (a genuine other jmux exits), instead of staying
+      // disabled for this whole process lifetime.
+      lockRetrier = new LockRetrier({
+        fs: snapFs,
+        path: lockPath,
+        clock: snapClock,
+        intervalMs: 10_000,
+        onAcquired: (lock) => {
+          void startSnapshotter(lock);
+        },
+        onCompromised: (e) => snapshotter?.handleCompromised(e),
+      });
+      lockRetrier.start();
+    }
   }
 
   // Sync issue panel to the initial session
@@ -4532,6 +4568,8 @@ function cleanupSync(): void {
 }
 
 async function cleanup(): Promise<void> {
+  // Stop retrying to acquire the lock (a locked-out boot may still be polling).
+  lockRetrier?.stop();
   if (snapshotter) {
     await snapshotter.stop().catch(() => undefined);
   } else if (boot?.snapshotLock) {

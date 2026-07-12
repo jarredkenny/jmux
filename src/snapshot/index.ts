@@ -26,6 +26,7 @@ export type {
 export { ProductionTmuxRunner } from "./runner";
 export { ProductionClock } from "./clock";
 export { MigrationRegistry, type MigrationResult } from "./migrations";
+export { LockRetrier, type LockRetrierOptions } from "./lock-retry";
 export { RestoreLog, type RestoreOutcome, type RestoreLogEntry } from "./log";
 export type {
   FileSystem,
