@@ -1,5 +1,6 @@
-import { promises as fsp, constants as fsConstants } from "fs";
+import { promises as fsp } from "fs";
 import { dirname } from "path";
+import lockfile from "proper-lockfile";
 import type { FileSystem, FileStat, Lock, LockOptions, LockResult } from "./deps";
 
 let writeCounter = 0;
@@ -87,35 +88,31 @@ export class ProductionFileSystem implements FileSystem {
     }
   }
 
-  async lock(path: string, _opts?: LockOptions): Promise<LockResult> {
+  async lock(path: string, opts?: LockOptions): Promise<LockResult> {
+    // proper-lockfile creates `${path}.lock` as the on-disk artifact and refreshes
+    // its mtime while held (`update`). A holder that dies stops refreshing, so the
+    // lock ages past `stale` and is reclaimed automatically on the next acquire —
+    // the exact failure mode the old O_EXCL lock could not recover from.
     await fsp.mkdir(dirname(path), { recursive: true });
     try {
-      const handle = await fsp.open(
-        path,
-        fsConstants.O_CREAT | fsConstants.O_RDWR | fsConstants.O_EXCL,
-        0o600,
-      );
+      const release = await lockfile.lock(path, {
+        stale: 30_000,
+        update: 10_000,
+        realpath: false,
+        onCompromised: (err) => opts?.onCompromised?.(err),
+      });
       let released = false;
       const lock: Lock = {
         release: async () => {
           if (released) return;
           released = true;
-          try {
-            await handle.close();
-          } catch {
-            // already closed — fine
-          }
-          try {
-            await fsp.unlink(path);
-          } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-          }
+          await release().catch(() => undefined);
         },
       };
       return { ok: true, lock };
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "EEXIST")
-        return { ok: false, reason: "locked_live" };
+      const code = (err as { code?: string }).code;
+      if (code === "ELOCKED") return { ok: false, reason: "locked_live" };
       return { ok: false, reason: "error", detail: String(err) };
     }
   }
