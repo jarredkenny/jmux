@@ -208,6 +208,26 @@ describe("Restorer eligibility", () => {
     if (!result2.ok) expect(result2.reason).toBe("locked");
   });
 
+  test("lock acquisition error surfaces as reason lock_error", async () => {
+    const fs = new FakeFs();
+    fs.files.set("/snap/state.json", new TextEncoder().encode(snapshotJson()));
+    // Force the lock layer to report a hard error (e.g. EACCES) rather than a
+    // live holder — this must be distinguishable from a normal "locked".
+    fs.lock = async () => ({ ok: false, reason: "error", detail: "EACCES" });
+    const r = new Restorer({
+      dir: "/snap",
+      fs,
+      runner: new FakeRunner(),
+      clock: new FakeClock(),
+      jmuxVersion: "test",
+      userShell: "/bin/zsh",
+      claudeCommand: "claude",
+    });
+    const result = await r.checkEligibility();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("lock_error");
+  });
+
   test("takeLock transfers ownership and subsequent takeLock returns null", async () => {
     const fs = new FakeFs();
     fs.files.set("/snap/state.json", new TextEncoder().encode(snapshotJson()));
