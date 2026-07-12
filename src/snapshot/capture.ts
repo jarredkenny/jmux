@@ -2,6 +2,14 @@ import type { Clock, FileSystem, Lock, TmuxRunner } from "./deps";
 import { SnapshotModel } from "./model";
 import { detectPaneKind } from "./painter";
 import { INTERNAL_SESSION_FILTER } from "../glass/internal-sessions";
+import {
+  emptyHealth,
+  recordSuccess,
+  recordFailure,
+  deriveHealth,
+  type HealthSnapshot,
+  type SnapshotHealth,
+} from "./health";
 import type {
   SnapshotAgentState,
   SnapshotOtel,
@@ -19,6 +27,18 @@ export interface SnapshotterOptions {
   scrollbackIntervalMs: number;
   scrollbackMaxBytes?: number;
   lock?: Lock;
+  /** Age (ms) past which a healthy-but-not-recently-committed snapshot is
+      reported `stale`. Default 60_000. */
+  staleMs?: number;
+  /** Fired whenever the derived health verdict changes. */
+  onHealthChange?: (h: SnapshotHealth) => void;
+  /** When set, the current health is persisted here (JSON) on transitions,
+      watchdog ticks, and stop — so the next launch can report the prior run's
+      final health. */
+  healthPersistPath?: string;
+  /** Watchdog interval (ms): a full capture is attempted this often regardless
+      of change activity. Default 15_000. */
+  captureIntervalMs?: number;
 }
 
 export class Snapshotter {
@@ -30,6 +50,9 @@ export class Snapshotter {
   private degraded = false;
   private degradedReason_: string | null = null;
   private scrollbackBusy = false;
+  private health: HealthSnapshot = emptyHealth(0);
+  private lastDerived: SnapshotHealth | null = null;
+  private watchdogCancel: (() => void) | null = null;
 
   constructor(private readonly opts: SnapshotterOptions) {}
 
@@ -41,7 +64,28 @@ export class Snapshotter {
     return this.degradedReason_;
   }
 
+  healthSnapshot(): HealthSnapshot {
+    return this.health;
+  }
+
+  getHealth(nowMs: number = this.opts.clock.now()): SnapshotHealth {
+    if (this.stopped) return "stopped";
+    if (this.degraded) {
+      return this.degradedReason_ === "lock_held" ? "locked_live" : "error";
+    }
+    return deriveHealth(this.health, nowMs, this.opts.staleMs ?? 60_000);
+  }
+
+  private emitHealthIfChanged(): void {
+    const h = this.getHealth();
+    if (h !== this.lastDerived) {
+      this.lastDerived = h;
+      this.opts.onHealthChange?.(h);
+    }
+  }
+
   async start(): Promise<void> {
+    this.health = emptyHealth(this.opts.clock.now());
     if (this.opts.lock !== undefined) {
       // Caller (Restorer) already holds the lock — take ownership without re-acquiring.
       this.lock = this.opts.lock;
@@ -84,9 +128,12 @@ export class Snapshotter {
         `${this.opts.dir}/state.json`,
         new TextEncoder().encode(json),
       );
-    } catch {
+      recordSuccess(this.health.stateCommit, this.opts.clock.now());
+    } catch (err) {
       this.dirty = true;
+      recordFailure(this.health.stateCommit, this.opts.clock.now(), String(err));
     }
+    this.emitHealthIfChanged();
   }
 
   async stop(): Promise<void> {
@@ -130,6 +177,12 @@ export class Snapshotter {
       "#{session_name}|#{session_path}",
     ]);
     if (sessionsRes.exitCode !== 0) {
+      recordFailure(
+        this.health.topology,
+        this.opts.clock.now(),
+        `list-sessions exit ${sessionsRes.exitCode}`,
+      );
+      this.emitHealthIfChanged();
       return;
     }
     const live = new Set<string>();
@@ -149,6 +202,7 @@ export class Snapshotter {
     for (const name of this.opts.model.sessionNames()) {
       if (!live.has(name)) this.opts.model.removeSession(name);
     }
+    recordSuccess(this.health.topology, this.opts.clock.now());
     this.markDirty();
   }
 
@@ -227,7 +281,15 @@ export class Snapshotter {
         "-F",
         "#{session_name}",
       ]);
-      if (sessRes.exitCode !== 0) return;
+      if (sessRes.exitCode !== 0) {
+        recordFailure(
+          this.health.scrollback,
+          this.opts.clock.now(),
+          `list-sessions exit ${sessRes.exitCode}`,
+        );
+        this.emitHealthIfChanged();
+        return;
+      }
       const liveSessions = sessRes.stdout
         .split("\n")
         .map((l) => l.trim())
@@ -270,6 +332,8 @@ export class Snapshotter {
       }
 
       await this.gcScrollback(liveSessions);
+      recordSuccess(this.health.scrollback, this.opts.clock.now());
+      this.emitHealthIfChanged();
     } finally {
       this.scrollbackBusy = false;
     }
