@@ -102,6 +102,46 @@ export class Snapshotter {
       () => void this.scrollbackTick(),
       this.opts.scrollbackIntervalMs,
     );
+    const captureMs = this.opts.captureIntervalMs ?? 15_000;
+    this.watchdogCancel = this.opts.clock.setInterval(
+      () => void this.watchdogTick(),
+      captureMs,
+    );
+  }
+
+  handleCompromised(_err: Error): void {
+    this.health.lockCompromised = true;
+    this.degraded = true;
+    this.degradedReason_ = "lock_compromised";
+    this.emitHealthIfChanged();
+    void this.persistHealth();
+  }
+
+  private async watchdogTick(): Promise<void> {
+    if (this.stopped || this.degraded) return;
+    try {
+      await this.onSessionsChanged(); // topology + markDirty
+      this.dirty = true; // force a commit attempt even if nothing changed
+      await this.flushNow(); // records stateCommit + emits health
+    } catch (err) {
+      recordFailure(this.health.stateCommit, this.opts.clock.now(), String(err));
+      this.emitHealthIfChanged();
+    }
+    await this.persistHealth();
+  }
+
+  private async persistHealth(): Promise<void> {
+    if (!this.opts.healthPersistPath) return;
+    try {
+      this.health.updatedAtMs = this.opts.clock.now();
+      const payload = { health: this.health, derived: this.getHealth() };
+      await this.opts.fs.writeAtomic(
+        this.opts.healthPersistPath,
+        new TextEncoder().encode(JSON.stringify(payload, null, 2)),
+      );
+    } catch {
+      // best-effort
+    }
   }
 
   markDirty(): void {
@@ -147,6 +187,10 @@ export class Snapshotter {
       this.scrollbackCancel();
       this.scrollbackCancel = null;
     }
+    if (this.watchdogCancel) {
+      this.watchdogCancel();
+      this.watchdogCancel = null;
+    }
     // Synchronous final flush (bypass debounce) if dirty and not degraded.
     if (this.dirty && !this.degraded) {
       try {
@@ -165,6 +209,9 @@ export class Snapshotter {
       await this.lock.release();
       this.lock = null;
     }
+    // Record a clean stop so the next launch can tell a graceful exit from a crash.
+    this.lastDerived = "stopped";
+    await this.persistHealth();
   }
 
   async onSessionsChanged(): Promise<void> {
