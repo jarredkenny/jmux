@@ -46,12 +46,13 @@ export class Snapshotter {
       // Caller (Restorer) already holds the lock — take ownership without re-acquiring.
       this.lock = this.opts.lock;
     } else {
-      this.lock = await this.opts.fs.lock(`${this.opts.dir}/.lock`);
-      if (!this.lock) {
+      const lockRes = await this.opts.fs.lock(`${this.opts.dir}/.lock`);
+      if (!lockRes.ok) {
         this.degraded = true;
-        this.degradedReason_ = "lock_held";
+        this.degradedReason_ = lockRes.reason === "error" ? "lock_error" : "lock_held";
         return;
       }
+      this.lock = lockRes.lock;
     }
     this.scrollbackCancel = this.opts.clock.setInterval(
       () => void this.scrollbackTick(),

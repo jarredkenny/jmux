@@ -1,6 +1,6 @@
 import { promises as fsp, constants as fsConstants } from "fs";
 import { dirname } from "path";
-import type { FileSystem, FileStat, Lock } from "./deps";
+import type { FileSystem, FileStat, Lock, LockOptions, LockResult } from "./deps";
 
 let writeCounter = 0;
 
@@ -87,37 +87,36 @@ export class ProductionFileSystem implements FileSystem {
     }
   }
 
-  async lock(path: string): Promise<Lock | null> {
+  async lock(path: string, _opts?: LockOptions): Promise<LockResult> {
     await fsp.mkdir(dirname(path), { recursive: true });
-    let handle: Awaited<ReturnType<typeof fsp.open>>;
     try {
-      handle = await fsp.open(
+      const handle = await fsp.open(
         path,
         fsConstants.O_CREAT | fsConstants.O_RDWR | fsConstants.O_EXCL,
         0o600,
       );
+      let released = false;
+      const lock: Lock = {
+        release: async () => {
+          if (released) return;
+          released = true;
+          try {
+            await handle.close();
+          } catch {
+            // already closed — fine
+          }
+          try {
+            await fsp.unlink(path);
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+          }
+        },
+      };
+      return { ok: true, lock };
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "EEXIST") return null;
-      throw err;
+      if ((err as NodeJS.ErrnoException).code === "EEXIST")
+        return { ok: false, reason: "locked_live" };
+      return { ok: false, reason: "error", detail: String(err) };
     }
-    let released = false;
-    return {
-      release: async () => {
-        if (released) return;
-        released = true;
-        try {
-          await handle.close();
-        } catch {
-          // already closed — fine
-        }
-        try {
-          await fsp.unlink(path);
-        } catch (err) {
-          // ENOENT is fine (someone else removed the lockfile)
-          // Other errors (EACCES, EIO) we propagate so we don't silently deadlock future lock() calls
-          if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-        }
-      },
-    };
   }
 }

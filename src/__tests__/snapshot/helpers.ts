@@ -2,7 +2,8 @@ import type {
   Clock,
   FileStat,
   FileSystem,
-  Lock,
+  LockOptions,
+  LockResult,
   TmuxRunResult,
   TmuxRunner,
 } from "../../snapshot/deps";
@@ -122,12 +123,15 @@ export class FakeFs implements FileSystem {
     return b ? { size: b.byteLength, mtimeMs: 0 } : null;
   }
 
-  async lock(path: string): Promise<Lock | null> {
-    if (this.locks.has(path)) return null;
+  async lock(path: string, _opts?: LockOptions): Promise<LockResult> {
+    if (this.locks.has(path)) return { ok: false, reason: "locked_live" };
     this.locks.add(path);
     return {
-      release: async () => {
-        this.locks.delete(path);
+      ok: true,
+      lock: {
+        release: async () => {
+          this.locks.delete(path);
+        },
       },
     };
   }

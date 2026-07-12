@@ -196,48 +196,52 @@ describe("ProductionFileSystem.rmdir", () => {
 describe("ProductionFileSystem.lock", () => {
   test("acquires lock on a fresh path", async () => {
     const fs = new ProductionFileSystem();
-    const lock = await fs.lock(join(dir, ".lock"));
-    expect(lock).not.toBeNull();
-    await lock!.release();
+    const res = await fs.lock(join(dir, ".lock"));
+    expect(res.ok).toBe(true);
+    if (res.ok) await res.lock.release();
   });
 
-  test("second acquisition returns null while first is held", async () => {
+  test("second acquisition is locked_live while first is held", async () => {
     const fs = new ProductionFileSystem();
     const path = join(dir, ".lock");
     const first = await fs.lock(path);
-    expect(first).not.toBeNull();
+    expect(first.ok).toBe(true);
     const second = await fs.lock(path);
-    expect(second).toBeNull();
-    await first!.release();
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.reason).toBe("locked_live");
+    if (first.ok) await first.lock.release();
   });
 
   test("after release, lock can be re-acquired", async () => {
     const fs = new ProductionFileSystem();
     const path = join(dir, ".lock");
     const first = await fs.lock(path);
-    await first!.release();
+    if (first.ok) await first.lock.release();
     const second = await fs.lock(path);
-    expect(second).not.toBeNull();
-    await second!.release();
+    expect(second.ok).toBe(true);
+    if (second.ok) await second.lock.release();
   });
 
   test("double release is a no-op", async () => {
     const fs = new ProductionFileSystem();
-    const lock = await fs.lock(join(dir, ".lock"));
-    expect(lock).not.toBeNull();
-    await lock!.release();
-    // Should not throw
-    await lock!.release();
+    const res = await fs.lock(join(dir, ".lock"));
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      await res.lock.release();
+      await res.lock.release(); // should not throw
+    }
   });
 
   test("can re-acquire after double release", async () => {
     const fs = new ProductionFileSystem();
     const path = join(dir, ".lock");
     const first = await fs.lock(path);
-    await first!.release();
-    await first!.release(); // double release, no throw
+    if (first.ok) {
+      await first.lock.release();
+      await first.lock.release(); // double release, no throw
+    }
     const second = await fs.lock(path);
-    expect(second).not.toBeNull();
-    await second!.release();
+    expect(second.ok).toBe(true);
+    if (second.ok) await second.lock.release();
   });
 });

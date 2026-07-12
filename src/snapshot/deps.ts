@@ -2,6 +2,16 @@ export interface Lock {
   release(): Promise<void>;
 }
 
+export interface LockOptions {
+  /** Called if the held lock is lost while running (e.g. our refresh stalled
+      past `stale` and another process reclaimed it). */
+  onCompromised?: (err: Error) => void;
+}
+
+export type LockResult =
+  | { ok: true; lock: Lock }
+  | { ok: false; reason: "locked_live" | "error"; detail?: string };
+
 export interface FileStat {
   size: number;
   mtimeMs: number;
@@ -16,7 +26,7 @@ export interface FileSystem {
   readDir(path: string): Promise<string[]>;
   mkdir(path: string, recursive?: boolean): Promise<void>;
   stat(path: string): Promise<FileStat | null>;
-  lock(path: string): Promise<Lock | null>;
+  lock(path: string, opts?: LockOptions): Promise<LockResult>;
 }
 
 export interface TmuxRunResult {

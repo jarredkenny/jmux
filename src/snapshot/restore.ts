@@ -36,11 +36,14 @@ export interface RestorerOptions {
    * keybindings, base-index, etc.). When omitted, only base-index is set.
    */
   configFile?: string;
+  /** Routed to the lock's onCompromised: fired if our held lock is reclaimed
+      by another process while we're running. */
+  onLockCompromised?: (err: Error) => void;
 }
 
 export type EligibilityResult =
   | { ok: true; snapshot: SnapshotFile }
-  | { ok: false; reason: "no_snapshot" | "invalid_snapshot" | "server_busy" | "tmux_error" | "locked" };
+  | { ok: false; reason: "no_snapshot" | "invalid_snapshot" | "server_busy" | "tmux_error" | "locked" | "lock_error" };
 
 const NO_SERVER_RX = /no server running|error connecting to|no sessions/i;
 
@@ -100,14 +103,16 @@ export class Restorer {
     // Acquire the lock FIRST — before reading state.json — to guarantee that no
     // two jmux processes can both pass eligibility and both run restore().
     // On lock failure (another jmux holds it), skip immediately without acquiring.
-    const lock = await this.opts.fs.lock(`${this.opts.dir}/.lock`);
-    if (!lock) {
-      return { ok: false, reason: "locked" };
+    const lockRes = await this.opts.fs.lock(`${this.opts.dir}/.lock`, {
+      onCompromised: (e) => this.opts.onLockCompromised?.(e),
+    });
+    if (!lockRes.ok) {
+      return { ok: false, reason: lockRes.reason === "error" ? "lock_error" : "locked" };
     }
     // Hold the lock for the lifetime of this Restorer (and then hand it to
     // the Snapshotter via takeLock()).  All return paths below keep heldLock set
     // so the caller can always call takeLock() to receive it.
-    this.heldLock = lock;
+    this.heldLock = lockRes.lock;
 
     const raw = await this.opts.fs.readFile(`${this.opts.dir}/state.json`);
     if (!raw) return { ok: false, reason: "no_snapshot" };
