@@ -5,6 +5,11 @@ import type { FileSystem, FileStat, Lock, LockOptions, LockResult } from "./deps
 
 let writeCounter = 0;
 
+/** Recognizes writeAtomic temp files: `<name>.tmp` or `<name>.tmp.<pid>.<counter>`. */
+export function isSnapshotTempName(name: string): boolean {
+  return /\.tmp(\.\d+\.\d+)?$/.test(name);
+}
+
 export class ProductionFileSystem implements FileSystem {
   async readFile(path: string): Promise<Uint8Array | null> {
     try {
@@ -32,6 +37,18 @@ export class ProductionFileSystem implements FileSystem {
       }
       wroteTmp = true;
       await fsp.rename(tmp, path);
+      // Durability: fsync the parent directory so the rename's directory entry
+      // survives power loss (the file bytes were already fsync'd above).
+      try {
+        const dh = await fsp.open(dirname(path), "r");
+        try {
+          await dh.sync();
+        } finally {
+          await dh.close();
+        }
+      } catch {
+        // Best-effort — not all platforms/filesystems support directory fsync.
+      }
     } catch (err) {
       if (wroteTmp) {
         // rename failed — tmp exists on disk, unlink it
