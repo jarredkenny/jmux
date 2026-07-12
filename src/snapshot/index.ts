@@ -17,7 +17,12 @@ export {
   type PaneKind,
 } from "./schema";
 export { buildPainterArgv, detectPaneKind } from "./painter";
-export { ProductionFileSystem } from "./fs";
+export { ProductionFileSystem, isSnapshotTempName } from "./fs";
+export type {
+  SnapshotHealth,
+  HealthSnapshot,
+  SubsystemHealth,
+} from "./health";
 export { ProductionTmuxRunner } from "./runner";
 export { ProductionClock } from "./clock";
 export { MigrationRegistry, type MigrationResult } from "./migrations";

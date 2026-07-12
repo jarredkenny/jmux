@@ -359,17 +359,41 @@ let hoveredTabId: string | null = null;
 let hoveredPanelTabId: string | null = null;
 let startupComplete = false;
 
-function getSnapshotChipReason(): string | null {
+function getSnapshotHealth(): import("./snapshot").SnapshotHealth {
   // Suppressed when the user has explicitly opted out of snapshots.
-  if (!configStore.config.snapshot?.enabled) return null;
-  // If the control channel is permanently lost, report that first.
+  if (!configStore.config.snapshot?.enabled) return "disabled";
+  // A permanently-lost control channel is reported first — capture is stopped.
   if (controlChannelLost) return "control_channel_lost";
-  if (!snapshotter) return null;
-  return snapshotter.degradedReason();
+  // Once the Snapshotter is up it owns the health verdict (per-subsystem signals).
+  if (snapshotter) return snapshotter.getHealth();
+  // Before/without a Snapshotter, fall back to the boot lock outcome so a
+  // locked-out or errored boot still surfaces a specific state (this is the
+  // exact gap that hid the two-month silent failure).
+  return boot?.lockHealth ?? "starting";
+}
+
+/** Maps a health verdict to a short toolbar label, or null when nothing is wrong. */
+function snapshotChipLabel(h: import("./snapshot").SnapshotHealth): string | null {
+  switch (h) {
+    case "disabled":
+    case "healthy":
+    case "starting":
+      return null;
+    case "locked_live":
+      return "snapshot: other jmux";
+    case "stale":
+      return "snapshot stale";
+    case "error":
+      return "snapshot error";
+    case "stopped":
+      return "snapshot off";
+    case "control_channel_lost":
+      return "control lost";
+  }
 }
 
 function makeToolbar(): ToolbarConfig {
-  const snapshotChipReason = getSnapshotChipReason();
+  const snapshotChip = snapshotChipLabel(getSnapshotHealth());
   return {
     buttons: [
       { label: "◈", id: "panel", fg: diffPanel.isActive() ? ((0xF0 << 16) | (0x88 << 8) | 0x3E) : undefined, fgMode: diffPanel.isActive() ? 2 : undefined },
@@ -383,7 +407,7 @@ function makeToolbar(): ToolbarConfig {
     hoveredButton: hoveredToolbarButton,
     tabs: currentWindows,
     hoveredTabId,
-    statusChip: snapshotChipReason ? "snapshot off" : null,
+    statusChip: snapshotChip,
     toolbarRows: toolbarHeight,
   };
 }
@@ -402,6 +426,7 @@ async function performBoot(opts: {
   postRestoreActions: Array<() => void>;
   snapshotLock: import("./snapshot/deps").Lock | null;
   lockedOut: boolean;
+  lockHealth: import("./snapshot").SnapshotHealth;
 }> {
   const {
     ProductionFileSystem,
@@ -409,6 +434,7 @@ async function performBoot(opts: {
     ProductionClock,
     Restorer,
     resolveSnapshotDir,
+    isSnapshotTempName,
   } = await import("./snapshot");
 
   const dir = resolveSnapshotDir({
@@ -419,25 +445,35 @@ async function performBoot(opts: {
   });
 
   if (!opts.config.snapshot?.enabled) {
-    return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [], snapshotLock: null, lockedOut: false };
+    return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [], snapshotLock: null, lockedOut: false, lockHealth: "disabled" };
   }
 
   const fs = new ProductionFileSystem();
   const runner = new ProductionTmuxRunner(opts.socketName ?? null);
   const clock = new ProductionClock();
 
-  // Sweep orphaned .tmp files from a prior crash
+  // Sweep orphaned temp files from a prior crash. writeAtomic names them
+  // `<file>.tmp.<pid>.<counter>`, so match that pattern (not just `.tmp`).
   const entries = await fs.readDir(dir).catch(() => [] as string[]);
   for (const e of entries) {
-    if (e.endsWith(".tmp")) await fs.unlink(`${dir}/${e}`).catch(() => undefined);
+    if (isSnapshotTempName(e)) await fs.unlink(`${dir}/${e}`).catch(() => undefined);
   }
   const scrollbackDir = `${dir}/scrollback`;
   const sessionDirs = await fs.readDir(scrollbackDir).catch(() => [] as string[]);
   for (const sd of sessionDirs) {
     const files = await fs.readDir(`${scrollbackDir}/${sd}`).catch(() => [] as string[]);
     for (const f of files) {
-      if (f.endsWith(".tmp")) await fs.unlink(`${scrollbackDir}/${sd}/${f}`).catch(() => undefined);
+      if (isSnapshotTempName(f)) await fs.unlink(`${scrollbackDir}/${sd}/${f}`).catch(() => undefined);
     }
+  }
+
+  // Migration: builds <=0.21.1 left a 0-byte O_EXCL lock file at `${dir}/.lock`
+  // that never auto-released and permanently deadlocked snapshotting. proper-lockfile
+  // uses `${dir}/.lock.lock` instead, so the legacy file is inert — remove it so
+  // it can't confuse tooling or a human inspecting the directory.
+  const legacyLock = await fs.stat(`${dir}/.lock`).catch(() => null);
+  if (legacyLock && legacyLock.size === 0) {
+    await fs.unlink(`${dir}/.lock`).catch(() => undefined);
   }
 
   // Collect actions that require OtelReceiver (constructed after performBoot).
@@ -457,6 +493,9 @@ async function performBoot(opts: {
     userShell: process.env.SHELL ?? "/bin/sh",
     claudeCommand: opts.config.claudeCommand ?? "claude",
     configFile: opts.configFile,
+    // If our held lock is reclaimed while running, tell the Snapshotter so it
+    // stops capturing and surfaces `error` instead of silently double-writing.
+    onLockCompromised: (e) => snapshotter?.handleCompromised(e),
     sessionLinksSink: (name, links) => opts.sessionState.upsertLinksForSession(name, links),
     pinnedSink: (name, pinned) => {
       if (pinned && !opts.pinnedSessions.has(name)) {
@@ -503,10 +542,16 @@ async function performBoot(opts: {
 
   const eligibility = await restorer.checkEligibility();
 
-  // Another jmux process holds the lock — we cannot restore or capture.
+  // Another live jmux holds the lock — we cannot restore or capture.
   // Skip Snapshotter construction entirely (lockedOut=true signals this to the caller).
   if (!eligibility.ok && eligibility.reason === "locked") {
-    return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [], snapshotLock: null, lockedOut: true };
+    return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [], snapshotLock: null, lockedOut: true, lockHealth: "locked_live" };
+  }
+
+  // The lock layer hit a hard error (e.g. EACCES / unwritable dir). We can't
+  // snapshot, but this is a problem to surface, not a normal "another jmux".
+  if (!eligibility.ok && eligibility.reason === "lock_error") {
+    return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [], snapshotLock: null, lockedOut: true, lockHealth: "error" };
   }
 
   // For all other outcomes (ok or ineligible-but-not-locked) the lock IS held by the
@@ -525,10 +570,11 @@ async function performBoot(opts: {
       postRestoreActions,
       snapshotLock,
       lockedOut: false,
+      lockHealth: "healthy",
     };
   }
 
-  return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [], snapshotLock, lockedOut: false };
+  return { attachSessionName: null, snapshotDir: dir, postRestoreActions: [], snapshotLock, lockedOut: false, lockHealth: "healthy" };
 }
 
 // Enter alternate screen, raw mode, enable mouse tracking
@@ -4262,9 +4308,16 @@ async function start(): Promise<void> {
       scrollbackIntervalMs: configStore.config.snapshot?.scrollbackIntervalMs ?? 5000,
       scrollbackMaxBytes: configStore.config.snapshot?.scrollbackMaxBytes ?? 2 * 1024 * 1024,
       lock: boot.snapshotLock ?? undefined,
+      staleMs: 60_000,
+      captureIntervalMs: 15_000,
+      healthPersistPath: `${boot.snapshotDir}/health.json`,
+      onHealthChange: () => scheduleRender(),
     });
 
     await snapshotter.start();
+    // Ownership of the lock has transferred to the Snapshotter; clear the boot
+    // copy so cleanup() releases via snapshotter.stop() and never double-releases.
+    boot.snapshotLock = null;
 
     // Seed the model with current live tmux state
     await snapshotter.onSessionsChanged();
@@ -4449,7 +4502,14 @@ function cleanupSync(): void {
 }
 
 async function cleanup(): Promise<void> {
-  await snapshotter?.stop().catch(() => undefined);
+  if (snapshotter) {
+    await snapshotter.stop().catch(() => undefined);
+  } else if (boot?.snapshotLock) {
+    // The Snapshotter never took ownership (startup failed or was aborted before
+    // its construction). Release the boot lock ourselves so a partial startup
+    // can't leak it — the exact class of orphan that deadlocked this feature.
+    await boot.snapshotLock.release().catch(() => undefined);
+  }
   cleanupSync();
   process.exit(0);
 }
