@@ -101,6 +101,16 @@ export class FakeFs implements FileSystem {
     this.dirs.delete(path);
   }
 
+  async removeRecursive(path: string): Promise<void> {
+    const prefix = path.endsWith("/") ? path : path + "/";
+    for (const k of [...this.files.keys()]) {
+      if (k === path || k.startsWith(prefix)) this.files.delete(k);
+    }
+    for (const d of [...this.dirs]) {
+      if (d === path || d.startsWith(prefix)) this.dirs.delete(d);
+    }
+  }
+
   async readDir(path: string): Promise<string[]> {
     const prefix = path.endsWith("/") ? path : path + "/";
     const set = new Set<string>();

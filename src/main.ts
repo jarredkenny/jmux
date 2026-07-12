@@ -75,9 +75,9 @@ function logCrash(kind: string, err: unknown): void {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     appendFileSync(`${dir}/crash.log`, line);
   } catch {}
-  try {
-    process.stderr.write(line);
-  } catch {}
+  // Deliberately NOT writing to stderr: while the alt-screen TUI is active,
+  // stderr bleeds into and corrupts the rendered screen. crash.log is the
+  // reliable record; `cat ~/.config/jmux/crash.log` to read it.
 }
 process.on("uncaughtException", (e) => {
   logCrash("uncaughtException", e);

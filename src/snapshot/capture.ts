@@ -17,6 +17,17 @@ import type {
   SnapshotWindow,
 } from "./schema";
 
+/**
+ * Map a session name to a single flat scrollback directory name. Session names
+ * can contain `/` (branch-style names like `fix/solutions-stack-deploy`), which
+ * would otherwise nest the scrollback directory and break the flat-dir GC (a
+ * nested directory makes `unlink` throw EPERM). Percent-encode `%` and `/` so
+ * every session maps to exactly one flat directory.
+ */
+export function scrollbackDirName(session: string): string {
+  return session.replace(/%/g, "%25").replace(/\//g, "%2F");
+}
+
 export interface SnapshotterOptions {
   dir: string;
   model: SnapshotModel;
@@ -425,7 +436,8 @@ export class Snapshotter {
       "-t",
       `${session}:${w}.${p}`,
     ]);
-    const path = `${this.opts.dir}/scrollback/${session}/${w}-${p}.ansi`;
+    const rel = `scrollback/${scrollbackDirName(session)}/${w}-${p}.ansi`;
+    const path = `${this.opts.dir}/${rel}`;
     if (cap.exitCode !== 0) return;
     if (cap.stdout.length === 0) {
       await this.opts.fs.unlink(path);
@@ -464,32 +476,28 @@ export class Snapshotter {
       bytes = combined;
     }
     await this.opts.fs.writeAtomic(path, bytes);
-    this.opts.model.setScrollbackFile(
-      session,
-      w,
-      p,
-      `scrollback/${session}/${w}-${p}.ansi`,
-    );
+    this.opts.model.setScrollbackFile(session, w, p, rel);
     this.markDirty();
   }
 
   private async gcScrollback(liveSessions: string[]): Promise<void> {
-    const live = new Set(liveSessions);
+    // On-disk directories are the percent-encoded form (see scrollbackDirName);
+    // map each back to its raw session name so live checks + model lookups work.
+    const liveByDir = new Map<string, string>();
+    for (const s of liveSessions) liveByDir.set(scrollbackDirName(s), s);
     const root = `${this.opts.dir}/scrollback`;
     const entries = await this.opts.fs.readDir(root);
     for (const dir of entries) {
       const sessionDir = `${root}/${dir}`;
-      if (!live.has(dir)) {
-        // Whole session gone — remove all its files + the dir.
-        const files = await this.opts.fs.readDir(sessionDir);
-        for (const f of files) await this.opts.fs.unlink(`${sessionDir}/${f}`);
-        // rmdir already ignores ENOENT/ENOTEMPTY; the outer catch keeps one
-        // permission-denied stale dir from aborting the whole scrollback tick.
-        await this.opts.fs.rmdir(sessionDir).catch(() => undefined);
+      const rawName = liveByDir.get(dir);
+      if (!rawName) {
+        // Whole session gone (or a legacy nested dir from the old slash layout).
+        // Remove recursively so a directory entry can't trigger EPERM.
+        await this.opts.fs.removeRecursive(sessionDir).catch(() => undefined);
         continue;
       }
       // Session is live — prune .ansi files for panes that no longer exist.
-      const session = this.opts.model.getSession(dir);
+      const session = this.opts.model.getSession(rawName);
       if (!session) continue;
       const liveFiles = new Set<string>();
       for (const w of session.windows) {

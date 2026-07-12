@@ -23,6 +23,9 @@ export interface FileSystem {
   rename(from: string, to: string): Promise<void>;
   unlink(path: string): Promise<void>;
   rmdir(path: string): Promise<void>;
+  /** Recursively remove a path (file or directory tree). Idempotent — a missing
+      path is not an error. Needed because `unlink` fails with EPERM on directories. */
+  removeRecursive(path: string): Promise<void>;
   readDir(path: string): Promise<string[]>;
   mkdir(path: string, recursive?: boolean): Promise<void>;
   stat(path: string): Promise<FileStat | null>;

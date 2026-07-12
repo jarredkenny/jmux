@@ -82,6 +82,12 @@ export class ProductionFileSystem implements FileSystem {
     }
   }
 
+  async removeRecursive(path: string): Promise<void> {
+    // force:true makes a missing path a no-op; recursive:true removes trees,
+    // so a directory entry never triggers the EPERM that plain unlink would.
+    await fsp.rm(path, { recursive: true, force: true });
+  }
+
   async readDir(path: string): Promise<string[]> {
     try {
       return await fsp.readdir(path);
