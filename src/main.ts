@@ -59,9 +59,39 @@ import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
 import { installHooks, type ClaudeSettings } from "./hook-installer";
 import { resolve, dirname } from "path";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from "fs";
 import { homedir } from "os";
 import pkg from "../package.json" with { type: "json" };
+
+// --- Crash logging ---
+// Fatal errors during boot were being swallowed by `start().catch(cleanup)` (and
+// runtime uncaught errors only flashed on the alt-screen before teardown), which
+// made real crashes undiagnosable. Record full stacks to ~/.config/jmux/crash.log.
+function logCrash(kind: string, err: unknown): void {
+  const stack = err instanceof Error && err.stack ? err.stack : String(err);
+  const line = `${new Date().toISOString()} [${kind}] ${stack}\n`;
+  try {
+    const dir = `${homedir()}/.config/jmux`;
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    appendFileSync(`${dir}/crash.log`, line);
+  } catch {}
+  try {
+    process.stderr.write(line);
+  } catch {}
+}
+process.on("uncaughtException", (e) => {
+  logCrash("uncaughtException", e);
+  // Minimal terminal restore (exit alt-screen, show cursor) then fail fast.
+  try {
+    process.stdout.write("\x1b[?1049l\x1b[?25h");
+  } catch {}
+  process.exit(1);
+});
+// Log-only: preserve the runtime's default rejection handling (no forced exit),
+// so a previously-survivable background rejection can't newly kill the TUI.
+process.on("unhandledRejection", (e) => {
+  logCrash("unhandledRejection", e);
+});
 
 // --- CLI commands (run and exit before TUI) ---
 
@@ -4521,4 +4551,7 @@ process.on("SIGHUP", () => void cleanup());
 
 // --- Go ---
 
-start().catch(() => void cleanup());
+start().catch((e) => {
+  logCrash("boot", e);
+  void cleanup();
+});
