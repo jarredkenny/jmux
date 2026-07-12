@@ -17,6 +17,7 @@
     "test": "bun test",
     "typecheck": "bun run tsc --noEmit",
     "docker": "docker build -f Dockerfile.test -t jmux-test . && docker run --rm -it jmux-test",
+    "test:snapshot-orphan": "docker build -f Dockerfile.snapshot-test -t jmux-snapshot-test . && docker run --rm jmux-snapshot-test",
     "test:snapshot-coverage": "bun run scripts/check-snapshot-coverage.ts"
   },
   "keywords": [

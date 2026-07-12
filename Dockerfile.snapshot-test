@@ -1,0 +1,17 @@
+# Non-interactive integration harness for durable-session recovery.
+# Unlike Dockerfile.test (which omits tmux to exercise onboarding), this image
+# installs tmux and drives the shipped entrypoint through an orphaned-lock +
+# server-death + restore cycle. Run via `bun run test:snapshot-orphan`.
+FROM debian:bookworm-slim
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl unzip ca-certificates tmux procps util-linux && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+WORKDIR /app
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile || bun install
+COPY . .
+ENV XDG_DATA_HOME=/data
+RUN mkdir -p /data
+ENTRYPOINT ["bash", "scripts/snapshot-orphan-test.sh"]
