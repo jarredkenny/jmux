@@ -50,6 +50,8 @@ export class Snapshotter {
   private degraded = false;
   private degradedReason_: string | null = null;
   private scrollbackBusy = false;
+  private topologyBusy = false;
+  private topologyRerun = false;
   private health: HealthSnapshot = emptyHealth(0);
   private lastDerived: SnapshotHealth | null = null;
   private watchdogCancel: (() => void) | null = null;
@@ -215,6 +217,28 @@ export class Snapshotter {
   }
 
   async onSessionsChanged(): Promise<void> {
+    if (this.stopped) return;
+    // Serialize topology derivation. The watchdog calls this on a fixed 15s
+    // timer while control events call it too; without a guard the two overlap
+    // at their `await runner.run(...)` points and both mutate the shared model
+    // (including the "prune sessions not in live" step). A re-entrant call sets
+    // a trailing-rerun flag so its update isn't lost, then returns immediately.
+    if (this.topologyBusy) {
+      this.topologyRerun = true;
+      return;
+    }
+    this.topologyBusy = true;
+    try {
+      do {
+        this.topologyRerun = false;
+        await this.deriveTopologyOnce();
+      } while (this.topologyRerun && !this.stopped);
+    } finally {
+      this.topologyBusy = false;
+    }
+  }
+
+  private async deriveTopologyOnce(): Promise<void> {
     if (this.stopped) return;
     const sessionsRes = await this.opts.runner.run([
       "list-sessions",
