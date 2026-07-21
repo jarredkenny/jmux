@@ -635,6 +635,11 @@ process.stdout.write(OSC11_QUERY);
 // is live — see stdinGate.markReady() further down.
 let stdinReady = false;
 let lastDetectedBg: number | null = null;
+// Declared here — before `await performBoot` below — because onBackground can
+// fire during boot (when the OSC 11 reply lands) and reaches applyPaneStyles,
+// which reads controlStarted. Declaring it after the await would leave it in the
+// temporal dead zone at that moment and crash the boot.
+let controlStarted = false;
 const stdinGate = new StdinGate({
   onBackground: (rgb) => {
     const packed = pack(rgb);
@@ -890,7 +895,7 @@ function setDiffFocus(focused: boolean): void {
 // from the detected theme — the baked-in light-gray active fg washes out on a
 // light background, making the focused pane *harder* to read. Applied once the
 // control channel is up, and again whenever the terminal theme changes.
-let controlStarted = false;
+// (controlStarted is declared before the boot await — see the stdin gate setup.)
 function applyPaneStyles(): void {
   if (!controlStarted) return;
   control.sendCommand(`set -g window-style 'fg=${toHex(theme.paneInactiveFg)}'`).catch(() => {});
