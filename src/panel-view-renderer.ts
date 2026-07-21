@@ -6,6 +6,7 @@ import type { PanelView, GroupByField } from "./panel-view";
 import type { Issue, IssueStateType, MergeRequest } from "./adapters/types";
 import { fuzzyMatch } from "./fuzzy";
 import { renderMarkdownToStyledLines } from "./markdown";
+import { accentFor, neutralFg } from "./theme";
 
 export type IssueSessionState = "none" | "worktree" | "session";
 
@@ -254,26 +255,44 @@ function sortItems(items: RenderableItem[], sortBy: string, order: "asc" | "desc
 
 // --- Rendering ---
 
-const CURSOR_ATTRS: CellAttrs = { fg: (0xFB << 16) | (0xD4 << 8) | 0xB8, fgMode: ColorMode.RGB };
+// Warm accent / link accent bases and the neutral primary-text role are re-themed
+// in place by rebuildPanelViewColors() so the panel is legible on light terminals.
+const CURSOR_ACCENT = (0xFB << 16) | (0xD4 << 8) | 0xB8; // peach
+const PRIORITY2_ACCENT = (0xFF << 16) | (0x8C << 8) | 0x00; // orange
+const LINK_ACCENT = (0x58 << 16) | (0xA6 << 8) | 0xFF; // blue
+
+const CURSOR_ATTRS: CellAttrs = { fg: CURSOR_ACCENT, fgMode: ColorMode.RGB };
 const LINKED_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const SESSION_CURRENT_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette, bold: true };
 const WORKTREE_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette, dim: true };
 const UNLINKED_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
-const TITLE_ATTRS: CellAttrs = { fg: (0xC9 << 16) | (0xD1 << 8) | 0xD9, fgMode: ColorMode.RGB };
+const TITLE_ATTRS: CellAttrs = { fg: 7, fgMode: ColorMode.Palette };
 const GROUP_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, bold: true };
+const GROUP_SELECTED_ATTRS: CellAttrs = { fg: CURSOR_ACCENT, fgMode: ColorMode.RGB, bold: true };
 const PRIORITY_ATTRS: Record<number, CellAttrs> = {
   1: { fg: 1, fgMode: ColorMode.Palette, bold: true },
-  2: { fg: (0xFF << 16) | (0x8C << 8) | 0x00, fgMode: ColorMode.RGB },
+  2: { fg: PRIORITY2_ACCENT, fgMode: ColorMode.RGB },
   3: { fg: 3, fgMode: ColorMode.Palette },
   4: { fg: 8, fgMode: ColorMode.Palette, dim: true },
 };
 const DIM_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const DETAIL_LABEL: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
-const DETAIL_VALUE: CellAttrs = { fg: (0xC9 << 16) | (0xD1 << 8) | 0xD9, fgMode: ColorMode.RGB };
+const DETAIL_VALUE: CellAttrs = { fg: 7, fgMode: ColorMode.Palette };
 const DETAIL_KEY: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const SEPARATOR_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const HINT_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
-const URL_ATTRS: CellAttrs = { fg: (0x58 << 16) | (0xA6 << 8) | 0xFF, fgMode: ColorMode.RGB, underline: true };
+const URL_ATTRS: CellAttrs = { fg: LINK_ACCENT, fgMode: ColorMode.RGB, underline: true };
+
+export function rebuildPanelViewColors(): void {
+  const peach = accentFor(CURSOR_ACCENT);
+  CURSOR_ATTRS.fg = peach;
+  GROUP_SELECTED_ATTRS.fg = peach;
+  PRIORITY_ATTRS[2]!.fg = accentFor(PRIORITY2_ACCENT);
+  URL_ATTRS.fg = accentFor(LINK_ACCENT);
+  const n = neutralFg(7);
+  for (const a of [TITLE_ATTRS, DETAIL_VALUE]) { a.fg = n.fg; a.fgMode = n.fgMode; }
+}
+rebuildPanelViewColors();
 
 const ACTION_BAR_ROWS = 2;
 const MIN_ROWS_FOR_DETAIL = 15;
@@ -368,7 +387,7 @@ function renderGroupHeader(grid: CellGrid, row: number, cols: number, node: Extr
   }
   col += 2;
   const label = `${node.label} (${node.count})`;
-  writeString(grid, row, col, label, selected ? { ...GROUP_ATTRS, fg: (0xFB << 16) | (0xD4 << 8) | 0xB8, fgMode: ColorMode.RGB } : GROUP_ATTRS);
+  writeString(grid, row, col, label, selected ? GROUP_SELECTED_ATTRS : GROUP_ATTRS);
 }
 
 export function pickSessionIndicator(item: RenderableItem): { glyph: string; glyphAttrs: CellAttrs } {

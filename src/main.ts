@@ -26,14 +26,17 @@ import {
   neutralFg,
   setTheme,
   deriveTheme,
-  scanForOsc11,
+  pack,
+  toHex,
+  accentFor,
   OSC11_QUERY,
 } from "./theme";
+import { StdinGate } from "./stdin-gate";
 import { TmuxControl, type ControlEvent } from "./tmux-control";
 import { DiffPanel } from "./diff-panel";
 import { InfoPanel, rebuildInfoPanelColors } from "./info-panel";
 import { parseViews, cycleGroupBy, cycleSortBy, toggleSortOrder, type PanelView } from "./panel-view";
-import { transformIssues, transformMrs, buildViewNodes, renderView, createViewState, filterItems, type ViewState, type ViewNode, type IssueSessionInfo } from "./panel-view-renderer";
+import { transformIssues, transformMrs, buildViewNodes, renderView, createViewState, filterItems, rebuildPanelViewColors, type ViewState, type ViewNode, type IssueSessionInfo } from "./panel-view-renderer";
 import { createAdapters } from "./adapters/registry";
 import { PollCoordinator } from "./adapters/poll-coordinator";
 import { SessionState } from "./session-state";
@@ -426,11 +429,11 @@ function makeToolbar(): ToolbarConfig {
   const snapshotChip = snapshotChipLabel(getSnapshotHealth());
   return {
     buttons: [
-      { label: "◈", id: "panel", fg: diffPanel.isActive() ? ((0xF0 << 16) | (0x88 << 8) | 0x3E) : undefined, fgMode: diffPanel.isActive() ? 2 : undefined },
+      { label: "◈", id: "panel", fg: diffPanel.isActive() ? accentFor((0xF0 << 16) | (0x88 << 8) | 0x3E) : undefined, fgMode: diffPanel.isActive() ? 2 : undefined },
       { label: "＋", id: "new-window" },
       { label: "⏸", id: "split-v" },
       { label: "⏏", id: "split-h" },
-      { label: "λ", id: "claude", fg: (0xE8 << 16) | (0xA0 << 8) | 0xB4, fgMode: 2 },
+      { label: "λ", id: "claude", fg: accentFor((0xE8 << 16) | (0xA0 << 8) | 0xB4), fgMode: 2 },
       { label: "⚙", id: "settings" },
     ],
     mainCols,
@@ -616,14 +619,47 @@ process.stdout.write("\x1b[?2004h"); // bracketed paste mode
 if (process.stdin.setRawMode) {
   process.stdin.setRawMode(true);
 }
-process.stdin.resume();
 
 // Ask the terminal for its background color so modal/sidebar surfaces can be
 // derived from the real theme rather than a hardcoded dark palette. The reply
-// arrives asynchronously on stdin and is peeled off by the input handler below
-// (see applyTerminalBackground); terminals that don't support OSC 11 simply
+// arrives asynchronously on stdin; terminals that don't support OSC 11 simply
 // never answer and we keep DEFAULT_THEME.
 process.stdout.write(OSC11_QUERY);
+
+// Wire stdin to the gate from the moment the query is sent — before the async
+// boot below. This is load-bearing: Bun discards data that lands on a resumed
+// stream with no `data` listener, so a fast terminal's OSC 11 reply would be
+// dropped across `await performBoot`, leaving every chrome surface on the dark
+// fallback theme (the light-theme bug). The gate resolves the background the
+// instant its reply arrives and buffers any keystrokes until the input pipeline
+// is live — see stdinGate.markReady() further down.
+let stdinReady = false;
+let lastDetectedBg: number | null = null;
+const stdinGate = new StdinGate({
+  onBackground: (rgb) => {
+    const packed = pack(rgb);
+    // Live re-detection re-queries periodically; ignore replies that report the
+    // same background so a steady theme is a no-op, not a re-theme every poll.
+    if (packed === lastDetectedBg) return;
+    lastDetectedBg = packed;
+    setTheme(deriveTheme(rgb));
+    rebuildModalAttrs();
+    rebuildSidebarColors();
+    rebuildInfoPanelColors();
+    rebuildSettingsColors();
+    rebuildPanelViewColors();
+    applyPaneStyles(); // re-issue tmux window-style fades for the new theme
+    // Pre-ready, the first paint after boot reads the freshly themed values;
+    // once live (startup done or a theme change), an explicit repaint is needed.
+    if (stdinReady) scheduleRender();
+  },
+  onInput: (str) => {
+    markInputActivity();
+    inputRouter.handleInput(str);
+  },
+});
+process.stdin.on("data", (data: Buffer) => stdinGate.feed(data.toString()));
+process.stdin.resume();
 
 // SessionState must be constructed before performBoot so restore can populate links.
 const sessionStatePath = demoCtx?.statePath ?? resolve(homedir(), ".config", "jmux", "state.json");
@@ -760,7 +796,7 @@ let diffPty: import("bun-pty").Terminal | null = null;
 let diffPanelFocused = false;
 const settingsScreen = new SettingsScreen();
 
-import { SettingsScreen, type SettingDef, type SettingsCategory, type SettingsAction } from "./settings-screen";
+import { SettingsScreen, rebuildSettingsColors, type SettingDef, type SettingsCategory, type SettingsAction } from "./settings-screen";
 
 const adapters = demoCtx
   ? { codeHost: demoCtx.codeHost, issueTracker: demoCtx.issueTracker }
@@ -838,13 +874,27 @@ async function refreshTeams(): Promise<void> {
 function setDiffFocus(focused: boolean): void {
   diffPanelFocused = focused;
   inputRouter.setDiffPanel(getDiffPanelCols(), focused);
-  // Dim/undim the tmux active pane to visually show focus has moved
+  // Dim/undim the tmux active pane to visually show focus has moved. The dim
+  // color tracks the theme so it recedes correctly on light backgrounds too.
   if (focused) {
-    control.sendCommand("select-pane -P 'fg=#6b7280'").catch(() => {});
+    control.sendCommand(`select-pane -P 'fg=${toHex(theme.paneInactiveFg)}'`).catch(() => {});
   } else {
     control.sendCommand("select-pane -P ''").catch(() => {});
   }
   scheduleRender();
+}
+
+// The tmux window-style / window-active-style options give inactive panes a
+// faded default foreground and the active pane a strong one, as a focus cue.
+// They're seeded (hardcoded, dark) in config/defaults.conf, but must be re-issued
+// from the detected theme — the baked-in light-gray active fg washes out on a
+// light background, making the focused pane *harder* to read. Applied once the
+// control channel is up, and again whenever the terminal theme changes.
+let controlStarted = false;
+function applyPaneStyles(): void {
+  if (!controlStarted) return;
+  control.sendCommand(`set -g window-style 'fg=${toHex(theme.paneInactiveFg)}'`).catch(() => {});
+  control.sendCommand(`set -g window-active-style 'fg=${toHex(theme.paneActiveFg)}'`).catch(() => {});
 }
 
 let currentSessionId: string | null = null;
@@ -860,6 +910,7 @@ const lastViewedTimestamps = new Map<string, number>();
 const sessionDetailsCache = new Map<string, { directory?: string; gitBranch?: string; project?: string }>();
 
 let cacheTimerInterval: ReturnType<typeof setInterval> | null = null;
+let themeRequeryInterval: ReturnType<typeof setInterval> | null = null;
 
 function startCacheTimerTick(): void {
   if (cacheTimerInterval) return;
@@ -3454,36 +3505,25 @@ pty.onData((data: string) => {
 
 // --- Stdin ---
 
-// Until the terminal's OSC 11 background reply is consumed (or the terminal
-// proves it won't answer), each stdin chunk is scanned for the reply so it can
-// be peeled off before reaching tmux. A reply can split across reads, so the
-// pending buffer threads between chunks. Once resolved, input flows untouched.
-let terminalBgResolved = false;
-let osc11Pending = "";
+// stdin was wired to `stdinGate` right after the OSC 11 query was sent (near the
+// top of startup), so the terminal-background reply couldn't be dropped during
+// boot. The input pipeline (InputRouter, scheduleRender) is now live, so open the
+// gate: any keystrokes buffered during boot flush to the router, further input
+// flows straight through, and a themed frame is painted.
+stdinReady = true;
+stdinGate.markReady();
+scheduleRender();
 
-process.stdin.on("data", (data: Buffer) => {
-  let str = data.toString();
-  if (!terminalBgResolved) {
-    const scan = scanForOsc11(osc11Pending, str);
-    osc11Pending = scan.pending;
-    if (scan.rgb) {
-      // Re-theme every surface in place from the detected background, then
-      // repaint. Modal attrs and sidebar highlights are shared mutable objects
-      // read at render time, so a rebuild is all that's needed.
-      terminalBgResolved = true;
-      setTheme(deriveTheme(scan.rgb));
-      rebuildModalAttrs();
-      rebuildSidebarColors();
-      rebuildInfoPanelColors();
-      scheduleRender();
-    }
-    if (scan.forward === null) return; // holding a split reply
-    str = scan.forward;
-    if (str.length === 0) return;
-  }
-  markInputActivity();
-  inputRouter.handleInput(str);
-});
+// Re-query the terminal background periodically so a live theme switch (e.g.
+// toggling the terminal's light/dark theme without restarting jmux) is picked
+// up. The reply is peeled off by the gate and only re-themes when the color
+// actually changes (see onBackground's dedupe), so a steady theme costs a tiny
+// query every few seconds and nothing more. Torn down in cleanupSync().
+const THEME_REQUERY_INTERVAL_MS = 2000;
+themeRequeryInterval = setInterval(() => {
+  stdinGate.rearm();
+  process.stdout.write(OSC11_QUERY);
+}, THEME_REQUERY_INTERVAL_MS);
 
 // --- Resize ---
 
@@ -4248,6 +4288,10 @@ async function start(): Promise<void> {
 
   // Start control mode
   await control.start({ socketName, configFile });
+  // Apply theme-derived pane fade colors now that the control channel is up
+  // (a theme detected during boot is already in `theme`).
+  controlStarted = true;
+  applyPaneStyles();
 
   // The tmux server has already loaded config at startup (TmuxPty and the
   // Restorer both pass `-f <configFile>`), and JMUX_DIR is exported in
@@ -4549,6 +4593,7 @@ function cleanupSync(): void {
   pollCoordinator.stop();
   otelReceiver.stop();
   stopCacheTimerTick();
+  if (themeRequeryInterval !== null) { clearInterval(themeRequeryInterval); themeRequeryInterval = null; }
   if (renderTimer !== null) { clearTimeout(renderTimer); renderTimer = null; }
   if (viewSaveTimer !== null) { clearTimeout(viewSaveTimer); viewSaveTimer = null; }
   configWatcher?.close();

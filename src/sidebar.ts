@@ -127,6 +127,12 @@ export function rebuildSidebarColors(): void {
   HOVER_BG = theme.hover;
   HOVER_NAME_ATTRS.bg = HOVER_BG;
   HOVER_DETAIL_ATTRS.bg = HOVER_BG;
+  // The active-row attr objects captured ACTIVE_BG at module load too, so they
+  // must be patched in place — otherwise the selected row's marker and text keep
+  // the stale dark selection background on a re-themed (e.g. light) terminal.
+  ACTIVE_MARKER_ATTRS.bg = ACTIVE_BG;
+  ACTIVE_NAME_ATTRS.bg = ACTIVE_BG;
+  ACTIVE_DETAIL_ATTRS.bg = ACTIVE_BG;
 }
 const GROUP_HEADER_ATTRS: CellAttrs = {
   fg: 8,

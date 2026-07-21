@@ -1,12 +1,19 @@
 import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeString, textCols, type CellAttrs } from "./cell-grid";
-import { theme } from "./theme";
+import { theme, accentFor, neutralFg } from "./theme";
 
 export type InfoTab = "diff" | string; // "diff" is special, others are view IDs
 
+// Warm accent for the active tab (peach on dark themes, darkened on light).
+const ACTIVE_TAB_ACCENT = (0xfb << 16) | (0xd4 << 8) | 0xb8;
+
+// These attr objects are re-themed in place by rebuildInfoPanelColors(): the
+// active tab uses the adaptive warm accent, the hovered tab uses neutral text
+// (terminal default fg once a theme is detected), and the tab-bar surface
+// tracks the detected background. They start on the dark defaults.
 const ACTIVE_TAB: CellAttrs = {
-  fg: (0xfb << 16) | (0xd4 << 8) | 0xb8,
+  fg: ACTIVE_TAB_ACCENT,
   fgMode: ColorMode.RGB,
   bold: true,
 };
@@ -18,13 +25,10 @@ const INACTIVE_TAB: CellAttrs = {
 };
 
 const HOVERED_TAB: CellAttrs = {
-  fg: (0xC9 << 16) | (0xD1 << 8) | 0xD9,
-  fgMode: ColorMode.RGB,
+  fg: 7,
+  fgMode: ColorMode.Palette,
 };
 
-// The tab-bar surface tracks the detected terminal background (defaults to the
-// original #161b22 until/unless OSC 11 detection succeeds). Read at render time
-// from this object, so rebuildInfoPanelColors() re-themes it in place.
 const TAB_BG: CellAttrs = {
   bg: theme.surface,
   bgMode: ColorMode.RGB,
@@ -32,7 +36,12 @@ const TAB_BG: CellAttrs = {
 
 export function rebuildInfoPanelColors(): void {
   TAB_BG.bg = theme.surface;
+  ACTIVE_TAB.fg = accentFor(ACTIVE_TAB_ACCENT);
+  const hovered = neutralFg(7);
+  HOVERED_TAB.fg = hovered.fg;
+  HOVERED_TAB.fgMode = hovered.fgMode;
 }
+rebuildInfoPanelColors();
 
 export interface InfoPanelConfig {
   viewIds: string[];      // ordered list of view IDs to show as tabs

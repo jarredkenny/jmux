@@ -1,7 +1,7 @@
 import type { Cell, CellGrid, CursorPosition, WindowTab } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, DEFAULT_CELL, cellWidth } from "./cell-grid";
-import { theme, neutralFg } from "./theme";
+import { theme, neutralFg, accentFor } from "./theme";
 
 export const BORDER_CHAR = "\u2502"; // │
 
@@ -241,11 +241,11 @@ export function compositeGrids(
         renderWindowBranchRow(grid, toolbar, borderCol, totalCols);
       } else if (y === 0) {
       // Toolbar row — always render (palette no longer replaces it)
-      const hoverBg = (0x2a << 16) | (0x2f << 8) | 0x38;
+      const hoverBg = theme.hover;
       const activeBg = theme.selected;
 
       // Render window tabs (left side)
-      const peachFg = (0xfb << 16) | (0xd4 << 8) | 0xb8;
+      const peachFg = accentFor((0xfb << 16) | (0xd4 << 8) | 0xb8);
       const tabRanges = getToolbarTabRanges(toolbar);
       for (let ti = 0; ti < tabRanges.length; ti++) {
         const { id, startCol, endCol, tab } = tabRanges[ti];
@@ -377,7 +377,7 @@ export function compositeGrids(
           // Split mode: add divider + diff panel
           if (diffPanel && diffPanel.mode === "split") {
             const dividerCol = borderCol + 1 + mainCols;
-            const focusColor = (0x58 << 16) | (0xa6 << 8) | 0xff;
+            const focusColor = accentFor((0x58 << 16) | (0xa6 << 8) | 0xff);
             grid.cells[y][dividerCol] = {
               ...DEFAULT_CELL,
               char: "│",

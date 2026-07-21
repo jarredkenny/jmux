@@ -4,9 +4,11 @@ import {
   unpack,
   mix,
   isDark,
+  luminance,
   deriveTheme,
   parseOsc11,
   neutralFg,
+  accentFor,
   setTheme,
   scanForOsc11,
   DEFAULT_THEME,
@@ -148,6 +150,46 @@ describe("scanForOsc11", () => {
     expect(scan.rgb).toBeNull();
     expect(scan.forward).toBe(huge); // flushed, not swallowed forever
     expect(scan.pending).toBe("");
+  });
+});
+
+describe("deriveTheme — pane fade foregrounds", () => {
+  test("dark theme: active pane fg is brighter than inactive, both lighter than bg", () => {
+    const t = deriveTheme({ r: 0x16, g: 0x1b, b: 0x22 });
+    expect(t.isLight).toBe(false);
+    // active is the more legible (higher-contrast) foreground
+    expect(luminance(unpack(t.paneActiveFg))).toBeGreaterThan(luminance(unpack(t.paneInactiveFg)));
+    expect(luminance(unpack(t.paneInactiveFg))).toBeGreaterThan(luminance(unpack(t.surface)));
+  });
+
+  test("light theme: active pane fg is darker (higher contrast) than inactive, both darker than bg", () => {
+    const t = deriveTheme({ r: 0xfa, g: 0xfa, b: 0xfa });
+    expect(t.isLight).toBe(true);
+    // on a light bg, the more legible fg is the DARKER one
+    expect(luminance(unpack(t.paneActiveFg))).toBeLessThan(luminance(unpack(t.paneInactiveFg)));
+    expect(luminance(unpack(t.paneInactiveFg))).toBeLessThan(luminance(unpack(t.surface)));
+  });
+});
+
+describe("accentFor", () => {
+  const PEACH = 0xfbd4b8;
+
+  test("passes brand accents through unchanged on dark themes", () => {
+    setTheme(deriveTheme({ r: 0x16, g: 0x1b, b: 0x22 }));
+    expect(accentFor(PEACH)).toBe(PEACH);
+    setTheme(DEFAULT_THEME);
+    expect(accentFor(PEACH)).toBe(PEACH); // default theme is dark
+  });
+
+  test("darkens a light brand accent on light themes for legibility, preserving hue order", () => {
+    setTheme(deriveTheme({ r: 0xfa, g: 0xfa, b: 0xfa }));
+    const adapted = unpack(accentFor(PEACH));
+    const orig = unpack(PEACH);
+    expect(luminance(adapted)).toBeLessThan(luminance(orig)); // darker → readable on white
+    // hue order preserved: peach is r>g>b, and stays that way
+    expect(adapted.r).toBeGreaterThan(adapted.g);
+    expect(adapted.g).toBeGreaterThan(adapted.b);
+    setTheme(DEFAULT_THEME);
   });
 });
 

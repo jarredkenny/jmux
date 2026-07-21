@@ -1,6 +1,7 @@
 import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
+import { theme, accentFor, neutralFg } from "./theme";
 
 // --- Setting definitions ---
 
@@ -32,28 +33,47 @@ export interface SettingsCategory {
 
 // --- Rendering constants ---
 
-const PEACH = (0xFB << 16) | (0xD4 << 8) | 0xB8;
-const LIGHT = (0xC9 << 16) | (0xD1 << 8) | 0xD9;
+// Warm accent (peach on dark themes, darkened for legibility on light). The
+// attr objects below are re-themed in place by rebuildSettingsColors(): every
+// PEACH-role object gets accentFor(PEACH_BASE), every neutral-text object gets
+// the terminal default fg once a theme is detected, and the edit-field surfaces
+// track theme.hover / theme.selected. They start on the dark defaults.
+const PEACH_BASE = (0xFB << 16) | (0xD4 << 8) | 0xB8;
 
-const HEADER_ATTRS: CellAttrs = { fg: PEACH, fgMode: ColorMode.RGB, bold: true };
+const HEADER_ATTRS: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB, bold: true };
 const CATEGORY_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, bold: true };
-const CATEGORY_ACTIVE: CellAttrs = { fg: PEACH, fgMode: ColorMode.RGB, bold: true };
-const LABEL_ATTRS: CellAttrs = { fg: LIGHT, fgMode: ColorMode.RGB };
-const LABEL_ACTIVE: CellAttrs = { fg: PEACH, fgMode: ColorMode.RGB, bold: true };
+const CATEGORY_ACTIVE: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB, bold: true };
+const LABEL_ATTRS: CellAttrs = { fg: 7, fgMode: ColorMode.Palette };
+const LABEL_ACTIVE: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB, bold: true };
 const VALUE_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette };
-const VALUE_ACTIVE: CellAttrs = { fg: LIGHT, fgMode: ColorMode.RGB };
+const VALUE_ACTIVE: CellAttrs = { fg: 7, fgMode: ColorMode.Palette };
 const DIM_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const HINT_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
-const CURSOR_ATTRS: CellAttrs = { fg: PEACH, fgMode: ColorMode.RGB };
-const EDIT_BG: CellAttrs = { bg: (0x1A << 16) | (0x1F << 8) | 0x26, bgMode: ColorMode.RGB };
-const EDIT_TEXT: CellAttrs = { fg: LIGHT, fgMode: ColorMode.RGB, bg: (0x1A << 16) | (0x1F << 8) | 0x26, bgMode: ColorMode.RGB };
-const EDIT_CURSOR: CellAttrs = { fg: PEACH, fgMode: ColorMode.RGB, bg: (0x2D << 16) | (0x33 << 8) | 0x3B, bgMode: ColorMode.RGB };
+const CURSOR_ATTRS: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB };
+const EDIT_BG: CellAttrs = { bg: theme.hover, bgMode: ColorMode.RGB };
+const EDIT_TEXT: CellAttrs = { fg: 7, fgMode: ColorMode.Palette, bg: theme.hover, bgMode: ColorMode.RGB };
+const EDIT_CURSOR: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB, bg: theme.selected, bgMode: ColorMode.RGB };
 const MAP_KEY_ATTRS: CellAttrs = { fg: 5, fgMode: ColorMode.Palette };
 const MAP_VAL_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette };
-const MAP_KEY_ACTIVE: CellAttrs = { fg: PEACH, fgMode: ColorMode.RGB };
+const MAP_KEY_ACTIVE: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB };
 const MAP_ADD_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const ON_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const OFF_ATTRS: CellAttrs = { fg: 1, fgMode: ColorMode.Palette };
+
+// Objects whose foreground is the warm accent vs. neutral text — patched by role.
+const PEACH_ROLE: CellAttrs[] = [HEADER_ATTRS, CATEGORY_ACTIVE, LABEL_ACTIVE, CURSOR_ATTRS, EDIT_CURSOR, MAP_KEY_ACTIVE];
+const NEUTRAL_ROLE: CellAttrs[] = [LABEL_ATTRS, VALUE_ACTIVE, EDIT_TEXT];
+
+export function rebuildSettingsColors(): void {
+  const peach = accentFor(PEACH_BASE);
+  for (const a of PEACH_ROLE) { a.fg = peach; a.fgMode = ColorMode.RGB; }
+  const n = neutralFg(7);
+  for (const a of NEUTRAL_ROLE) { a.fg = n.fg; a.fgMode = n.fgMode; }
+  EDIT_BG.bg = theme.hover;
+  EDIT_TEXT.bg = theme.hover;
+  EDIT_CURSOR.bg = theme.selected;
+}
+rebuildSettingsColors();
 
 // --- Node model ---
 
@@ -286,7 +306,7 @@ export class SettingsScreen {
 
     // Show current option with arrows
     const option = state.options[state.optionIndex];
-    writeString(grid, row, fieldStart, `◂ ${option} ▸`, { fg: PEACH, fgMode: ColorMode.RGB });
+    writeString(grid, row, fieldStart, `◂ ${option} ▸`, CURSOR_ATTRS);
   }
 
   private renderMapEntry(grid: CellGrid, row: number, cols: number, pad: number, node: Extract<SettingsNode, { kind: "map-entry" }>, selected: boolean): void {

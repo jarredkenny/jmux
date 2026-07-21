@@ -65,6 +65,12 @@ export interface ThemeColors {
    * would vanish against a derived light surface. Accent colors stay palette.
    */
   useDefaultFg: boolean;
+  /** True when the detected background is light (drives accentFor darkening). */
+  isLight: boolean;
+  /** Active pane's default foreground (tmux window-active-style) — high contrast. */
+  paneActiveFg: number;
+  /** Inactive pane's default foreground (tmux window-style) — faded. */
+  paneInactiveFg: number;
 }
 
 /** The original hardcoded look — used until/unless OSC 11 detection succeeds. */
@@ -74,6 +80,9 @@ export const DEFAULT_THEME: ThemeColors = {
   hover: 0x1a1f26,
   shadow: 0x06080c,
   useDefaultFg: false,
+  isLight: false,
+  paneActiveFg: 0xb5bcc9,
+  paneInactiveFg: 0x6b7280,
 };
 
 /**
@@ -92,7 +101,31 @@ export function deriveTheme(termBg: RGB): ThemeColors {
     hover: pack(mix(termBg, anchor, 0.05)),
     shadow: pack(mix(termBg, black, dark ? 0.55 : 0.22)),
     useDefaultFg: true,
+    isLight: !dark,
+    // Pane fade: the active pane's default fg is a strong contrast against the
+    // background (light on dark themes, dark on light themes); the inactive pane
+    // is a mid-tone that recedes. Deriving both from the anchor keeps the active
+    // pane the *more* legible one on any theme — the previous hardcoded light-gray
+    // active fg washed out on light backgrounds, inverting the focus cue.
+    paneActiveFg: pack(mix(termBg, anchor, 0.7)),
+    paneInactiveFg: pack(mix(termBg, anchor, 0.38)),
   };
+}
+
+/**
+ * Adapt a brand accent color (peach, blue, orange, …) to the current theme.
+ * On dark themes the accent is used as designed. On light themes it is darkened
+ * (blended toward black), preserving hue but restoring contrast — a color tuned
+ * to glow on a dark background would otherwise wash out on a light one.
+ */
+export function accentFor(rgb: number): number {
+  if (!theme.isLight) return rgb;
+  return pack(mix(unpack(rgb), { r: 0, g: 0, b: 0 }, 0.45));
+}
+
+/** Format a packed color as a `#rrggbb` string for tmux style options. */
+export function toHex(packed: number): string {
+  return "#" + (packed & 0xffffff).toString(16).padStart(6, "0");
 }
 
 /** Live theme — consumers read these fields at render time. Mutated in place. */

@@ -32,12 +32,19 @@ export function borderAttrsForState(
 
 // ─── Tile label chip ─────────────────────────────────────────────────────────
 // The label renders as a filled chip on the top border, like the toolbar's
-// window tabs. Focused: bold emerald-400 text on a slate background. Unfocused:
-// dim gray text on a darker, subtler background — so focus reads at a glance.
-const LABEL_ACCENT_RGB = (0x34 << 16) | (0xD3 << 8) | 0x99; // #34D399 emerald-400
-const LABEL_DIM_RGB    = (0x6e << 16) | (0x76 << 8) | 0x80; // #6E7680 gray
-const CHIP_BG_FOCUSED  = (0x1e << 16) | (0x2a << 8) | 0x35; // #1E2A35 (toolbar activeBg)
-const CHIP_BG_DIM      = (0x26 << 16) | (0x2b << 8) | 0x33; // #262B33 subtle slate
+// window tabs. Focused: bold green text on the selection background; unfocused:
+// dim gray on the subtler hover background — so focus reads at a glance. Both
+// the text (palette colors, terminal-tuned for legibility) and the chip
+// background (theme.selected / theme.hover, read live) track the detected
+// terminal theme, so the chip stays readable on light backgrounds too.
+import { theme } from "../theme";
+
+/** Label-chip cell attributes for a tile, by focus. Read the live theme. */
+export function labelChipAttrs(isFocused: boolean): CellAttrs {
+  return isFocused
+    ? { fg: 2, fgMode: ColorMode.Palette, bold: true, bg: theme.selected, bgMode: ColorMode.RGB }
+    : { fg: 8, fgMode: ColorMode.Palette, dim: true, bg: theme.hover, bgMode: ColorMode.RGB };
+}
 import { ScreenBridge } from "../screen-bridge";
 import { TmuxPty } from "../tmux-pty";
 import { computeTileLayout } from "./layout";
@@ -506,10 +513,8 @@ export class GlassView {
     const borderAttrs = borderAttrsForState(tile.spec.agentState, isFocused, this.stateColors);
     const { fg: borderFg, fgMode: borderFgMode, bold: borderBold, dim: borderDim } = borderAttrs;
 
-    // The label pops in bold emerald when focused, dims to gray otherwise.
-    const labelAttrs: CellAttrs = isFocused
-      ? { fg: LABEL_ACCENT_RGB, fgMode: ColorMode.RGB, bold: true, bg: CHIP_BG_FOCUSED, bgMode: ColorMode.RGB }
-      : { fg: LABEL_DIM_RGB, fgMode: ColorMode.RGB, bold: false, bg: CHIP_BG_DIM, bgMode: ColorMode.RGB };
+    // The label pops in bold green when focused, dims to gray otherwise.
+    const labelAttrs: CellAttrs = labelChipAttrs(isFocused);
 
     const { x, y, width, height } = rect;
 
