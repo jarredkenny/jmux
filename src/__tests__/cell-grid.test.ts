@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { createGrid, writeString, writeCell, blit, DEFAULT_CELL } from "../cell-grid";
+import { createGrid, writeString, writeCell, blit, DEFAULT_CELL, type CellAttrs } from "../cell-grid";
 import { ColorMode } from "../types";
 
 describe("createGrid", () => {
@@ -191,7 +191,7 @@ describe("writeCell", () => {
 });
 
 describe("blit", () => {
-  function fillGrid(grid: ReturnType<typeof createGrid>, ch: string, attrs?: Parameters<typeof writeString>[4]) {
+  function fillGrid(grid: ReturnType<typeof createGrid>, ch: string, attrs?: CellAttrs) {
     for (let r = 0; r < grid.rows; r++) {
       for (let c = 0; c < grid.cols; c++) {
         grid.cells[r][c] = { ...grid.cells[r][c], char: ch, width: 1, ...(attrs ?? {}) };
@@ -231,13 +231,19 @@ describe("blit", () => {
 
   test("clips silently when the destination rectangle runs off the right/bottom edge", () => {
     const src = createGrid(3, 3);
-    fillGrid(src, "s");
+    // Fill with distinct per-cell content to detect offset bugs
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        src.cells[r][c] = { ...src.cells[r][c], char: `${r}${c}` };
+      }
+    }
     const dst = createGrid(4, 4);
     blit(dst, src, { destX: 2, destY: 2 }); // needs cols 2-4, rows 2-4 but dst is 4x4 (indices 0-3)
-    expect(dst.cells[2][2].char).toBe("s");
-    expect(dst.cells[2][3].char).toBe("s");
-    expect(dst.cells[3][2].char).toBe("s");
-    expect(dst.cells[3][3].char).toBe("s");
+    // Verify correct source cells landed at destination
+    expect(dst.cells[2][2].char).toBe("00");
+    expect(dst.cells[2][3].char).toBe("01");
+    expect(dst.cells[3][2].char).toBe("10");
+    expect(dst.cells[3][3].char).toBe("11");
     // no throw, no out-of-range writes — grid stays 4x4
     expect(dst.cells.length).toBe(4);
     expect(dst.cells[0].length).toBe(4);
@@ -245,12 +251,19 @@ describe("blit", () => {
 
   test("clips silently when destX/destY are negative (off the top-left edge)", () => {
     const src = createGrid(3, 3);
-    fillGrid(src, "s");
+    // Fill with distinct per-cell content to detect offset bugs
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        src.cells[r][c] = { ...src.cells[r][c], char: `${r}${c}` };
+      }
+    }
     const dst = createGrid(4, 4);
     blit(dst, src, { destX: -1, destY: -1 });
     // Only the portion that lands in-bounds should be copied: src (1,1)-(2,2) -> dst (0,0)-(1,1)
-    expect(dst.cells[0][0].char).toBe("s");
-    expect(dst.cells[1][1].char).toBe("s");
+    expect(dst.cells[0][0].char).toBe("11");
+    expect(dst.cells[0][1].char).toBe("12");
+    expect(dst.cells[1][0].char).toBe("21");
+    expect(dst.cells[1][1].char).toBe("22");
   });
 
   test("a wide glyph at the copy edge becomes a space carrying the source's attributes", () => {
@@ -288,6 +301,62 @@ describe("blit", () => {
     // Beyond source bounds — untouched
     expect(dst.cells[2][2].char).toBe(" ");
     expect(dst.cells[4][4].char).toBe(" ");
+  });
+
+  test("copies nothing when w is 0 and leaves destination untouched", () => {
+    const src = createGrid(3, 3);
+    fillGrid(src, "s");
+    const dst = createGrid(3, 3);
+    fillGrid(dst, "d");
+    blit(dst, src, { destX: 0, destY: 0, w: 0, h: 3 });
+    // All destination cells should remain "d" — nothing copied
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        expect(dst.cells[r][c].char).toBe("d");
+      }
+    }
+  });
+
+  test("copies nothing when h is 0 and leaves destination untouched", () => {
+    const src = createGrid(3, 3);
+    fillGrid(src, "s");
+    const dst = createGrid(3, 3);
+    fillGrid(dst, "d");
+    blit(dst, src, { destX: 0, destY: 0, w: 3, h: 0 });
+    // All destination cells should remain "d" — nothing copied
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        expect(dst.cells[r][c].char).toBe("d");
+      }
+    }
+  });
+
+  test("copies nothing when w is negative and leaves destination untouched", () => {
+    const src = createGrid(3, 3);
+    fillGrid(src, "s");
+    const dst = createGrid(3, 3);
+    fillGrid(dst, "d");
+    blit(dst, src, { destX: 0, destY: 0, w: -1, h: 3 });
+    // All destination cells should remain "d" — nothing copied
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        expect(dst.cells[r][c].char).toBe("d");
+      }
+    }
+  });
+
+  test("copies nothing when h is negative and leaves destination untouched", () => {
+    const src = createGrid(3, 3);
+    fillGrid(src, "s");
+    const dst = createGrid(3, 3);
+    fillGrid(dst, "d");
+    blit(dst, src, { destX: 0, destY: 0, w: 3, h: -1 });
+    // All destination cells should remain "d" — nothing copied
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        expect(dst.cells[r][c].char).toBe("d");
+      }
+    }
   });
 });
 

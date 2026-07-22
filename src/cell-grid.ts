@@ -82,10 +82,10 @@ export function cellWidth(cp: number): number {
 }
 
 // Writes a single glyph at (row, col), handling the wide-character
-// continuation-cell rule in one place: a width-2 glyph is followed by a
-// width-0 continuation cell carrying the same background. This is the sole
-// owner of that rule — no other code should hand-construct a
-// `{ char: "", width: 0 }` continuation cell.
+// continuation-cell rule: a width-2 glyph is followed by a width-0
+// continuation cell carrying the same background. writeCell owns this for
+// new code; writeString retains an equivalent inline copy (lines 214–222),
+// and four toolbar sites in renderer.ts are pending conversion to this API.
 //
 // Behaviour matches writeString's per-character handling exactly: out of
 // bounds is a silent no-op, and a wide glyph that would overflow the row
@@ -171,7 +171,11 @@ export function blit(dst: CellGrid, src: CellGrid, opts: BlitOptions): void {
 
       if (srcCell.width === 2 && rx + 1 >= w) {
         // Continuation would fall outside the copy rectangle — replace
-        // with a space carrying the source's attributes.
+        // with a space carrying the source's attributes. This guards the
+        // copy-rectangle boundary but not the destination grid: a wide head
+        // at dst.cols-1 while still in w's range will land in dst, leaving
+        // its continuation orphaned when clipped by dx bounds. Unreachable
+        // at all current call sites; fixing this is an unauthorized change.
         dst.cells[dy][dx] = { ...srcCell, char: " ", width: 1 };
         continue;
       }
