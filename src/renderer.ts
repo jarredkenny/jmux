@@ -208,10 +208,12 @@ export function compositeGrids(
   // Invariant maintained by callers (see src/frame-layout.ts): a sidebar
   // grid is only ever passed when `layout.sidebar`/`layout.borderCol` are
   // also non-null — main.ts sizes both from the same relayout() call.
-  // Likewise `layout.divider`/`layout.panel` are non-null whenever
-  // `diffPanel.isActive()` is true, because main.ts's relayout() runs
-  // synchronously after every diffPanel state mutation, so the panel/divider
-  // reads below (guarded by `diffPanel.mode`/`diffPanel` truthiness) are safe.
+  // Likewise `layout.panel` is non-null whenever `diffPanel.isActive()` is
+  // true, and `layout.divider` is non-null whenever `diffPanel.mode` is
+  // "split" — full mode has no divider. Both hold because main.ts's relayout()
+  // runs synchronously after every diffPanel state mutation. The reads below
+  // are guarded to match: the divider read sits inside the `mode === "split"`
+  // branch, and moving it out would break this invariant.
   const borderCol = layout.borderCol!;
   const mainCols = toolbar ? toolbar.mainCols : main.cols;
   const totalCols = layout.termCols;
