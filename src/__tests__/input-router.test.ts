@@ -1,5 +1,48 @@
 import { describe, test, expect } from "bun:test";
 import { translateMouse, parseSgrMouse, InputRouter, type InputRouterOptions } from "../input-router";
+import { computeFrameLayout, SIDEBAR_MIN_TERM_COLS, type FrameLayout } from "../frame-layout";
+
+// Shared FrameLayout fixtures. Tests build real layouts via computeFrameLayout
+// (rather than hand-rolled Span objects) so the geometry fed to InputRouter is
+// internally consistent — the same guarantee relayout() gives production code.
+
+// A layout with no diff panel (mode "off"), given a sidebar width. termCols is
+// generous (120) so main always has plenty of room regardless of sidebarWidth.
+function baseLayout(sidebarWidth: number, diffState: "off" | "split" | "full" = "off", requestedPanelCols = 0): FrameLayout {
+  return computeFrameLayout({
+    termCols: 120,
+    termRows: 40,
+    sidebarWidth,
+    borderWidth: 1,
+    toolbarRows: 1,
+    diffState,
+    requestedPanelCols,
+  });
+}
+
+// A split-mode layout with exact main/panel widths (rather than "big enough"),
+// for tests that assert precise translated mouse coordinates. sidebarWidth is
+// widened (keeping mainCols/panelCols exact) if needed to clear
+// SIDEBAR_MIN_TERM_COLS — computeFrameLayout returns sidebar: null below that,
+// which would make the router skip the whole mouse block.
+function diffPanelLayout(sidebarWidth: number, mainCols: number, panelCols: number): FrameLayout {
+  const available = mainCols + panelCols + 1; // + borderWidth between main and panel
+  let termCols = sidebarWidth + 1 + available; // + borderWidth between sidebar and main
+  let effectiveSidebarWidth = sidebarWidth;
+  if (termCols < SIDEBAR_MIN_TERM_COLS) {
+    effectiveSidebarWidth += SIDEBAR_MIN_TERM_COLS - termCols;
+    termCols = SIDEBAR_MIN_TERM_COLS;
+  }
+  return computeFrameLayout({
+    termCols,
+    termRows: 40,
+    sidebarWidth: effectiveSidebarWidth,
+    borderWidth: 1,
+    toolbarRows: 1,
+    diffState: "split",
+    requestedPanelCols: panelCols,
+  });
+}
 
 describe("parseSgrMouse", () => {
   test("parses SGR mouse button press", () => {
@@ -62,12 +105,11 @@ describe("Ctrl-Shift arrow detection", () => {
     let prevCalled = false;
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onSessionPrev: () => { prevCalled = true; },
       },
-      true,
+      baseLayout(24),
     );
     router.handleInput("\x1b[1;6A");
     expect(prevCalled).toBe(true);
@@ -77,12 +119,11 @@ describe("Ctrl-Shift arrow detection", () => {
     let nextCalled = false;
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onSessionNext: () => { nextCalled = true; },
       },
-      true,
+      baseLayout(24),
     );
     router.handleInput("\x1b[1;6B");
     expect(nextCalled).toBe(true);
@@ -92,13 +133,12 @@ describe("Ctrl-Shift arrow detection", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         onSessionPrev: () => {},
         onSessionNext: () => {},
       },
-      true,
+      baseLayout(24),
     );
     router.handleInput("\x1b[1;6A");
     router.handleInput("\x1b[1;6B");
@@ -111,11 +151,10 @@ describe("passthrough", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
       },
-      true,
+      baseLayout(24),
     );
     router.handleInput("hello");
     expect(ptyData).toBe("hello");
@@ -128,12 +167,11 @@ describe("modal mode", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         onModalInput: (d) => { paletteData += d; },
       },
-      true,
+      baseLayout(24),
     );
     router.setModalOpen(true);
     router.handleInput("hello");
@@ -145,13 +183,12 @@ describe("modal mode", () => {
     let prevCalled = false;
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onModalInput: () => {},
         onSessionPrev: () => { prevCalled = true; },
       },
-      true,
+      baseLayout(24),
     );
     router.setModalOpen(true);
     router.handleInput("\x1b[1;6A");
@@ -162,12 +199,11 @@ describe("modal mode", () => {
     let clickedRow = -1;
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: (row) => { clickedRow = row; },
         onModalInput: () => {},
       },
-      true,
+      baseLayout(24),
     );
     router.setModalOpen(true);
     router.handleInput("\x1b[<0;5;3M");
@@ -178,13 +214,12 @@ describe("modal mode", () => {
     let toolbarClicked = false;
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onModalInput: () => {},
         onToolbarClick: () => { toolbarClicked = true; },
       },
-      true,
+      baseLayout(24),
     );
     router.setModalOpen(true);
     router.handleInput("\x1b[<0;30;1M");
@@ -195,12 +230,11 @@ describe("modal mode", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         onModalInput: () => {},
       },
-      true,
+      baseLayout(24),
     );
     router.setModalOpen(true);
     router.handleInput("\x1b[<0;30;5M");
@@ -212,12 +246,11 @@ describe("modal mode", () => {
     let paletteData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         onModalInput: (d) => { paletteData += d; },
       },
-      true,
+      baseLayout(24),
     );
     router.setModalOpen(true);
     router.setModalOpen(false);
@@ -233,19 +266,17 @@ describe("link click", () => {
   const makeRouter = (sink: { pty: string; opened: string[] }) =>
     new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: (d) => { sink.pty += d; },
         onSidebarClick: () => {},
         getLinkAt: (x, y) => (x === 29 && y === 4 ? "https://example.com" : undefined),
         onOpenLink: (url) => { sink.opened.push(url); },
       },
-      true,
+      baseLayout(24),
     );
 
   test("clean left-click on a link cell opens the URL and is not forwarded to tmux", () => {
     const sink = { pty: "", opened: [] as string[] };
     const router = makeRouter(sink);
-    router.setMainCols(60);
     router.handleInput("\x1b[<0;30;5M");
     expect(sink.opened).toEqual(["https://example.com"]);
     expect(sink.pty).toBe("");
@@ -254,7 +285,6 @@ describe("link click", () => {
   test("the matching release over the link cell is also consumed", () => {
     const sink = { pty: "", opened: [] as string[] };
     const router = makeRouter(sink);
-    router.setMainCols(60);
     router.handleInput("\x1b[<0;30;5M"); // press → opens
     router.handleInput("\x1b[<0;30;5m"); // release → swallowed
     expect(sink.opened).toEqual(["https://example.com"]); // opened exactly once
@@ -264,7 +294,6 @@ describe("link click", () => {
   test("left-click on a non-link cell forwards to tmux and does not open", () => {
     const sink = { pty: "", opened: [] as string[] };
     const router = makeRouter(sink);
-    router.setMainCols(60);
     router.handleInput("\x1b[<0;40;5M"); // not the link cell
     expect(sink.opened).toEqual([]);
     expect(sink.pty.length).toBeGreaterThan(0); // translated event forwarded
@@ -273,7 +302,6 @@ describe("link click", () => {
   test("wheel over a link cell does not open the link", () => {
     const sink = { pty: "", opened: [] as string[] };
     const router = makeRouter(sink);
-    router.setMainCols(60);
     router.handleInput("\x1b[<64;30;5M"); // wheel up at the link cell
     expect(sink.opened).toEqual([]);
   });
@@ -281,7 +309,6 @@ describe("link click", () => {
   test("motion (drag) over a link cell does not open the link", () => {
     const sink = { pty: "", opened: [] as string[] };
     const router = makeRouter(sink);
-    router.setMainCols(60);
     router.handleInput("\x1b[<32;30;5M"); // button 0 + motion bit (drag)
     expect(sink.opened).toEqual([]);
   });
@@ -289,7 +316,6 @@ describe("link click", () => {
   test("link click is not intercepted while a modal is open", () => {
     const sink = { pty: "", opened: [] as string[] };
     const router = makeRouter(sink);
-    router.setMainCols(60);
     router.setModalOpen(true);
     router.handleInput("\x1b[<0;30;5M");
     expect(sink.opened).toEqual([]);
@@ -299,37 +325,37 @@ describe("link click", () => {
 describe("diff panel routing", () => {
   test("mouse click in diff panel region forwards translated SGR to onDiffPanelData", () => {
     let diffData = "";
+    const layout = diffPanelLayout(4, 20, 10);
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onDiffPanelData: (d) => { diffData += d; },
       },
-      true,
+      layout,
     );
-    router.setDiffPanel(10, false);
-    router.setMainCols(20);
-    // Divider at col 26 (1-indexed). Click at x=28, y=3 → diff col 2, row 2
-    router.handleInput("\x1b[<0;28;3M");
+    // A click 2 (1-indexed) columns into the panel, row 2 into content:
+    // mouse.x = panel.x + 2, mouse.y = toolbarRows + 2.
+    const mouseX = layout.panel!.x + 2;
+    const mouseY = layout.toolbarRows + 2;
+    router.handleInput(`\x1b[<0;${mouseX};${mouseY}M`);
     expect(diffData).toBe("\x1b[<0;2;2M");
   });
 
   test("divider click toggles focus", () => {
     let focusToggled = false;
+    const layout = diffPanelLayout(4, 20, 10);
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onDiffPanelFocusToggle: () => { focusToggled = true; },
       },
-      true,
+      layout,
     );
-    router.setDiffPanel(10, false);
-    router.setMainCols(20);
-    // Divider is at col 4+1+20+1 = 26 (1-indexed)
-    router.handleInput("\x1b[<0;26;3M");
+    // Divider click is 1-indexed mouse.x = divider (0-indexed) + 1.
+    const mouseX = layout.divider! + 1;
+    router.handleInput(`\x1b[<0;${mouseX};3M`);
     expect(focusToggled).toBe(true);
   });
 
@@ -338,14 +364,13 @@ describe("diff panel routing", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         onDiffPanelData: (d) => { diffData += d; },
       },
-      true,
+      baseLayout(4, "split", 10),
     );
-    router.setDiffPanel(10, true); // focused
+    router.setPanelFocused(true);
     router.handleInput("jk");
     expect(diffData).toBe("jk");
     expect(ptyData).toBe("");
@@ -356,14 +381,13 @@ describe("diff panel routing", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         onDiffPanelData: (d) => { diffData += d; },
       },
-      true,
+      baseLayout(4, "split", 10),
     );
-    router.setDiffPanel(10, false);
+    router.setPanelFocused(false);
     router.handleInput("jk");
     expect(ptyData).toBe("jk");
     expect(diffData).toBe("");
@@ -373,14 +397,13 @@ describe("diff panel routing", () => {
     let focusToggled = false;
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onDiffPanelFocusToggle: () => { focusToggled = true; },
       },
-      true,
+      baseLayout(4, "split", 10),
     );
-    router.setDiffPanel(10, false);
+    router.setPanelFocused(false);
     router.handleInput("\x01");
     router.handleInput("\t");
     expect(focusToggled).toBe(true);
@@ -391,14 +414,13 @@ describe("diff panel routing", () => {
     let diffData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         onDiffPanelData: (d) => { diffData += d; },
       },
-      true,
+      baseLayout(4, "split", 10),
     );
-    router.setDiffPanel(10, true);
+    router.setPanelFocused(true);
     router.handleInput("\x01");
     expect(ptyData).toBe("");
     expect(diffData).toBe("");
@@ -411,15 +433,14 @@ describe("diff panel routing", () => {
     let toggleCalled = false;
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onDiffPanelData: () => {},
         onDiffToggle: () => { toggleCalled = true; },
       },
-      true,
+      baseLayout(4, "split", 10),
     );
-    router.setDiffPanel(10, true);
+    router.setPanelFocused(true);
     router.handleInput("\x01");
     router.handleInput("g");
     expect(toggleCalled).toBe(true);
@@ -430,13 +451,12 @@ describe("diff panel routing", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         glassActive: () => true,
         onGlassDetach: () => { detachCalled = true; },
       },
-      true,
+      baseLayout(4),
     );
     router.handleInput("\x01"); // prefix is buffered (not forwarded) in glass
     router.handleInput("d");
@@ -449,13 +469,12 @@ describe("diff panel routing", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         glassActive: () => false,
         onGlassDetach: () => { detachCalled = true; },
       },
-      true,
+      baseLayout(4),
     );
     router.handleInput("\x01");
     router.handleInput("d");
@@ -467,14 +486,13 @@ describe("diff panel routing", () => {
     let focusToggled = false;
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onDiffPanelFocusToggle: () => { focusToggled = true; },
       },
-      true,
+      baseLayout(4, "split", 10),
     );
-    router.setDiffPanel(10, true); // focused
+    router.setPanelFocused(true); // focused
     router.handleInput("\x1b[1;2D"); // Shift+Left
     expect(focusToggled).toBe(true);
   });
@@ -484,14 +502,13 @@ describe("diff panel routing", () => {
     let focusToggled = false;
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         onDiffPanelFocusToggle: () => { focusToggled = true; },
       },
-      true,
+      baseLayout(4, "split", 10),
     );
-    router.setDiffPanel(10, false); // not focused
+    router.setPanelFocused(false); // not focused
     router.handleInput("\x1b[1;2D"); // Shift+Left
     expect(focusToggled).toBe(false);
     expect(ptyData).toBe("\x1b[1;2D");
@@ -501,14 +518,13 @@ describe("diff panel routing", () => {
     let navRightCalled = false;
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onPaneNavRight: () => { navRightCalled = true; },
       },
-      true,
+      baseLayout(4, "split", 10),
     );
-    router.setDiffPanel(10, false); // tmux focused
+    router.setPanelFocused(false); // tmux focused
     router.handleInput("\x1b[1;2C"); // Shift+Right
     expect(navRightCalled).toBe(true);
   });
@@ -517,14 +533,12 @@ describe("diff panel routing", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 4,
         onPtyData: (d) => { ptyData += d; },
         onSidebarClick: () => {},
         onPaneNavRight: () => {},
       },
-      true,
+      baseLayout(4), // No diff panel — layout.panel is null
     );
-    // No setDiffPanel — diffPanelCols is 0
     router.handleInput("\x1b[1;2C"); // Shift+Right
     expect(ptyData).toBe("\x1b[1;2C");
   });
@@ -535,15 +549,14 @@ describe("InfoPanel tab switching", () => {
     let prevTabCalled = false;
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onPanelPrevTab: () => { prevTabCalled = true; },
         onPanelNextTab: () => {},
       },
-      true,
+      baseLayout(24, "split", 40),
     );
-    router.setDiffPanel(40, true);
+    router.setPanelFocused(true);
     router.handleInput("[");
     expect(prevTabCalled).toBe(true);
   });
@@ -552,15 +565,14 @@ describe("InfoPanel tab switching", () => {
     let nextTabCalled = false;
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onPanelPrevTab: () => {},
         onPanelNextTab: () => { nextTabCalled = true; },
       },
-      true,
+      baseLayout(24, "split", 40),
     );
-    router.setDiffPanel(40, true);
+    router.setPanelFocused(true);
     router.handleInput("]");
     expect(nextTabCalled).toBe(true);
   });
@@ -569,11 +581,10 @@ describe("InfoPanel tab switching", () => {
     let ptyData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: (d) => { ptyData = d; },
         onSidebarClick: () => {},
       },
-      true,
+      baseLayout(24),
     );
     router.handleInput("[");
     expect(ptyData).toBe("[");
@@ -583,14 +594,13 @@ describe("InfoPanel tab switching", () => {
     let actionKey = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onPanelAction: (key) => { actionKey = key; },
       },
-      true,
+      baseLayout(24, "split", 40),
     );
-    router.setDiffPanel(40, true);
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("o");
     expect(actionKey).toBe("o");
@@ -600,14 +610,13 @@ describe("InfoPanel tab switching", () => {
     let actionKey = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onPanelAction: (key) => { actionKey = key; },
       },
-      true,
+      baseLayout(24, "split", 40),
     );
-    router.setDiffPanel(40, true);
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("C");
     expect(actionKey).toBe("C");
@@ -617,14 +626,13 @@ describe("InfoPanel tab switching", () => {
     let actionKey = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onPanelAction: (key) => { actionKey = key; },
       },
-      true,
+      baseLayout(24, "split", 40),
     );
-    router.setDiffPanel(40, true);
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("s");
     expect(actionKey).toBe("s");
@@ -634,15 +642,14 @@ describe("InfoPanel tab switching", () => {
     let diffData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onDiffPanelData: (d) => { diffData = d; },
         onPanelAction: () => {},
       },
-      true,
+      baseLayout(24, "split", 40),
     );
-    router.setDiffPanel(40, true);
+    router.setPanelFocused(true);
     // panelTabsActive defaults to false — diff tab is active
     router.handleInput("o");
     expect(diffData).toBe("o");
@@ -652,14 +659,13 @@ describe("InfoPanel tab switching", () => {
     let called = false;
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onPanelSelectPrev: () => { called = true; },
       },
-      true,
+      baseLayout(24, "split", 40),
     );
-    router.setDiffPanel(40, true);
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("\x1b[A");
     expect(called).toBe(true);
@@ -669,14 +675,13 @@ describe("InfoPanel tab switching", () => {
     let called = false;
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onPanelSelectNext: () => { called = true; },
       },
-      true,
+      baseLayout(24, "split", 40),
     );
-    router.setDiffPanel(40, true);
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("\x1b[B");
     expect(called).toBe(true);
@@ -686,15 +691,14 @@ describe("InfoPanel tab switching", () => {
     let diffData = "";
     const router = new InputRouter(
       {
-        sidebarCols: 24,
         onPtyData: () => {},
         onSidebarClick: () => {},
         onDiffPanelData: (d) => { diffData = d; },
         onPanelSelectPrev: () => {},
       },
-      true,
+      baseLayout(24, "split", 40),
     );
-    router.setDiffPanel(40, true);
+    router.setPanelFocused(true);
     // panelTabsActive defaults to false
     router.handleInput("\x1b[A");
     expect(diffData).toBe("\x1b[A");
@@ -703,10 +707,10 @@ describe("InfoPanel tab switching", () => {
   test("g key triggers onPanelCycleGroupBy when tabs active", () => {
     let called = false;
     const router = new InputRouter({
-      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPtyData: () => {}, onSidebarClick: () => {},
       onPanelCycleGroupBy: () => { called = true; },
-    }, true);
-    router.setDiffPanel(40, true);
+    }, baseLayout(24, "split", 40));
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("g");
     expect(called).toBe(true);
@@ -715,10 +719,10 @@ describe("InfoPanel tab switching", () => {
   test("/ key triggers onPanelFilterStart and activates filter mode when tabs active", () => {
     let called = false;
     const router = new InputRouter({
-      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPtyData: () => {}, onSidebarClick: () => {},
       onPanelFilterStart: () => { called = true; },
-    }, true);
-    router.setDiffPanel(40, true);
+    }, baseLayout(24, "split", 40));
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("/");
     expect(called).toBe(true);
@@ -727,10 +731,10 @@ describe("InfoPanel tab switching", () => {
   test("S key triggers onPanelCycleSortBy when tabs active", () => {
     let called = false;
     const router = new InputRouter({
-      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPtyData: () => {}, onSidebarClick: () => {},
       onPanelCycleSortBy: () => { called = true; },
-    }, true);
-    router.setDiffPanel(40, true);
+    }, baseLayout(24, "split", 40));
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("S");
     expect(called).toBe(true);
@@ -739,10 +743,10 @@ describe("InfoPanel tab switching", () => {
   test("r key triggers onPanelRefresh when tabs active", () => {
     let called = false;
     const router = new InputRouter({
-      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPtyData: () => {}, onSidebarClick: () => {},
       onPanelRefresh: () => { called = true; },
-    }, true);
-    router.setDiffPanel(40, true);
+    }, baseLayout(24, "split", 40));
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("r");
     expect(called).toBe(true);
@@ -751,10 +755,10 @@ describe("InfoPanel tab switching", () => {
   test("Enter triggers onPanelToggleCollapse when tabs active", () => {
     let called = false;
     const router = new InputRouter({
-      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPtyData: () => {}, onSidebarClick: () => {},
       onPanelToggleCollapse: () => { called = true; },
-    }, true);
-    router.setDiffPanel(40, true);
+    }, baseLayout(24, "split", 40));
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("\r");
     expect(called).toBe(true);
@@ -763,10 +767,10 @@ describe("InfoPanel tab switching", () => {
   test("n key triggers onPanelCreateSession when tabs active", () => {
     let called = false;
     const router = new InputRouter({
-      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPtyData: () => {}, onSidebarClick: () => {},
       onPanelCreateSession: () => { called = true; },
-    }, true);
-    router.setDiffPanel(40, true);
+    }, baseLayout(24, "split", 40));
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("n");
     expect(called).toBe(true);
@@ -775,10 +779,10 @@ describe("InfoPanel tab switching", () => {
   test("l key triggers onPanelLinkToSession when tabs active", () => {
     let called = false;
     const router = new InputRouter({
-      sidebarCols: 24, onPtyData: () => {}, onSidebarClick: () => {},
+      onPtyData: () => {}, onSidebarClick: () => {},
       onPanelLinkToSession: () => { called = true; },
-    }, true);
-    router.setDiffPanel(40, true);
+    }, baseLayout(24, "split", 40));
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     router.handleInput("l");
     expect(called).toBe(true);
@@ -789,7 +793,6 @@ describe("panel filter mode", () => {
   function makeFilterRouter(overrides: Partial<InputRouterOptions> = {}) {
     const calls: string[] = [];
     const opts: InputRouterOptions = {
-      sidebarCols: 24,
       onPtyData: () => { calls.push("pty"); },
       onSidebarClick: () => {},
       onDiffPanelData: (d) => { calls.push(`diff:${d}`); },
@@ -804,8 +807,8 @@ describe("panel filter mode", () => {
       onPanelCycleSortBy: () => { calls.push("cycleSortBy"); },
       ...overrides,
     };
-    const router = new InputRouter(opts, true);
-    router.setDiffPanel(40, true);
+    const router = new InputRouter(opts, baseLayout(24, "split", 40));
+    router.setPanelFocused(true);
     router.setPanelTabsActive(true);
     return { router, calls };
   }
@@ -940,12 +943,11 @@ describe("glass-buffered prefix + Ctrl-a <n>", () => {
     const sent: string[] = [];
     const switched: number[] = [];
     const router = new InputRouter({
-      sidebarCols: 26,
       onPtyData: (d) => sent.push(d),
       onSidebarClick: () => {},
       glassActive: () => true,
       onGlassTabSwitch: (n) => switched.push(n),
-    }, true);
+    }, baseLayout(26));
     router.handleInput("\x01");
     router.handleInput("2");
     expect(switched).toEqual([2]);
@@ -955,11 +957,10 @@ describe("glass-buffered prefix + Ctrl-a <n>", () => {
   test("Ctrl-a then an unrecognized key flushes prefix + key to the tile", () => {
     const sent: string[] = [];
     const router = new InputRouter({
-      sidebarCols: 26,
       onPtyData: (d) => sent.push(d),
       onSidebarClick: () => {},
       glassActive: () => true,
-    }, true);
+    }, baseLayout(26));
     router.handleInput("\x01");
     router.handleInput("k"); // not a glass chord → flushed to the tile
     expect(sent).toEqual(["\x01", "k"]);
@@ -969,12 +970,11 @@ describe("glass-buffered prefix + Ctrl-a <n>", () => {
     const sent: string[] = [];
     const deltas: number[] = [];
     const router = new InputRouter({
-      sidebarCols: 26,
       onPtyData: (d) => sent.push(d),
       onSidebarClick: () => {},
       glassActive: () => true,
       onGlassTabRelative: (delta) => deltas.push(delta),
-    }, true);
+    }, baseLayout(26));
     router.handleInput("\x01");
     router.handleInput("[");
     router.handleInput("\x01");
@@ -987,12 +987,11 @@ describe("glass-buffered prefix + Ctrl-a <n>", () => {
     const sent: string[] = [];
     let detached = 0;
     const router = new InputRouter({
-      sidebarCols: 26,
       onPtyData: (d) => sent.push(d),
       onSidebarClick: () => {},
       glassActive: () => true,
       onGlassDetach: () => detached++,
-    }, true);
+    }, baseLayout(26));
     router.handleInput("\x01");
     router.handleInput("d");
     expect(detached).toBe(1);
@@ -1001,38 +1000,84 @@ describe("glass-buffered prefix + Ctrl-a <n>", () => {
 });
 
 describe("glass strip mouse routing", () => {
-  // SGR press at row 1 (top), col 30 → content x = 30 - 26 - 1 = 3
+  // SGR press at row 1 (top), col 30, sidebarWidth 26 → main.x (0-indexed) is
+  // 27, gridX is 29, so content x = gridX - main.x = 2. (Pre-Task-3 this used
+  // to be computed as `mouse.x - sidebarCols - 1` = 3 — one column off from
+  // where glass/view.ts's own 0-indexed tile rects place column 0; see the
+  // task report for the corroborating renderer.ts trace.)
   const press = (col: number, row: number) => `\x1b[<0;${col};${row}M`;
 
   test("a click on the strip row routes to onGlassTabClick", () => {
     const tabClicks: number[] = [];
     const tileClicks: Array<[number, number]> = [];
     const router = new InputRouter({
-      sidebarCols: 26,
       onPtyData: () => {},
       onSidebarClick: () => {},
       glassActive: () => true,
       glassStripRows: () => 1,
       onGlassTabClick: (x) => tabClicks.push(x),
       onGlassClick: (x, y) => tileClicks.push([x, y]),
-    }, true);
+    }, baseLayout(26));
     router.handleInput(press(30, 1)); // row 1 = strip
-    expect(tabClicks).toEqual([3]);
+    expect(tabClicks).toEqual([2]);
     expect(tileClicks).toEqual([]);
   });
 
   test("a click below the strip routes to the tile with cy offset by strip rows", () => {
     const tileClicks: Array<[number, number]> = [];
     const router = new InputRouter({
-      sidebarCols: 26,
       onPtyData: () => {},
       onSidebarClick: () => {},
       glassActive: () => true,
       glassStripRows: () => 1,
       onGlassClick: (x, y) => tileClicks.push([x, y]),
       onGlassTabClick: () => {},
-    }, true);
+    }, baseLayout(26));
     router.handleInput(press(30, 5)); // row 5: cy = (5-1) - 1 stripRow = 3
-    expect(tileClicks).toEqual([[3, 3]]);
+    expect(tileClicks).toEqual([[2, 3]]);
+  });
+});
+
+// Regression test for the stale-geometry bug: main.ts's relayout() updates
+// five separate InputRouter setters, and used to be able to leave one out of
+// sync after a runtime sidebarWidth change, so the router kept routing
+// clicks against the old boundary. setLayout(layout) makes that impossible —
+// there is exactly one geometry object, replaced atomically.
+describe("setLayout — sidebar/main boundary follows layout, not stale geometry", () => {
+  test("a runtime sidebarWidth change moves the sidebar/main click boundary", () => {
+    let clickedRow = -1;
+    let ptyData = "";
+    const router = new InputRouter(
+      {
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: (row) => { clickedRow = row; },
+      },
+      baseLayout(26),
+    );
+
+    // 26-wide sidebar: boundary is at 0-indexed grid col 26 (1-indexed x=27).
+    // x=26 (grid col 25) → sidebar; x=28 (grid col 27) → main.
+    router.handleInput("\x1b[<0;26;3M");
+    expect(clickedRow).toBe(2);
+    clickedRow = -1;
+    router.handleInput("\x1b[<0;28;3M");
+    expect(clickedRow).toBe(-1);
+    expect(ptyData.length).toBeGreaterThan(0);
+
+    // Now widen the sidebar to 40 at runtime via setLayout — the boundary
+    // must move with it, not stay pinned at the old 26/27 split.
+    ptyData = "";
+    router.setLayout(baseLayout(40));
+
+    // x=28 (grid col 27) is now inside the wider sidebar.
+    router.handleInput("\x1b[<0;28;3M");
+    expect(clickedRow).toBe(2);
+    clickedRow = -1;
+    ptyData = "";
+
+    // x=42 (grid col 41) is now inside main.
+    router.handleInput("\x1b[<0;42;3M");
+    expect(clickedRow).toBe(-1);
+    expect(ptyData.length).toBeGreaterThan(0);
   });
 });

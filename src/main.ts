@@ -890,7 +890,7 @@ async function refreshTeams(): Promise<void> {
 
 function setDiffFocus(focused: boolean): void {
   diffPanelFocused = focused;
-  inputRouter.setDiffPanel(getDiffPanelCols(), focused);
+  inputRouter.setPanelFocused(focused);
   // Dim/undim the tmux active pane to visually show focus has moved. The dim
   // color tracks the theme so it recedes correctly on light backgrounds too.
   if (focused) {
@@ -1053,20 +1053,12 @@ async function spawnHunk(cols: number, rows: number): Promise<void> {
 /**
  * Recomputes `layout` from current inputs (term size, sidebar width, toolbar
  * height, diff-panel state) and applies it: resizes the main pty/bridge, the
- * diff pty/bridge (if spawned), the sidebar, and the input router's geometry
- * setters, then schedules a repaint. This is the single place that turns
- * "something affecting frame geometry changed" into "everything downstream of
- * that geometry agrees" — callers mutate exactly the input that changed
- * (`diffPanel.toggle()`/`toggleZoom()`, `sidebarWidth`, or nothing for a pure
- * terminal resize) and then call this.
- *
- * `inputRouter.setMainCols` is fed 0 in full-panel mode rather than
- * `layout.main.w`: the router's dividerX math (`sidebarCols + 1 + mainCols +
- * 1`) needs the divider to sit immediately after the sidebar so the whole
- * content area routes to the diff panel, matching `layout.panel` overlapping
- * `layout.main` at the same x. `setLayout` (Task 3) reads `layout.panel.x`
- * directly and retires this; until then, 0 is the value that keeps full-mode
- * click routing correct.
+ * diff pty/bridge (if spawned), the sidebar, and pushes the new layout into
+ * the input router in one shot via `setLayout`, then schedules a repaint.
+ * This is the single place that turns "something affecting frame geometry
+ * changed" into "everything downstream of that geometry agrees" — callers
+ * mutate exactly the input that changed (`diffPanel.toggle()`/`toggleZoom()`,
+ * `sidebarWidth`, or nothing for a pure terminal resize) and then call this.
  */
 function relayout(): void {
   const termCols = process.stdout.columns || 80;
@@ -1108,10 +1100,7 @@ function relayout(): void {
     diffBridge.resize(layout.panel.w, layout.ptyRows);
   }
 
-  inputRouter.setSidebarVisible(sidebarShown);
-  inputRouter.setToolbarRows(layout.toolbarRows);
-  inputRouter.setDiffPanel(layout.panel?.w ?? 0, diffPanelFocused);
-  inputRouter.setMainCols(layout.mode === "full" ? 0 : layout.main.w);
+  inputRouter.setLayout(layout);
 
   sidebar.resize(sidebarWidth, layout.termRows);
 
@@ -1509,7 +1498,6 @@ function openUrl(url: string): void {
 
 const inputRouter = new InputRouter(
   {
-    sidebarCols: sidebarWidth,
     getLinkAt: (x, y) => renderer.getLinkAt(x, y),
     onOpenLink: openUrl,
     onPtyData: (data) => {
@@ -2175,9 +2163,8 @@ const inputRouter = new InputRouter(
       }
     },
   },
-  sidebarShown,
+  layout,
 );
-inputRouter.setToolbarRows(toolbarHeight);
 
 const palette = new CommandPalette();
 let activeModal: Modal | null = null;

@@ -1,3 +1,5 @@
+import type { FrameLayout } from "./frame-layout";
+
 export interface SgrMouseEvent {
   button: number;
   x: number;
@@ -32,7 +34,6 @@ export function translateMouse(
 }
 
 export interface InputRouterOptions {
-  sidebarCols: number;
   onPtyData: (data: string) => void;
   onSidebarClick: (row: number) => void;
   onSidebarScroll?: (delta: number) => void;
@@ -93,36 +94,37 @@ export interface InputRouterOptions {
 
 export class InputRouter {
   private opts: InputRouterOptions;
-  private sidebarVisible: boolean;
+  private layout: FrameLayout;
   private modalOpen = false;
   private prefixSeen = false;
   private prefixTimer: ReturnType<typeof setTimeout> | null = null;
   private glassPrefixDeferred = false;
-  private diffPanelCols = 0;
   private diffPanelFocused = false;
-  private mainCols = 0;
   private panelTabsActive = false;
   private panelFilterActive = false;
-  private toolbarRows = 1;
-  constructor(opts: InputRouterOptions, sidebarVisible: boolean) {
+  constructor(opts: InputRouterOptions, layout: FrameLayout) {
     this.opts = opts;
-    this.sidebarVisible = sidebarVisible;
+    this.layout = layout;
   }
 
-  setToolbarRows(rows: number): void {
-    this.toolbarRows = rows;
-  }
-
-  setSidebarVisible(visible: boolean): void {
-    this.sidebarVisible = visible;
+  /**
+   * Single source of truth for the frame's column/row geometry — see
+   * src/frame-layout.ts. Replaces the five geometry setters this router used
+   * to expose (setSidebarVisible/setMainCols/setDiffPanel(cols)/setToolbarRows
+   * and the constructor's sidebarCols), which could be updated independently
+   * of one another and drift out of sync with the actual rendered frame.
+   * All hit-testing below reads `this.layout` directly.
+   */
+  setLayout(layout: FrameLayout): void {
+    this.layout = layout;
   }
 
   setModalOpen(open: boolean): void {
     this.modalOpen = open;
   }
 
-  setDiffPanel(cols: number, focused: boolean): void {
-    this.diffPanelCols = cols;
+  /** Diff-panel keyboard focus. Geometry lives in `layout.panel` (setLayout); this is the one piece of diff-panel state that isn't geometry. */
+  setPanelFocused(focused: boolean): void {
     this.diffPanelFocused = focused;
   }
 
@@ -132,10 +134,6 @@ export class InputRouter {
 
   setPanelFilterActive(active: boolean): void {
     this.panelFilterActive = active;
-  }
-
-  setMainCols(cols: number): void {
-    this.mainCols = cols;
   }
 
   handleInput(data: string): void {
@@ -159,7 +157,7 @@ export class InputRouter {
     }
 
     // Shift+Right/Left pane navigation integrating with diff panel
-    if (this.diffPanelCols > 0 && !this.modalOpen) {
+    if (this.layout.panel !== null && !this.modalOpen) {
       // Shift+Left from diff panel: unfocus back to tmux
       if (data === "\x1b[1;2D" && this.diffPanelFocused) {
         this.opts.onDiffPanelFocusToggle?.();
@@ -223,16 +221,16 @@ export class InputRouter {
           this.opts.onDiffToggle?.();
           return;
         }
-        if (data === "z" && this.diffPanelFocused && this.diffPanelCols > 0) {
+        if (data === "z" && this.diffPanelFocused && this.layout.panel !== null) {
           this.opts.onDiffZoom?.();
           return;
         }
-        if (data === "\t" && this.diffPanelCols > 0) {
+        if (data === "\t" && this.layout.panel !== null) {
           this.opts.onDiffPanelFocusToggle?.();
           return;
         }
         // When diff panel is focused, swallow unrecognized post-prefix keys
-        if (this.diffPanelFocused && this.diffPanelCols > 0) {
+        if (this.diffPanelFocused && this.layout.panel !== null) {
           return;
         }
         // Not intercepted — forward to PTY normally (tmux handles its prefix binding)
@@ -243,26 +241,36 @@ export class InputRouter {
           // In glass, defer the prefix: the next byte decides whether it's a
           // jmux action, a tab digit, or a real in-tile prefix chord.
           this.glassPrefixDeferred = true;
-        } else if (!this.diffPanelFocused || this.diffPanelCols === 0) {
+        } else if (!this.diffPanelFocused || this.layout.panel === null) {
           this.opts.onPtyData(data);
         }
         return;
       }
     }
 
-    // Check for SGR mouse events
+    // Check for SGR mouse events. Grid-space conversion happens exactly once,
+    // here — `gridX`/`gridY` are 0-indexed and every hit-test below reads
+    // spans off `this.layout` rather than recomputing offsets from scattered
+    // fields (see src/frame-layout.ts). `layout.sidebar` doubles as the gate
+    // that used to be `sidebarVisible`: it's null exactly when the terminal
+    // is too narrow for jmux's chrome, in which case mouse sequences fall
+    // through to the default PTY passthrough below, same as before.
     const mouse = parseSgrMouse(data);
-    if (mouse && this.sidebarVisible) {
+    const layout = this.layout;
+    if (mouse && layout.sidebar) {
+      const sidebar = layout.sidebar;
+      const gridX = mouse.x - 1;
+      const gridY = mouse.y - 1;
       const isMotion = (mouse.button & 32) !== 0;
       const isWheel = (mouse.button & 64) !== 0;
 
       // Dispatch hover on any motion event
       if (isMotion && this.opts.onHover) {
-        if (mouse.x <= this.opts.sidebarCols) {
-          this.opts.onHover({ area: "sidebar", row: mouse.y - 1 });
+        if (gridX < sidebar.w) {
+          this.opts.onHover({ area: "sidebar", row: gridY });
         } else if (!this.modalOpen) {
-          if (mouse.y <= this.toolbarRows) {
-            this.opts.onHover({ area: "toolbar", col: mouse.x - this.opts.sidebarCols - 1 });
+          if (gridY < layout.toolbarRows) {
+            this.opts.onHover({ area: "toolbar", col: gridX - layout.main.x });
           } else {
             this.opts.onHover(null);
           }
@@ -281,19 +289,19 @@ export class InputRouter {
       // sees a stray event.
       if (
         !this.modalOpen &&
-        mouse.x > this.opts.sidebarCols &&
+        gridX >= sidebar.w &&
         !isMotion &&
         !isWheel &&
         (mouse.button & 0x03) === 0
       ) {
-        const url = this.opts.getLinkAt?.(mouse.x - 1, mouse.y - 1);
+        const url = this.opts.getLinkAt?.(gridX, gridY);
         if (url) {
           if (!mouse.release) this.opts.onOpenLink?.(url);
           return;
         }
       }
 
-      if (mouse.x <= this.opts.sidebarCols) {
+      if (gridX < sidebar.w) {
         // Wheel events: button 64 = up, 65 = down
         if (isWheel) {
           const delta = (mouse.button & 1) ? 3 : -3;
@@ -302,7 +310,7 @@ export class InputRouter {
         }
         // Click in sidebar region (ignore drags/motion)
         if (!mouse.release && !isMotion) {
-          this.opts.onSidebarClick(mouse.y - 1); // 0-indexed row
+          this.opts.onSidebarClick(gridY); // 0-indexed row
         }
         return; // Consume sidebar mouse events
       }
@@ -322,8 +330,8 @@ export class InputRouter {
       // toolbar handler (there is no toolbar visible in glass mode).
       if (this.opts.glassActive?.()) {
         const stripRows = this.opts.glassStripRows?.() ?? 0;
-        const cx = mouse.x - this.opts.sidebarCols - 1;
-        const yInContent = mouse.y - 1; // 0-indexed within the content column
+        const cx = gridX - layout.main.x;
+        const yInContent = gridY; // 0-indexed within the content column
         const bareMotion = isMotion && (mouse.button & 0x03) === 3;
         if (bareMotion) return; // ignore hover motion (no button held)
 
@@ -343,36 +351,38 @@ export class InputRouter {
         return;
       }
 
-      // Toolbar click — rows 1..toolbarRows in main area
-      if (mouse.y <= this.toolbarRows && !mouse.release && !isMotion && !isWheel) {
-        const mainCol = mouse.x - this.opts.sidebarCols - 1; // 0-indexed in main area
+      // Toolbar click — rows within layout.toolbarRows, anywhere in the main area
+      if (gridY < layout.toolbarRows && !mouse.release && !isMotion && !isWheel) {
+        const mainCol = gridX - layout.main.x; // 0-indexed in main area
         this.opts.onToolbarClick?.(mainCol);
         return;
       }
 
-      // Diff panel mouse handling
-      if (this.diffPanelCols > 0) {
-        const dividerX = this.opts.sidebarCols + 1 + this.mainCols + 1; // 1-indexed
-
-        // Divider click — toggle focus
-        if (mouse.x === dividerX && !mouse.release && !isMotion && !isWheel) {
+      // Diff panel mouse handling. `layout.panel` is set in both split and
+      // full mode; full mode has no divider and `panel.x === main.x` (the
+      // panel overlaps main rather than sitting after it), so the single
+      // `gridX >= layout.panel.x` test below unifies both modes — a
+      // content-area click in full mode routes to the panel, not to main.
+      if (layout.panel) {
+        // Divider click — toggle focus (split mode only; full mode has no divider)
+        if (layout.divider !== null && gridX === layout.divider && !mouse.release && !isMotion && !isWheel) {
           this.opts.onDiffPanelFocusToggle?.();
           return;
         }
 
-        // Panel tab bar — row 1 in the panel area (toolbar row)
-        if (mouse.y === 1 && mouse.x > dividerX) {
-          const panelCol = mouse.x - dividerX - 1; // 0-indexed in panel
-          if (isMotion) {
-            this.opts.onPanelTabHover?.(panelCol);
-          } else if (!mouse.release && !isWheel) {
-            this.opts.onPanelTabClick?.(panelCol);
-          }
-          return;
-        }
+        if (gridX >= layout.panel.x) {
+          const panelCol = gridX - layout.panel.x; // 0-indexed in panel
 
-        // Diff panel region
-        if (mouse.x > dividerX) {
+          // Panel tab bar — first row of the panel area (toolbar row)
+          if (gridY === 0) {
+            if (isMotion) {
+              this.opts.onPanelTabHover?.(panelCol);
+            } else if (!mouse.release && !isWheel) {
+              this.opts.onPanelTabClick?.(panelCol);
+            }
+            return;
+          }
+
           // Click in panel acquires keyboard focus
           if (!mouse.release && !isMotion && !isWheel && !this.diffPanelFocused) {
             this.opts.onDiffPanelFocusToggle?.();
@@ -381,14 +391,14 @@ export class InputRouter {
           // Non-diff tab: wheel scrolls the view
           if (this.panelTabsActive && isWheel) {
             const delta = (mouse.button & 1) ? 3 : -3;
-            const panelRow = mouse.y - 1 - this.toolbarRows; // -1 for 1-indexed, -toolbarRows for toolbar
+            const panelRow = gridY - layout.toolbarRows;
             this.opts.onPanelScroll?.(delta, panelRow);
             return;
           }
 
           // Non-diff tab: clicks in list area select items
           if (this.panelTabsActive && !mouse.release && !isMotion && !isWheel) {
-            const panelRow = mouse.y - 1 - this.toolbarRows; // -1 for 1-indexed, -toolbarRows for toolbar
+            const panelRow = gridY - layout.toolbarRows;
             if (panelRow >= 0) {
               this.opts.onPanelItemClick?.(panelRow); // main.ts bounds-checks against listRows
             }
@@ -396,7 +406,7 @@ export class InputRouter {
           }
 
           if (isMotion && (mouse.button & 0x03) === 3) return; // bare motion, skip
-          const translated = translateMouse(data, dividerX, this.toolbarRows);
+          const translated = translateMouse(data, layout.panel.x, layout.toolbarRows);
           if (translated) {
             this.opts.onDiffPanelData?.(translated);
           }
@@ -406,12 +416,12 @@ export class InputRouter {
 
       // Mouse in main area — translate X coordinate and Y (offset by toolbar)
       // Click in main area releases diff panel focus
-      if (!mouse.release && !isMotion && !isWheel && this.diffPanelFocused && this.diffPanelCols > 0) {
+      if (!mouse.release && !isMotion && !isWheel && this.diffPanelFocused && layout.panel) {
         this.opts.onDiffPanelFocusToggle?.();
       }
       // Don't forward bare motion events to PTY (too noisy)
       if (isMotion && (mouse.button & 0x03) === 3) return;
-      const mainTranslated = translateMouse(data, this.opts.sidebarCols + 1, this.toolbarRows);
+      const mainTranslated = translateMouse(data, layout.main.x, layout.toolbarRows);
       if (mainTranslated) {
         this.opts.onPtyData(mainTranslated);
       }
@@ -426,7 +436,7 @@ export class InputRouter {
 
     // When diff panel is focused, intercept tab-switching and action keys before
     // forwarding to the diff panel's underlying process
-    if (this.diffPanelFocused && this.diffPanelCols > 0) {
+    if (this.diffPanelFocused && this.layout.panel !== null) {
       // Tab switching — clear filter mode first
       if (data === "[" && this.opts.onPanelPrevTab) {
         if (this.panelFilterActive) { this.panelFilterActive = false; this.opts.onPanelFilterClear?.(); }
