@@ -55,7 +55,8 @@ import { AGENT_DETECT_FORMAT, parseAgentDetectLines, detectAgentPanes } from "./
 import { GlassView, type GlassTileSpec } from "./glass/view";
 import { normalizeTabs, defaultTabId, resolveTabId, summarizeTabState, addTab, renameTab, deleteTab, moveTab, type TabEntry } from "./glass/tabs";
 import { buildCcCommands, NEW_TAB_OPTION_ID } from "./glass/cc-commands";
-import { stripVisibleFor, renderStrip, layoutStrip, chipAtX, STRIP_ROWS, type StripChip } from "./glass/strip";
+import { stripVisibleFor, renderStrip, layoutStrip, STRIP_ROWS } from "./glass/strip";
+import { chipAtCol, type PlacedChip } from "./band-layout";
 import { clampTabSelection } from "./glass/reload";
 import { OtelReceiver } from "./otel-receiver";
 import { computeFrameLayout, type FrameLayout } from "./frame-layout";
@@ -761,7 +762,7 @@ let glassView: GlassView | null = null;
 let commandCenterTabs: TabEntry[] = normalizeTabs(configStore.config.commandCenterTabs);
 let activeTabId: string = defaultTabId(commandCenterTabs);
 let lastActiveTabId: string = activeTabId;
-let currentStripChips: StripChip[] = [];
+let currentStripChips: PlacedChip[] = [];
 let summaryByTab = new Map<string, AgentState | null>();
 
 const glassRunner = {
@@ -1648,7 +1649,7 @@ const inputRouter = new InputRouter(
       scheduleRender();
     },
     glassStripRows: () => (inGlass && stripVisibleFor(commandCenterTabs) ? STRIP_ROWS : 0),
-    onGlassTabClick: (x) => { const id = chipAtX(currentStripChips, x); if (id) switchCommandCenterTab(id); },
+    onGlassTabClick: (x) => { const id = chipAtCol(currentStripChips, x); if (id) switchCommandCenterTab(id); },
     onGlassTabSwitch: (n) => { const tab = commandCenterTabs[n - 1]; if (tab) switchCommandCenterTab(tab.id); },
     onGlassTabRelative: (delta) => switchCommandCenterTabRelative(delta),
     onGlassDetach: () => detachClient(),

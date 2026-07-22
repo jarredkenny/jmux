@@ -1,7 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import {
-  stripVisibleFor, layoutStrip, renderStrip, chipAtX, STRIP_ROWS,
+  stripVisibleFor, layoutStrip, renderStrip, STRIP_ROWS,
 } from "../../glass/strip";
+import { chipAtCol } from "../../band-layout";
 import type { TabEntry, AgentState } from "../../glass/tabs";
 import { ColorMode } from "../../types";
 
@@ -18,7 +19,7 @@ describe("stripVisibleFor", () => {
   });
 });
 
-describe("layoutStrip / chipAtX", () => {
+describe("layoutStrip / chipAtCol", () => {
   test("chips are laid out left to right and hit-test by x", () => {
     const chips = layoutStrip({
       tabs, activeTabId: "default",
@@ -26,12 +27,12 @@ describe("layoutStrip / chipAtX", () => {
       width: 80, palette,
     });
     expect(chips.length).toBe(2);
-    expect(chips[0].tabId).toBe("default");
+    expect(chips[0].id).toBe("default");
     expect(chips[0].x).toBe(0);
     // first chip covers its own columns, second starts after it
-    expect(chipAtX(chips, chips[0].x)).toBe("default");
-    expect(chipAtX(chips, chips[1].x)).toBe("backend");
-    expect(chipAtX(chips, 9999)).toBeNull();
+    expect(chipAtCol(chips, chips[0].x)).toBe("default");
+    expect(chipAtCol(chips, chips[1].x)).toBe("backend");
+    expect(chipAtCol(chips, 9999)).toBeNull();
   });
 });
 
@@ -118,7 +119,7 @@ describe("strip overflow", () => {
     });
     expect(chips.length).toBeLessThan(many.length);
     // Only chips that wholly fit are kept; the first one always fits at x=0.
-    expect(chips[0].tabId).toBe("a");
+    expect(chips[0].id).toBe("a");
   });
 
   test("renders a +N indicator counting the hidden tabs", () => {

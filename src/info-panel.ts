@@ -1,6 +1,7 @@
 import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
-import { createGrid, writeString, textCols, type CellAttrs } from "./cell-grid";
+import { createGrid, writeStyledLine, textCols, type CellAttrs } from "./cell-grid";
+import { packChips, type PlacedChip } from "./band-layout";
 import { theme, accentFor, neutralFg } from "./theme";
 
 export type InfoTab = "diff" | string; // "diff" is special, others are view IDs
@@ -95,9 +96,22 @@ export class InfoPanel {
     this._activeTab = this._tabs[(idx - 1 + this._tabs.length) % this._tabs.length];
   }
 
+  private tabLabel(tab: InfoTab): string {
+    return ` ${tab === "diff" ? "Diff" : (this._viewLabels.get(tab) ?? tab)} `;
+  }
+
+  // Places every tab once (paint and hit-test both read from this). No
+  // budget cutoff — `getTabRanges` never dropped a tab that didn't fit
+  // before this refactor (it just returned an unreachable range past the
+  // grid's width), so `budget: Infinity` preserves that rather than
+  // introducing a new whole-chip-drop behaviour here.
+  private layoutTabs(): PlacedChip[] {
+    const items = this._tabs.map((tab) => ({ id: tab, width: textCols(this.tabLabel(tab)) }));
+    return packChips(items, { start: 1, budget: Infinity, align: "left", sepWidth: 1 });
+  }
+
   getTabBarGrid(cols: number, hoveredTab?: string | null): CellGrid {
     const grid = createGrid(cols, 1);
-    let col = 1;
 
     // Fill leading padding with background
     if (cols > 0) {
@@ -105,20 +119,23 @@ export class InfoPanel {
       grid.cells[0][0].bgMode = TAB_BG.bgMode!;
     }
 
-    for (let i = 0; i < this._tabs.length; i++) {
-      const tab = this._tabs[i];
+    const chips = this.layoutTabs();
+    let col = 1;
+    for (let i = 0; i < chips.length; i++) {
+      const chip = chips[i];
+      const tab = chip.id;
       const isActive = tab === this._activeTab;
       const isHovered = !isActive && hoveredTab === tab;
-      const label = ` ${tab === "diff" ? "Diff" : (this._viewLabels.get(tab) ?? tab)} `;
+      const label = this.tabLabel(tab);
       const attrs: CellAttrs = {
         ...(isActive ? ACTIVE_TAB : isHovered ? HOVERED_TAB : INACTIVE_TAB),
         ...TAB_BG,
       };
-      writeString(grid, 0, col, label, attrs);
-      col += textCols(label);
+      writeStyledLine(grid, 0, chip.x, [{ text: label, attrs }]);
+      col = chip.x + chip.width;
 
-      if (i < this._tabs.length - 1) {
-        writeString(grid, 0, col, "│", { ...INACTIVE_TAB, ...TAB_BG });
+      if (i < chips.length - 1) {
+        writeStyledLine(grid, 0, col, [{ text: "│", attrs: { ...INACTIVE_TAB, ...TAB_BG } }]);
         col += 1;
       }
     }
@@ -133,17 +150,11 @@ export class InfoPanel {
   }
 
   getTabRanges(): Array<{ tab: InfoTab; startCol: number; endCol: number }> {
-    const ranges: Array<{ tab: InfoTab; startCol: number; endCol: number }> = [];
-    let col = 1; // 1 col padding
-    for (let i = 0; i < this._tabs.length; i++) {
-      const tab = this._tabs[i];
-      const label = ` ${tab === "diff" ? "Diff" : (this._viewLabels.get(tab) ?? tab)} `;
-      const labelWidth = textCols(label);
-      ranges.push({ tab, startCol: col, endCol: col + labelWidth - 1 });
-      col += labelWidth;
-      if (i < this._tabs.length - 1) col += 1; // separator
-    }
-    return ranges;
+    return this.layoutTabs().map((chip) => ({
+      tab: chip.id,
+      startCol: chip.x,
+      endCol: chip.x + chip.width - 1,
+    }));
   }
 
   private rebuildTabs(config: InfoPanelConfig): void {

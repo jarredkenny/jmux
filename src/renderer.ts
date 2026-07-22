@@ -1,6 +1,7 @@
 import type { Cell, CellGrid, CursorPosition, WindowTab } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, DEFAULT_CELL, blit, textCols, writeStyledLine, drawBox, truncateToCols, type CellAttrs, type StyledSegment } from "./cell-grid";
+import { packChips, type PlacedChip } from "./band-layout";
 import { theme, neutralFg, accentFor } from "./theme";
 import type { FrameLayout } from "./frame-layout";
 
@@ -66,56 +67,82 @@ export function sgrForCell(cell: Cell): string {
   return `\x1b[${parts.join(";")}m`;
 }
 
+// A placed toolbar tab carries the WindowTab alongside its geometry — the
+// paint loop and the branch row both need the underlying tab, not just its id.
+interface PlacedToolbarTab extends PlacedChip {
+  tab: WindowTab;
+}
+
+interface ToolbarLayout {
+  tabs: PlacedToolbarTab[];
+  statusChip: PlacedChip | null;
+  buttons: PlacedChip[];
+}
+
+// Places the toolbar's three zones once — tabs packed left, action buttons
+// packed right, and an optional status chip between them, right-aligned just
+// before the buttons — so paint (compositeGrids) and hit-test
+// (getToolbarTabRanges/getToolbarButtonRanges/getToolbarStatusChipRange) both
+// read from this single placement rather than recomputing it independently.
+// Buttons are placed first (they anchor the right edge), then the status
+// chip (anchored to the buttons' left edge), then tabs (bounded by whichever
+// of those sits leftmost) — mirroring the dependency order the original
+// three standalone functions had.
+function layoutToolbar(toolbar: ToolbarConfig): ToolbarLayout {
+  const buttonItems = toolbar.buttons.map((b) => ({ id: b.id, width: textCols(b.label) + 2 }));
+  // No overflow guard on buttons — matches the original, which never checked
+  // a budget for them either. `-Infinity` means "never overflow".
+  const buttons = packChips(buttonItems, { start: toolbar.mainCols, budget: -Infinity, align: "right" });
+
+  const buttonsStart = buttons.length > 0 ? buttons[0].x : toolbar.mainCols;
+
+  let statusChip: PlacedChip | null = null;
+  if (toolbar.statusChip) {
+    // chip text is " <statusChip> " — 1 space padding each side
+    const chipWidth = textCols(toolbar.statusChip) + 2;
+    statusChip = packChips([{ id: "status", width: chipWidth }], {
+      start: buttonsStart, budget: -Infinity, align: "right",
+    })[0] ?? null;
+  }
+
+  // Reserve space for the status chip when present; tabs must not overlap it.
+  const effectiveRightEdge = statusChip ? statusChip.x - 1 : buttonsStart;
+  const maxCol = effectiveRightEdge - 2; // 2-col gap before buttons/chip
+
+  const tabs = toolbar.tabs ?? [];
+  const tabItems = tabs.map((tab) => ({
+    id: tab.windowId,
+    width: textCols(tab.name + (tab.zoomed ? " ⤢" : "")) + 2, // " name [Z] "
+  }));
+  const placedTabs = tabs.length === 0
+    ? []
+    : packChips(tabItems, { start: 1, budget: maxCol, align: "left", sepWidth: 3 }); // " │ " separator after non-last tabs
+
+  const placedToolbarTabs: PlacedToolbarTab[] = placedTabs.map((c) => ({
+    ...c,
+    tab: tabs.find((t) => t.windowId === c.id)!,
+  }));
+
+  return { tabs: placedToolbarTabs, statusChip, buttons };
+}
+
 // Returns the column ranges for each toolbar button (relative to main area start)
 export function getToolbarButtonRanges(toolbar: ToolbarConfig): Array<{ id: string; startCol: number; endCol: number }> {
-  const ranges: Array<{ id: string; startCol: number; endCol: number }> = [];
-  let col = toolbar.mainCols;
-  for (let i = toolbar.buttons.length - 1; i >= 0; i--) {
-    const btn = toolbar.buttons[i];
-    const width = textCols(btn.label) + 2; // label display width + padding
-    col -= width;
-    ranges.unshift({ id: btn.id, startCol: col, endCol: col + width - 1 });
-  }
-  return ranges;
+  return layoutToolbar(toolbar).buttons.map((c) => ({ id: c.id, startCol: c.x, endCol: c.x + c.width - 1 }));
 }
 
 // Returns the column range for the status chip (right-aligned, just before buttons).
 // Returns null if there is no statusChip.
 export function getToolbarStatusChipRange(toolbar: ToolbarConfig): { startCol: number; endCol: number } | null {
-  if (!toolbar.statusChip) return null;
-  const buttonRanges = getToolbarButtonRanges(toolbar);
-  const buttonsStart = buttonRanges.length > 0 ? buttonRanges[0].startCol : toolbar.mainCols;
-  // chip text is " <statusChip> " — 1 space padding each side
-  const chipWidth = textCols(toolbar.statusChip) + 2;
-  const startCol = buttonsStart - chipWidth;
-  return { startCol, endCol: buttonsStart - 1 };
+  const chip = layoutToolbar(toolbar).statusChip;
+  return chip ? { startCol: chip.x, endCol: chip.x + chip.width - 1 } : null;
 }
 
 // Returns the column ranges for each window tab (left-aligned in toolbar)
 export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string; startCol: number; endCol: number; tab: WindowTab }> {
-  const tabs = toolbar.tabs ?? [];
-  if (tabs.length === 0) return [];
-
-  const buttonRanges = getToolbarButtonRanges(toolbar);
-  const buttonsStart = buttonRanges.length > 0 ? buttonRanges[0].startCol : toolbar.mainCols;
-  // Reserve space for the status chip when present; tabs must not overlap it
-  const chipRange = getToolbarStatusChipRange(toolbar);
-  const effectiveRightEdge = chipRange ? chipRange.startCol - 1 : buttonsStart;
-  const maxCol = effectiveRightEdge - 2; // 2-col gap before buttons/chip
-
-  const ranges: Array<{ id: string; startCol: number; endCol: number; tab: WindowTab }> = [];
-  let col = 1; // 1-col left padding
-
-  for (let i = 0; i < tabs.length; i++) {
-    const tab = tabs[i];
-    const zoomSuffix = tab.zoomed ? " ⤢" : "";
-    const width = textCols(tab.name + zoomSuffix) + 2; // " name [Z] "
-    const sepWidth = i < tabs.length - 1 ? 3 : 0; // " │ " separator after non-last tabs
-    if (col + width > maxCol) break; // no room
-    ranges.push({ id: tab.windowId, startCol: col, endCol: col + width - 1, tab });
-    col += width + sepWidth;
-  }
-  return ranges;
+  return layoutToolbar(toolbar).tabs.map((c) => ({
+    id: c.id, startCol: c.x, endCol: c.x + c.width - 1, tab: c.tab,
+  }));
 }
 
 // Returns the absolute grid position for modal content.
@@ -139,31 +166,31 @@ export function getModalPosition(
 //
 // Row 1 (this row) has no separator glyphs — those only exist on row 0 — so a
 // non-last tab's branch label is allowed to extend across the inter-tab gap,
-// all the way up to the next tab's startCol. This is a display-only widening:
-// it does not change getToolbarTabRanges' own column bookkeeping, so the tab
-// bar itself (row 0) and hit-testing are unaffected. The last tab has no gap
-// to borrow — the button cluster starts beyond it — so it stays bounded by
-// its own tab width, exactly like every tab was before this widening.
+// all the way up to the next tab's x. This is a display-only widening: it
+// does not change the tab bar's own column bookkeeping (`tabs` is the exact
+// placement row 0 and hit-testing use), so the tab bar itself and
+// hit-testing are unaffected. The last tab has no gap to borrow — the button
+// cluster starts beyond it — so it stays bounded by its own tab width,
+// exactly like every tab was before this widening.
 function renderWindowBranchRow(
   grid: CellGrid,
-  toolbar: ToolbarConfig,
+  tabs: PlacedToolbarTab[],
   borderCol: number,
 ): void {
   const branchIcon = "⎇ ";
   const iconWidth = textCols(branchIcon);
   const attrs: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
-  const tabRanges = getToolbarTabRanges(toolbar);
-  for (let i = 0; i < tabRanges.length; i++) {
-    const { startCol, endCol, tab } = tabRanges[i];
+  for (let i = 0; i < tabs.length; i++) {
+    const { x, width, tab } = tabs[i];
     const branch = tab.branch;
     if (!branch) continue;
-    const isLast = i === tabRanges.length - 1;
-    const rowWidth = isLast ? endCol - startCol + 1 : tabRanges[i + 1].startCol - startCol;
+    const isLast = i === tabs.length - 1;
+    const rowWidth = isLast ? width : tabs[i + 1].x - x;
     const maxLen = rowWidth - 2 - iconWidth; // leading + trailing space
     if (maxLen <= 0) continue;
     const branchText = truncateToCols(branch, maxLen);
     const label = " " + branchIcon + branchText + " ";
-    writeStyledLine(grid, 1, borderCol + 1 + startCol, [{ text: label, attrs }], rowWidth);
+    writeStyledLine(grid, 1, borderCol + 1 + x, [{ text: label, attrs }], rowWidth);
   }
 }
 
@@ -198,6 +225,12 @@ export function compositeGrids(
   const totalRows = main.rows + toolbarRows;
   const grid = createGrid(totalCols, totalRows);
 
+  // Placed once per frame; row 0 (tabs/buttons/status chip) and row 1 (the
+  // per-window branch row) both paint from this single placement, and it's
+  // the same placement getToolbarTabRanges/getToolbarButtonRanges/
+  // getToolbarStatusChipRange read for hit-testing.
+  const toolbarLayout = toolbar ? layoutToolbar(toolbar) : null;
+
   for (let y = 0; y < totalRows; y++) {
     // Copy sidebar cells
     blit(grid, sidebar, { destX: 0, destY: y, srcX: 0, srcY: y, w: sidebar.cols, h: 1 });
@@ -212,7 +245,7 @@ export function compositeGrids(
     if (toolbar && y < toolbarRows) {
       if (y === 1 && toolbarRows >= 2) {
         // Second toolbar row: per-window git branch, aligned under each tab.
-        renderWindowBranchRow(grid, toolbar, borderCol);
+        renderWindowBranchRow(grid, toolbarLayout!.tabs, borderCol);
       } else if (y === 0) {
       // Toolbar row — always render (palette no longer replaces it)
       const hoverBg = theme.hover;
@@ -220,11 +253,11 @@ export function compositeGrids(
 
       // Render window tabs (left side)
       const peachFg = accentFor((0xfb << 16) | (0xd4 << 8) | 0xb8);
-      const tabRanges = getToolbarTabRanges(toolbar);
-      for (let ti = 0; ti < tabRanges.length; ti++) {
-        const { id, startCol, endCol, tab } = tabRanges[ti];
+      const tabs = toolbarLayout!.tabs;
+      for (let ti = 0; ti < tabs.length; ti++) {
+        const { x, width, tab } = tabs[ti];
         const isActive = tab.active;
-        const isHovered = !isActive && toolbar.hoveredTabId === id;
+        const isHovered = !isActive && toolbar.hoveredTabId === tab.windowId;
         const hasBg = isActive || isHovered;
         const bg = isActive ? activeBg : hoverBg;
         const label = ` ${tab.name}${tab.zoomed ? " ⤢" : ""} `;
@@ -235,10 +268,10 @@ export function compositeGrids(
           bg: hasBg ? bg : 0,
           bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
         };
-        writeStyledLine(grid, 0, borderCol + 1 + startCol, [{ text: label, attrs }], endCol - startCol + 1);
+        writeStyledLine(grid, 0, borderCol + 1 + x, [{ text: label, attrs }], width);
 
-        if (ti < tabRanges.length - 1) {
-          const sepCol = borderCol + 1 + endCol + 2;
+        if (ti < tabs.length - 1) {
+          const sepCol = borderCol + 1 + x + width + 1;
           if (sepCol < totalCols) {
             grid.cells[0][sepCol] = {
               ...DEFAULT_CELL,
@@ -254,8 +287,7 @@ export function compositeGrids(
       // Render action buttons (right side). The icon glyph and its
       // surrounding padding spaces get different foregrounds, so they're
       // built as separate segments rather than one uniformly-styled string.
-      const ranges = getToolbarButtonRanges(toolbar);
-      for (const { id, startCol } of ranges) {
+      for (const { id, x, width } of toolbarLayout!.buttons) {
         const btn = toolbar.buttons.find(b => b.id === id)!;
         const isHovered = toolbar.hoveredButton === id;
         const bg = isHovered ? hoverBg : 0;
@@ -267,15 +299,15 @@ export function compositeGrids(
           { text: btn.label, attrs: iconAttrs },
           { text: " ", attrs: spaceAttrs },
         ];
-        writeStyledLine(grid, 0, borderCol + 1 + startCol, segments, textCols(btn.label) + 2);
+        writeStyledLine(grid, 0, borderCol + 1 + x, segments, width);
       }
 
       // Render status chip (dim text, right-aligned just before action buttons)
-      const chipRange = getToolbarStatusChipRange(toolbar);
-      if (chipRange && toolbar.statusChip) {
+      const chip = toolbarLayout!.statusChip;
+      if (chip && toolbar.statusChip) {
         const label = ` ${toolbar.statusChip} `;
         const attrs: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
-        writeStyledLine(grid, 0, borderCol + 1 + chipRange.startCol, [{ text: label, attrs }], chipRange.endCol - chipRange.startCol + 1);
+        writeStyledLine(grid, 0, borderCol + 1 + chip.x, [{ text: label, attrs }], chip.width);
       }
       }
     } else {
