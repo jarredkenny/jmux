@@ -21,7 +21,28 @@
 - **Depth over parameter-bags.** No monolithic `chip()` widget. Chips are thin compositions of `writeStyledLine` + `truncateToCols`; box labels reuse the same truncation. `packChips` is geometry only — each band builds its own `StyledSegment[]`.
 - **Tests are pure unit tests** over logic modules — no spawning tmux, no real terminal. `computeFrameLayout`, `packChips`, and the cell-grid primitives are all pure and asserted against constructed grids/fixtures. This mirrors the existing `src/__tests__/*` discipline (CLAUDE.md).
 - Run `bun test` and `bun run typecheck` green before each commit. One seam per commit-group; tasks within a seam are individually committable.
-- **No behavior change is intended** except the two bug fixes called out explicitly (stale router geometry after a sidebar-width change; the config-watcher missing `setMainCols`). Frame diffing (`renderer.ts:571`) means an unchanged frame must still diff to zero rows — assert this where feasible.
+- **No behavior change is intended** except the bug fixes called out explicitly below. Frame diffing (`renderer.ts:571`) means an unchanged frame must still diff to zero rows — assert this where feasible.
+
+  Two were known when the plan was written:
+  1. Stale router geometry after a runtime sidebar-width change (Task 3).
+  2. The config-watcher missing a `setMainCols` call (Task 2).
+
+  Two more surfaced during implementation and were accepted by the human on
+  2026-07-22. Both fall out of the consolidation rather than being chosen:
+  3. **Full-mode `setMainCols` unified to `0`** (Task 2). The five resize blocks
+     disagreed — `zoomDiffPanel` passed `0`, SIGWINCH passed `available`. One
+     function cannot preserve both. `available` made `dividerX` evaluate past the
+     last column, so every full-mode click routed to the hidden tmux pane; `0` is
+     the only defensible unification. Side effect: resize-while-zoomed click
+     routing now works.
+  4. **Toolbar and Command Center click columns shift one column left** (Task 3).
+     The old formula `mouse.x - sidebarCols - 1` is `gridX - 26`; the renderer
+     writes toolbar glyphs at `borderCol + 1 + startCol` (`renderer.ts:257`), so
+     the inverse is `gridX - 27`. Confirmed independently against
+     `renderer.ts:230/257/304`, `main.ts:1541` and `glass/view.ts:227`. The
+     toolbar half is mandated by Task 3's own rewrite map (`main-relative col =
+     gridX - layout.main.x`); the Command Center half applies the same correction
+     for consistency. Hit boxes were shifted one column right until now.
 
 ---
 
