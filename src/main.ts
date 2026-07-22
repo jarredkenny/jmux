@@ -58,6 +58,7 @@ import { buildCcCommands, NEW_TAB_OPTION_ID } from "./glass/cc-commands";
 import { stripVisibleFor, renderStrip, layoutStrip, chipAtX, STRIP_ROWS, type StripChip } from "./glass/strip";
 import { clampTabSelection } from "./glass/reload";
 import { OtelReceiver } from "./otel-receiver";
+import { computeFrameLayout, SIDEBAR_MIN_TERM_COLS, type FrameLayout } from "./frame-layout";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
 import { installHooks, type ClaudeSettings } from "./hook-installer";
@@ -256,7 +257,6 @@ if (demoMode) {
 const configStore = new ConfigStore(demoCtx?.configPath);
 let sidebarWidth = configStore.config.sidebarWidth || 26;
 const BORDER_WIDTH = 1;
-function sidebarTotal(): number { return sidebarWidth + BORDER_WIDTH; }
 const toolbarEnabled = true;
 // Opt-in second toolbar row showing each window's git branch. Read once at
 // startup; changing it requires a restart (toolbarHeight feeds PTY sizing).
@@ -381,9 +381,21 @@ await preflight();
 
 const cols = process.stdout.columns || 80;
 const rows = process.stdout.rows || 24;
-const sidebarVisible = cols >= 80;
-let mainCols = sidebarVisible ? cols - sidebarTotal() : cols;
-const ptyRows = toolbarEnabled ? rows - toolbarHeight : rows;
+// Single source of truth for the frame's column geometry (sidebar │ border │
+// main │ divider │ panel) — see src/frame-layout.ts. `relayout()` (defined
+// once `pty`/`bridge`/`sidebar`/`inputRouter` exist, below) recomputes this on
+// every resize/diff-panel/sidebar-width change; this initial call only seeds
+// the values needed to construct those objects at boot.
+let layout: FrameLayout = computeFrameLayout({
+  termCols: cols,
+  termRows: rows,
+  sidebarWidth,
+  borderWidth: BORDER_WIDTH,
+  toolbarRows: toolbarHeight,
+  diffState: "off",
+  requestedPanelCols: 0,
+});
+let mainCols = layout.main.w;
 
 // Toolbar buttons and window tabs
 let hoveredToolbarButton: string | null = null;
@@ -712,10 +724,10 @@ const pty = new TmuxPty({
   configFile,
   jmuxDir,
   cols: mainCols,
-  rows: ptyRows,
+  rows: layout.ptyRows,
   attachMode,
 });
-const bridge = new ScreenBridge(mainCols, ptyRows);
+const bridge = new ScreenBridge(mainCols, layout.ptyRows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, rows);
 sidebar.setStateColors(resolveStateColors(configStore.config.stateColors));
@@ -904,7 +916,7 @@ function applyPaneStyles(): void {
 
 let currentSessionId: string | null = null;
 let ptyClientName: string | null = null;
-let sidebarShown = sidebarVisible;
+let sidebarShown = layout.sidebar !== null;
 let currentSessions: SessionInfo[] = [];
 let snapshotter: import("./snapshot").Snapshotter | null = null;
 let lockRetrier: import("./snapshot").LockRetrier | null = null;
@@ -974,12 +986,7 @@ function calcSplitPanelCols(available: number): number {
 }
 
 function getDiffPanelCols(): number {
-  if (!diffPanel.isActive()) return 0;
-  const totalCols = process.stdout.columns || 80;
-  const sidebarCols = sidebarShown ? sidebarTotal() : 0;
-  const available = totalCols - sidebarCols;
-  if (diffPanel.state === "full") return available;
-  return calcSplitPanelCols(available);
+  return layout.panel?.w ?? 0;
 }
 
 async function getSessionCwd(): Promise<string | null> {
@@ -1043,82 +1050,97 @@ async function spawnHunk(cols: number, rows: number): Promise<void> {
   });
 }
 
-function resizeDiffPanel(): void {
-  if (!diffPty || !diffBridge) return;
-  const cols = getDiffPanelCols();
-  const rows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
-  diffPty.resize(cols, rows);
-  diffBridge.resize(cols, rows);
+/**
+ * Recomputes `layout` from current inputs (term size, sidebar width, toolbar
+ * height, diff-panel state) and applies it: resizes the main pty/bridge, the
+ * diff pty/bridge (if spawned), the sidebar, and the input router's geometry
+ * setters, then schedules a repaint. This is the single place that turns
+ * "something affecting frame geometry changed" into "everything downstream of
+ * that geometry agrees" — callers mutate exactly the input that changed
+ * (`diffPanel.toggle()`/`toggleZoom()`, `sidebarWidth`, or nothing for a pure
+ * terminal resize) and then call this.
+ *
+ * `inputRouter.setMainCols` is fed 0 in full-panel mode rather than
+ * `layout.main.w`: the router's dividerX math (`sidebarCols + 1 + mainCols +
+ * 1`) needs the divider to sit immediately after the sidebar so the whole
+ * content area routes to the diff panel, matching `layout.panel` overlapping
+ * `layout.main` at the same x. `setLayout` (Task 3) reads `layout.panel.x`
+ * directly and retires this; until then, 0 is the value that keeps full-mode
+ * click routing correct.
+ */
+function relayout(): void {
+  const termCols = process.stdout.columns || 80;
+  const termRows = process.stdout.rows || 24;
+  const willShowSidebar = termCols >= SIDEBAR_MIN_TERM_COLS;
+  const mainStart = willShowSidebar ? sidebarWidth + BORDER_WIDTH : 0;
+  const available = termCols - mainStart;
+
+  let requestedPanelCols = 0;
+  if (diffPanel.state === "split") {
+    requestedPanelCols = calcSplitPanelCols(available);
+  } else if (diffPanel.state === "full") {
+    requestedPanelCols = available;
+  }
+
+  layout = computeFrameLayout({
+    termCols,
+    termRows,
+    sidebarWidth,
+    borderWidth: BORDER_WIDTH,
+    toolbarRows: toolbarHeight,
+    diffState: diffPanel.state,
+    requestedPanelCols,
+  });
+
+  mainCols = layout.main.w;
+  sidebarShown = layout.sidebar !== null;
+
+  pty.resize(layout.main.w, layout.ptyRows);
+  bridge.resize(layout.main.w, layout.ptyRows);
+
+  if (diffPty && diffBridge && layout.panel) {
+    diffPty.resize(layout.panel.w, layout.ptyRows);
+    diffBridge.resize(layout.panel.w, layout.ptyRows);
+  }
+
+  inputRouter.setSidebarVisible(sidebarShown);
+  inputRouter.setToolbarRows(layout.toolbarRows);
+  inputRouter.setDiffPanel(layout.panel?.w ?? 0, diffPanelFocused);
+  inputRouter.setMainCols(layout.mode === "full" ? 0 : layout.main.w);
+
+  sidebar.resize(sidebarWidth, layout.termRows);
+
+  scheduleRender();
 }
 
 async function toggleDiffPanel(): Promise<void> {
   const wasActive = diffPanel.isActive();
   diffPanel.toggle();
 
-  const totalCols = process.stdout.columns || 80;
-  const sidebarCols = sidebarShown ? sidebarTotal() : 0;
-  const available = totalCols - sidebarCols;
-  const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
-
   if (!wasActive && diffPanel.state === "split") {
-    // off → split: shrink tmux, spawn hunk, focus the panel
-    const panelCols = calcSplitPanelCols(available);
-    const newMainCols = available - panelCols - 1; // -1 for divider
-    mainCols = newMainCols;
-    pty.resize(newMainCols, ptyRowsNow);
-    bridge.resize(newMainCols, ptyRowsNow);
+    // off → split: shrink tmux, focus the panel, then spawn hunk at the
+    // now-current panel size.
+    relayout();
     setDiffFocus(true);
-    inputRouter.setMainCols(newMainCols);
-    await spawnHunk(panelCols, ptyRowsNow);
+    await spawnHunk(getDiffPanelCols(), layout.ptyRows);
   } else if (wasActive && diffPanel.state === "off") {
-    // split/full → off: kill hunk, resize tmux back
+    // split/full → off: kill hunk, resize tmux back.
     killDiffProcess();
-    mainCols = available;
+    relayout();
     setDiffFocus(false);
-    inputRouter.setDiffPanel(0, false);
-    inputRouter.setMainCols(available);
-    pty.resize(available, ptyRowsNow);
-    bridge.resize(available, ptyRowsNow);
   }
-
-  scheduleRender();
 }
 
 async function zoomDiffPanel(): Promise<void> {
   if (!diffPanel.isActive()) return;
   diffPanel.toggleZoom();
-
-  const totalCols = process.stdout.columns || 80;
-  const sidebarCols = sidebarShown ? sidebarTotal() : 0;
-  const available = totalCols - sidebarCols;
-  const ptyRowsNow = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
+  relayout();
 
   if (diffPanel.state === "full") {
-    // split → full: resize tmux to full width (invisible), resize hunk to full
-    mainCols = available;
-    pty.resize(available, ptyRowsNow);
-    bridge.resize(available, ptyRowsNow);
+    // split → full: zooming always grabs focus (relayout() alone only
+    // re-applies whatever diffPanelFocused already was).
     setDiffFocus(true);
-    inputRouter.setMainCols(0);
-    if (diffPty && diffBridge) {
-      diffPty.resize(available, ptyRowsNow);
-      diffBridge.resize(available, ptyRowsNow);
-    }
-  } else if (diffPanel.state === "split") {
-    // full → split: shrink tmux back, resize hunk to panel width
-    const panelCols = calcSplitPanelCols(available);
-    mainCols = available - panelCols - 1;
-    pty.resize(mainCols, ptyRowsNow);
-    bridge.resize(mainCols, ptyRowsNow);
-    inputRouter.setDiffPanel(panelCols, diffPanelFocused);
-    inputRouter.setMainCols(mainCols);
-    if (diffPty && diffBridge) {
-      diffPty.resize(panelCols, ptyRowsNow);
-      diffBridge.resize(panelCols, ptyRowsNow);
-    }
   }
-
-  scheduleRender();
 }
 
 // --- Session data helpers ---
@@ -1276,7 +1298,7 @@ function renderFrame(): void {
   if (settingsScreen.isOpen) {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
     const totalCols = process.stdout.columns || 80;
-    const contentCols = sidebarShown ? totalCols - sidebarTotal() : totalCols;
+    const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
     const contentRows = process.stdout.rows || 24;
     const settingsGrid = settingsScreen.render(contentCols, contentRows);
     renderer.render(
@@ -1299,7 +1321,7 @@ function renderFrame(): void {
     const overlay = computeModalOverlay();
     const stripVisible = stripVisibleFor(commandCenterTabs);
     const totalCols = process.stdout.columns || 80;
-    const contentCols = sidebarShown ? totalCols - sidebarTotal() : totalCols;
+    const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
 
     let content = glassView.getGrid();
     let cursor = glassView.getFocusedCursor() ?? { x: 0, y: 0 };
@@ -3536,50 +3558,8 @@ process.on("SIGWINCH", () => {
   if (activeModal) {
     closeModal();
   }
-  const newCols = process.stdout.columns || 80;
-  const newRows = process.stdout.rows || 24;
-  const newSidebarVisible = newCols >= 80;
-  const newPtyRows = toolbarEnabled ? newRows - toolbarHeight : newRows;
-  const sidebarCols = newSidebarVisible ? sidebarTotal() : 0;
-  const available = newCols - sidebarCols;
-
-  sidebarShown = newSidebarVisible;
-  inputRouter.setSidebarVisible(newSidebarVisible);
-  sidebar.resize(sidebarWidth, newRows);
+  relayout();
   if (inGlass) resizeGlass();
-
-  if (diffPanel.state === "split") {
-    const panelCols = calcSplitPanelCols(available);
-    const newMainCols = available - panelCols - 1;
-    mainCols = newMainCols;
-    pty.resize(newMainCols, newPtyRows);
-    bridge.resize(newMainCols, newPtyRows);
-    inputRouter.setDiffPanel(panelCols, diffPanelFocused);
-    inputRouter.setMainCols(newMainCols);
-    if (diffPty && diffBridge) {
-      diffPty.resize(panelCols, newPtyRows);
-      diffBridge.resize(panelCols, newPtyRows);
-    }
-  } else if (diffPanel.state === "full") {
-    mainCols = available;
-    pty.resize(available, newPtyRows);
-    bridge.resize(available, newPtyRows);
-    inputRouter.setDiffPanel(available, diffPanelFocused);
-    inputRouter.setMainCols(available);
-    if (diffPty && diffBridge) {
-      diffPty.resize(available, newPtyRows);
-      diffBridge.resize(available, newPtyRows);
-    }
-  } else {
-    const newMainCols = available;
-    mainCols = newMainCols;
-    pty.resize(newMainCols, newPtyRows);
-    bridge.resize(newMainCols, newPtyRows);
-    inputRouter.setDiffPanel(0, false);
-    inputRouter.setMainCols(newMainCols);
-  }
-
-  renderFrame();
 });
 
 // --- Config file watcher ---
@@ -3637,19 +3617,7 @@ try {
 
     if (needsResize) {
       sidebarWidth = newWidth;
-      const cols = process.stdout.columns || 80;
-      const rows = process.stdout.rows || 24;
-      const newSidebarVisible = cols >= 80;
-      const newMainCols = newSidebarVisible ? cols - sidebarTotal() : cols;
-      const newPtyRows = toolbarEnabled ? rows - toolbarHeight : rows;
-
-      mainCols = newMainCols;
-      sidebarShown = newSidebarVisible;
-      inputRouter.setSidebarVisible(newSidebarVisible);
-      pty.resize(newMainCols, newPtyRows);
-      bridge.resize(newMainCols, newPtyRows);
-      sidebar.resize(sidebarWidth, rows);
-      renderFrame();
+      relayout();
     }
 
     // Hot-apply diff panel config changes
@@ -3659,22 +3627,7 @@ try {
     hunkCommand = updated.diffPanel?.hunkCommand ?? "hunk";
 
     if (prevPanelWidth !== infoPanelWidth && diffPanel.state === "split") {
-      const cols = process.stdout.columns || 80;
-      const rows = process.stdout.rows || 24;
-      const sidebarCols = sidebarShown ? sidebarTotal() : 0;
-      const available = cols - sidebarCols;
-      const panelCols = calcSplitPanelCols(available);
-      const newPtyRows = toolbarEnabled ? rows - toolbarHeight : rows;
-      mainCols = available - panelCols - 1;
-      pty.resize(mainCols, newPtyRows);
-      bridge.resize(mainCols, newPtyRows);
-      inputRouter.setDiffPanel(panelCols, diffPanelFocused);
-      inputRouter.setMainCols(mainCols);
-      if (diffPty && diffBridge) {
-        diffPty.resize(panelCols, newPtyRows);
-        diffBridge.resize(panelCols, newPtyRows);
-      }
-      renderFrame();
+      relayout();
     }
   });
 } catch {
@@ -4126,7 +4079,7 @@ function ensureGlassView(): GlassView {
 function resizeGlass(): void {
   if (!glassView) return;
   const totalCols = process.stdout.columns || 80;
-  const contentCols = sidebarShown ? totalCols - sidebarTotal() : totalCols;
+  const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
   const stripRows = stripVisibleFor(commandCenterTabs) ? STRIP_ROWS : 0;
   const contentRows = (process.stdout.rows || 24) - stripRows;
   glassView.resize(contentCols, contentRows);
