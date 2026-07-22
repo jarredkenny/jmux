@@ -1,5 +1,9 @@
 import { describe, test, expect } from "bun:test";
-import { createGrid, writeString, writeCell, blit, DEFAULT_CELL, type CellAttrs } from "../cell-grid";
+import {
+  createGrid, writeString, writeCell, blit, DEFAULT_CELL,
+  truncateToCols, writeStyledLine, drawBox, textCols,
+  type CellAttrs, type StyledSegment,
+} from "../cell-grid";
 import { ColorMode } from "../types";
 
 describe("createGrid", () => {
@@ -357,6 +361,188 @@ describe("blit", () => {
         expect(dst.cells[r][c].char).toBe("d");
       }
     }
+  });
+});
+
+describe("truncateToCols", () => {
+  test("returns text unchanged when it fits exactly", () => {
+    expect(truncateToCols("hello", 5)).toBe("hello");
+  });
+
+  test("returns text unchanged when it is shorter than maxCols", () => {
+    expect(truncateToCols("hi", 10)).toBe("hi");
+  });
+
+  test("truncates and appends an ellipsis when one column over", () => {
+    const result = truncateToCols("hello!", 5);
+    expect(result).toBe("hell…");
+    expect(textCols(result)).toBe(5);
+  });
+
+  test("does not split a wide character at the truncation boundary", () => {
+    // "ab你" is 1+1+2 = 4 cols wide. maxCols=3 leaves budget=2 after the
+    // ellipsis; 你 (width 2) would overflow that budget, so it must be
+    // dropped whole rather than rendered as a half-glyph.
+    const result = truncateToCols("ab你", 3);
+    expect(result).toBe("ab…");
+    expect(textCols(result)).toBe(3);
+  });
+
+  test("drops a leading wide character entirely when there's no budget for it", () => {
+    // "你b" is 2+1 = 3 cols. maxCols=2 leaves budget=1 for content, but 你
+    // needs 2 — it must be skipped, leaving just the ellipsis.
+    const result = truncateToCols("你b", 2);
+    expect(result).toBe("…");
+    expect(textCols(result)).toBe(1);
+  });
+
+  test("maxCols of 0 or negative returns empty string", () => {
+    expect(truncateToCols("hello", 0)).toBe("");
+    expect(truncateToCols("hello", -3)).toBe("");
+  });
+
+  test("maxCols of 1 with overflowing text returns just the ellipsis", () => {
+    expect(truncateToCols("hello", 1)).toBe("…");
+  });
+
+  test("empty string input returns empty string regardless of maxCols", () => {
+    expect(truncateToCols("", 5)).toBe("");
+  });
+});
+
+describe("writeStyledLine", () => {
+  test("writes multiple segments left-to-right with their own attrs", () => {
+    const grid = createGrid(20, 1);
+    const segments: StyledSegment[] = [
+      { text: "AB", attrs: { fg: 1, fgMode: ColorMode.Palette } },
+      { text: "cd", attrs: { fg: 2, fgMode: ColorMode.Palette } },
+    ];
+    const consumed = writeStyledLine(grid, 0, 2, segments);
+    expect(consumed).toBe(4);
+    expect(grid.cells[0][2].char).toBe("A");
+    expect(grid.cells[0][2].fg).toBe(1);
+    expect(grid.cells[0][3].char).toBe("B");
+    expect(grid.cells[0][3].fg).toBe(1);
+    expect(grid.cells[0][4].char).toBe("c");
+    expect(grid.cells[0][4].fg).toBe(2);
+    expect(grid.cells[0][5].char).toBe("d");
+    expect(grid.cells[0][5].fg).toBe(2);
+  });
+
+  test("clips output at maxCols and returns the columns actually consumed", () => {
+    const grid = createGrid(10, 1);
+    const segments: StyledSegment[] = [{ text: "hello world", attrs: {} }];
+    const consumed = writeStyledLine(grid, 0, 0, segments, 5);
+    expect(consumed).toBe(5);
+    expect(grid.cells[0][4].char).toBe("o");
+    // Nothing beyond the clip should have been written.
+    expect(grid.cells[0][5].char).toBe(" ");
+  });
+
+  test("refuses to split a wide character across the clip boundary", () => {
+    // "a你" is 1 + 2 = 3 cols wide. Clipping to maxCols=2 leaves only 1 col
+    // free for 你 (width 2) after "a" — it must not be half-written.
+    const grid = createGrid(10, 1);
+    const segments: StyledSegment[] = [{ text: "a你", attrs: {} }];
+    const consumed = writeStyledLine(grid, 0, 0, segments, 2);
+    expect(consumed).toBe(1);
+    expect(grid.cells[0][0].char).toBe("a");
+    // The wide glyph's column must remain untouched — no partial write.
+    expect(grid.cells[0][1].char).toBe(" ");
+  });
+
+  test("goes through writeCell's continuation-cell rule for wide glyphs", () => {
+    const grid = createGrid(10, 1);
+    const segments: StyledSegment[] = [{ text: "你", attrs: { fg: 3, fgMode: ColorMode.Palette } }];
+    const consumed = writeStyledLine(grid, 0, 1, segments);
+    expect(consumed).toBe(2);
+    expect(grid.cells[0][1].char).toBe("你");
+    expect(grid.cells[0][1].width).toBe(2);
+    expect(grid.cells[0][2].width).toBe(0);
+    expect(grid.cells[0][2].char).toBe("");
+  });
+
+  test("returns 0 when the starting column is already out of bounds", () => {
+    const grid = createGrid(5, 1);
+    const consumed = writeStyledLine(grid, 0, 10, [{ text: "x", attrs: {} }]);
+    expect(consumed).toBe(0);
+  });
+});
+
+describe("drawBox", () => {
+  const border: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
+
+  test("draws the four corners", () => {
+    const grid = createGrid(10, 5);
+    drawBox(grid, { x: 1, y: 1, w: 6, h: 3 }, { border });
+    expect(grid.cells[1][1].char).toBe("┌"); // ┌
+    expect(grid.cells[1][6].char).toBe("┐"); // ┐
+    expect(grid.cells[3][1].char).toBe("└"); // └
+    expect(grid.cells[3][6].char).toBe("┘"); // ┘
+    for (const [r, c] of [[1, 1], [1, 6], [3, 1], [3, 6]]) {
+      expect(grid.cells[r][c].fg).toBe(2);
+      expect(grid.cells[r][c].fgMode).toBe(ColorMode.Palette);
+    }
+  });
+
+  test("draws top/bottom edges with ─ and side edges with │", () => {
+    const grid = createGrid(10, 5);
+    drawBox(grid, { x: 1, y: 1, w: 6, h: 3 }, { border });
+    expect(grid.cells[1][3].char).toBe("─"); // ─ top
+    expect(grid.cells[3][3].char).toBe("─"); // ─ bottom
+    expect(grid.cells[2][1].char).toBe("│"); // │ left
+    expect(grid.cells[2][6].char).toBe("│"); // │ right
+    // Interior is left untouched by drawBox.
+    expect(grid.cells[2][3].char).toBe(" ");
+  });
+
+  test("resets stray attributes (dim/bold/link) left behind on the border ring", () => {
+    const grid = createGrid(10, 5);
+    // Simulate residual content (e.g. a dimmed, linked cell from an
+    // underlying blit) at a coordinate the border ring will overwrite.
+    grid.cells[1][3] = { ...DEFAULT_CELL, char: "x", dim: true, bold: true, link: "https://example.com" };
+    drawBox(grid, { x: 1, y: 1, w: 6, h: 3 }, { border });
+    expect(grid.cells[1][3].char).toBe("─");
+    expect(grid.cells[1][3].dim).toBe(false);
+    expect(grid.cells[1][3].bold).toBe(false);
+    expect(grid.cells[1][3].link).toBeUndefined();
+  });
+
+  test("renders a label chip on the top border, wrapped in spaces", () => {
+    const grid = createGrid(20, 5);
+    drawBox(grid, { x: 0, y: 0, w: 16, h: 4 }, {
+      border,
+      label: "hi",
+      labelAttrs: { fg: 9, fgMode: ColorMode.Palette, bold: true },
+    });
+    // ┌ ─ <space> h i <space> ─ ─ ... ┐  — label starts at col 3
+    expect(grid.cells[0][2].char).toBe(" ");
+    expect(grid.cells[0][3].char).toBe("h");
+    expect(grid.cells[0][3].fg).toBe(9);
+    expect(grid.cells[0][3].bold).toBe(true);
+    expect(grid.cells[0][4].char).toBe("i");
+    expect(grid.cells[0][5].char).toBe(" ");
+  });
+
+  test("truncates an overlong label to fit the box width", () => {
+    const grid = createGrid(20, 5);
+    drawBox(grid, { x: 0, y: 0, w: 8, h: 3 }, {
+      border,
+      label: "a very long label that cannot possibly fit",
+    });
+    // Row must not contain the untruncated label; the right corner must
+    // still land at the box's own right edge (col 7).
+    expect(grid.cells[0][7].char).toBe("┐"); // ┐ — box width respected
+    const rowChars = grid.cells[0].map(c => c.char).join("");
+    expect(rowChars).toContain("…"); // ellipsis present somewhere
+  });
+
+  test("no-ops when width or height is below 2", () => {
+    const grid = createGrid(10, 5);
+    drawBox(grid, { x: 1, y: 1, w: 1, h: 3 }, { border });
+    expect(grid.cells[1][1].char).toBe(" ");
+    drawBox(grid, { x: 1, y: 1, w: 6, h: 1 }, { border });
+    expect(grid.cells[1][1].char).toBe(" ");
   });
 });
 

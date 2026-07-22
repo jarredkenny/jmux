@@ -1,6 +1,6 @@
 import type { Cell, CellGrid, CursorPosition, WindowTab } from "./types";
 import { ColorMode } from "./types";
-import { createGrid, DEFAULT_CELL, cellWidth, blit } from "./cell-grid";
+import { createGrid, DEFAULT_CELL, blit, textCols, writeStyledLine, drawBox, truncateToCols, type CellAttrs, type StyledSegment } from "./cell-grid";
 import { theme, neutralFg, accentFor } from "./theme";
 import type { FrameLayout } from "./frame-layout";
 
@@ -66,26 +66,13 @@ export function sgrForCell(cell: Cell): string {
   return `\x1b[${parts.join(";")}m`;
 }
 
-// Display width of a character — delegates to the shared cellWidth table.
-function charDisplayWidth(ch: string): number {
-  return cellWidth(ch.codePointAt(0) ?? 0);
-}
-
-export { charDisplayWidth };
-
-export function stringDisplayWidth(s: string): number {
-  let w = 0;
-  for (const ch of s) w += charDisplayWidth(ch);
-  return w;
-}
-
 // Returns the column ranges for each toolbar button (relative to main area start)
 export function getToolbarButtonRanges(toolbar: ToolbarConfig): Array<{ id: string; startCol: number; endCol: number }> {
   const ranges: Array<{ id: string; startCol: number; endCol: number }> = [];
   let col = toolbar.mainCols;
   for (let i = toolbar.buttons.length - 1; i >= 0; i--) {
     const btn = toolbar.buttons[i];
-    const width = stringDisplayWidth(btn.label) + 2; // label display width + padding
+    const width = textCols(btn.label) + 2; // label display width + padding
     col -= width;
     ranges.unshift({ id: btn.id, startCol: col, endCol: col + width - 1 });
   }
@@ -99,7 +86,7 @@ export function getToolbarStatusChipRange(toolbar: ToolbarConfig): { startCol: n
   const buttonRanges = getToolbarButtonRanges(toolbar);
   const buttonsStart = buttonRanges.length > 0 ? buttonRanges[0].startCol : toolbar.mainCols;
   // chip text is " <statusChip> " — 1 space padding each side
-  const chipWidth = stringDisplayWidth(toolbar.statusChip) + 2;
+  const chipWidth = textCols(toolbar.statusChip) + 2;
   const startCol = buttonsStart - chipWidth;
   return { startCol, endCol: buttonsStart - 1 };
 }
@@ -122,7 +109,7 @@ export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string;
   for (let i = 0; i < tabs.length; i++) {
     const tab = tabs[i];
     const zoomSuffix = tab.zoomed ? " ⤢" : "";
-    const width = stringDisplayWidth(tab.name + zoomSuffix) + 2; // " name [Z] "
+    const width = textCols(tab.name + zoomSuffix) + 2; // " name [Z] "
     const sepWidth = i < tabs.length - 1 ? 3 : 0; // " │ " separator after non-last tabs
     if (col + width > maxCol) break; // no room
     ranges.push({ id: tab.windowId, startCol: col, endCol: col + width - 1, tab });
@@ -153,40 +140,19 @@ function renderWindowBranchRow(
   grid: CellGrid,
   toolbar: ToolbarConfig,
   borderCol: number,
-  totalCols: number,
 ): void {
   const branchIcon = "⎇ ";
-  const iconWidth = stringDisplayWidth(branchIcon);
+  const iconWidth = textCols(branchIcon);
+  const attrs: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
   for (const { startCol, endCol, tab } of getToolbarTabRanges(toolbar)) {
     const branch = tab.branch;
     if (!branch) continue;
     const tabWidth = endCol - startCol + 1;
     const maxLen = tabWidth - 2 - iconWidth; // leading + trailing space
     if (maxLen <= 0) continue;
-    let branchText = branch;
-    if (stringDisplayWidth(branchText) > maxLen) {
-      branchText = branchText.slice(0, Math.max(1, maxLen - 1)) + "…";
-    }
+    const branchText = truncateToCols(branch, maxLen);
     const label = " " + branchIcon + branchText + " ";
-    let col = 0;
-    for (const ch of label) {
-      const c = borderCol + 1 + startCol + col;
-      const w = charDisplayWidth(ch);
-      if (c < totalCols) {
-        grid.cells[1][c] = {
-          ...DEFAULT_CELL,
-          char: ch,
-          width: w,
-          fg: 8,
-          fgMode: ColorMode.Palette,
-          dim: true,
-        };
-        if (w === 2 && c + 1 < totalCols) {
-          grid.cells[1][c + 1] = { ...DEFAULT_CELL, char: "", width: 0 };
-        }
-      }
-      col += w;
-    }
+    writeStyledLine(grid, 1, borderCol + 1 + startCol, [{ text: label, attrs }], tabWidth);
   }
 }
 
@@ -235,7 +201,7 @@ export function compositeGrids(
     if (toolbar && y < toolbarRows) {
       if (y === 1 && toolbarRows >= 2) {
         // Second toolbar row: per-window git branch, aligned under each tab.
-        renderWindowBranchRow(grid, toolbar, borderCol, totalCols);
+        renderWindowBranchRow(grid, toolbar, borderCol);
       } else if (y === 0) {
       // Toolbar row — always render (palette no longer replaces it)
       const hoverBg = theme.hover;
@@ -248,40 +214,24 @@ export function compositeGrids(
         const { id, startCol, endCol, tab } = tabRanges[ti];
         const isActive = tab.active;
         const isHovered = !isActive && toolbar.hoveredTabId === id;
+        const hasBg = isActive || isHovered;
+        const bg = isActive ? activeBg : hoverBg;
         const label = ` ${tab.name}${tab.zoomed ? " ⤢" : ""} `;
-        let col = 0;
-        for (const ch of label) {
-          const c = borderCol + 1 + startCol + col;
-          const w = charDisplayWidth(ch);
-          const hasBg = isActive || isHovered;
-          const bg = isActive ? activeBg : hoverBg;
-          if (c < totalCols) {
-            grid.cells[0][c] = {
-              ...DEFAULT_CELL,
-              char: ch,
-              width: w,
-              fg: tab.bell ? 3 : isActive ? peachFg : 8,
-              fgMode: tab.bell ? ColorMode.Palette : isActive ? ColorMode.RGB : ColorMode.Palette,
-              bold: isActive || tab.bell,
-              bg: hasBg ? bg : 0,
-              bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
-            };
-            if (w === 2 && c + 1 < totalCols) {
-              grid.cells[0][c + 1] = {
-                ...DEFAULT_CELL, char: "", width: 0,
-                bg: hasBg ? bg : 0,
-                bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
-              };
-            }
-          }
-          col += w;
-        }
+        const attrs: CellAttrs = {
+          fg: tab.bell ? 3 : isActive ? peachFg : 8,
+          fgMode: tab.bell ? ColorMode.Palette : isActive ? ColorMode.RGB : ColorMode.Palette,
+          bold: isActive || tab.bell,
+          bg: hasBg ? bg : 0,
+          bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
+        };
+        writeStyledLine(grid, 0, borderCol + 1 + startCol, [{ text: label, attrs }], endCol - startCol + 1);
+
         if (ti < tabRanges.length - 1) {
           const sepCol = borderCol + 1 + endCol + 2;
           if (sepCol < totalCols) {
             grid.cells[0][sepCol] = {
               ...DEFAULT_CELL,
-              char: "\u2502",
+              char: "│",
               fg: 8,
               fgMode: ColorMode.Palette,
               dim: true,
@@ -290,67 +240,31 @@ export function compositeGrids(
         }
       }
 
-      // Render action buttons (right side)
+      // Render action buttons (right side). The icon glyph and its
+      // surrounding padding spaces get different foregrounds, so they're
+      // built as separate segments rather than one uniformly-styled string.
       const ranges = getToolbarButtonRanges(toolbar);
       for (const { id, startCol } of ranges) {
         const btn = toolbar.buttons.find(b => b.id === id)!;
         const isHovered = toolbar.hoveredButton === id;
-        const label = ` ${btn.label} `;
-        let col = 0;
-        for (const ch of label) {
-          const c = borderCol + 1 + startCol + col;
-          const w = charDisplayWidth(ch);
-          const isIcon = ch !== " ";
-          if (c < totalCols) {
-            grid.cells[0][c] = {
-              ...DEFAULT_CELL,
-              char: ch,
-              width: w,
-              fg: isIcon ? (btn.fg ?? 8) : 8,
-              fgMode: isIcon ? (btn.fgMode ?? ColorMode.Palette) : ColorMode.Palette,
-              bg: isHovered ? hoverBg : 0,
-              bgMode: isHovered ? ColorMode.RGB : ColorMode.Default,
-            };
-            if (w === 2 && c + 1 < totalCols) {
-              grid.cells[0][c + 1] = {
-                ...DEFAULT_CELL, char: "", width: 0,
-                bg: isHovered ? hoverBg : 0,
-                bgMode: isHovered ? ColorMode.RGB : ColorMode.Default,
-              };
-            }
-          }
-          col += w;
-        }
+        const bg = isHovered ? hoverBg : 0;
+        const bgMode = isHovered ? ColorMode.RGB : ColorMode.Default;
+        const spaceAttrs: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, bg, bgMode };
+        const iconAttrs: CellAttrs = { fg: btn.fg ?? 8, fgMode: btn.fgMode ?? ColorMode.Palette, bg, bgMode };
+        const segments: StyledSegment[] = [
+          { text: " ", attrs: spaceAttrs },
+          { text: btn.label, attrs: iconAttrs },
+          { text: " ", attrs: spaceAttrs },
+        ];
+        writeStyledLine(grid, 0, borderCol + 1 + startCol, segments, textCols(btn.label) + 2);
       }
 
       // Render status chip (dim text, right-aligned just before action buttons)
       const chipRange = getToolbarStatusChipRange(toolbar);
       if (chipRange && toolbar.statusChip) {
         const label = ` ${toolbar.statusChip} `;
-        let col = 0;
-        for (const ch of label) {
-          const c = borderCol + 1 + chipRange.startCol + col;
-          const w = charDisplayWidth(ch);
-          if (c < totalCols) {
-            grid.cells[0][c] = {
-              ...DEFAULT_CELL,
-              char: ch,
-              width: w,
-              fg: 8,
-              fgMode: ColorMode.Palette,
-              dim: true,
-            };
-            if (w === 2 && c + 1 < totalCols) {
-              grid.cells[0][c + 1] = {
-                ...DEFAULT_CELL, char: "", width: 0,
-                fg: 8,
-                fgMode: ColorMode.Palette,
-                dim: true,
-              };
-            }
-          }
-          col += w;
-        }
+        const attrs: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
+        writeStyledLine(grid, 0, borderCol + 1 + chipRange.startCol, [{ text: label, attrs }], chipRange.endCol - chipRange.startCol + 1);
       }
       }
     } else {
@@ -415,39 +329,14 @@ export function compositeGrids(
     const bLeft = pos.startCol - 1;
     const bRight = pos.startCol + modalOverlay.cols;
     const bBottom = pos.startRow + modalOverlay.rows;
-    const borderCell = (ch: string) => ({
-      ...DEFAULT_CELL, char: ch, fg: borderFg.fg, fgMode: borderFg.fgMode as number,
-      bg: paletteBg, bgMode: ColorMode.RGB as number,
-    });
-
-    // Top border
-    if (bTop >= 0 && bTop < totalRows) {
-      if (bLeft >= 0 && bLeft < totalCols) grid.cells[bTop][bLeft] = borderCell("┌");
-      for (let x = bLeft + 1; x < bRight && x < totalCols; x++) {
-        grid.cells[bTop][x] = borderCell("─");
-      }
-      if (bRight < totalCols) grid.cells[bTop][bRight] = borderCell("┐");
-    }
 
     // Modal content
     blit(grid, modalOverlay, { destX: pos.startCol, destY: pos.startRow, srcX: 0, srcY: 0, w: modalOverlay.cols, h: modalOverlay.rows });
 
-    // Side borders
-    for (let py = 0; py < modalOverlay.rows; py++) {
-      const gy = pos.startRow + py;
-      if (gy >= totalRows) break;
-      if (bLeft >= 0 && bLeft < totalCols) grid.cells[gy][bLeft] = borderCell("│");
-      if (bRight < totalCols) grid.cells[gy][bRight] = borderCell("│");
-    }
-
-    // Bottom border
-    if (bBottom < totalRows) {
-      if (bLeft >= 0 && bLeft < totalCols) grid.cells[bBottom][bLeft] = borderCell("└");
-      for (let x = bLeft + 1; x < bRight && x < totalCols; x++) {
-        grid.cells[bBottom][x] = borderCell("─");
-      }
-      if (bRight < totalCols) grid.cells[bBottom][bRight] = borderCell("┘");
-    }
+    // Border ring (corners + edges) around the content.
+    drawBox(grid, { x: bLeft, y: bTop, w: bRight - bLeft + 1, h: bBottom - bTop + 1 }, {
+      border: { fg: borderFg.fg, fgMode: borderFg.fgMode, bg: paletteBg, bgMode: ColorMode.RGB },
+    });
 
     // Shadow: right edge
     const shadowX = bRight + 1;

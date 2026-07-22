@@ -1,6 +1,6 @@
 import type { SessionOtelState, CellGrid, SessionInfo, AgentState, AgentStateRecord } from "./types";
 import { ColorMode, makeSessionOtelState } from "./types";
-import { createGrid, writeString, type CellAttrs } from "./cell-grid";
+import { createGrid, writeString, truncateToCols, type CellAttrs } from "./cell-grid";
 import type { SessionContext } from "./adapters/types";
 import { buildSessionView, buildSessionRow3 } from "./session-view";
 import { theme } from "./theme";
@@ -919,10 +919,7 @@ export class Sidebar {
       const detailStart = 3;
       const maxLen = rightEdge - detailStart + 1;
       if (maxLen > 0) {
-        let branch = view.branch;
-        if (branch.length > maxLen) {
-          branch = branch.slice(0, Math.max(0, maxLen - 1)) + "\u2026";
-        }
+        const branch = truncateToCols(view.branch, maxLen);
         writeString(grid, detailRow, detailStart, branch, detailAttrs);
       }
     }

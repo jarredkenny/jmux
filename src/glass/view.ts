@@ -1,5 +1,5 @@
 import type { CellGrid, AgentState } from "../types";
-import { createGrid, writeString, cellWidth, blit, type CellAttrs } from "../cell-grid";
+import { createGrid, writeString, blit, drawBox, type CellAttrs } from "../cell-grid";
 import { ColorMode } from "../types";
 
 // Default border palette by agent state — matches the sidebar's defaults
@@ -50,14 +50,6 @@ import { TmuxPty } from "../tmux-pty";
 import { computeTileLayout } from "./layout";
 import type { TileRect } from "./layout";
 import { planTiles } from "./tile-plan";
-
-// ─── Box-drawing characters ──────────────────────────────────────────────────
-const BOX_H  = "─"; // ─
-const BOX_V  = "│"; // │
-const BOX_TL = "┌"; // ┌
-const BOX_TR = "┐"; // ┐
-const BOX_BL = "└"; // └
-const BOX_BR = "┘"; // ┘
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -511,7 +503,6 @@ export class GlassView {
     // legible via bold (focused) vs dim (unfocused). Panes with no agent state
     // fall back to bright-white (focused) / dark-gray (unfocused).
     const borderAttrs = borderAttrsForState(tile.spec.agentState, isFocused, this.stateColors);
-    const { fg: borderFg, fgMode: borderFgMode, bold: borderBold, dim: borderDim } = borderAttrs;
 
     // The label pops in bold green when focused, dims to gray otherwise.
     const labelAttrs: CellAttrs = labelChipAttrs(isFocused);
@@ -520,35 +511,12 @@ export class GlassView {
 
     if (width < 2 || height < 2) return;
 
-    // Top border: ┌─ label ─────┐
-    this.drawBorderRow(grid, y, x, width, true, tile.spec.label, borderAttrs, labelAttrs);
-
-    // Bottom border: └──────────┘
-    this.drawBorderRow(grid, y + height - 1, x, width, false, "", borderAttrs);
-
-    // Side borders.
-    for (let row = y + 1; row < y + height - 1; row++) {
-      if (row < 0 || row >= grid.rows) continue;
-      if (x >= 0 && x < grid.cols) {
-        const leftCell = grid.cells[row][x];
-        leftCell.char = BOX_V;
-        leftCell.width = 1;
-        leftCell.fg = borderFg;
-        leftCell.fgMode = borderFgMode;
-        leftCell.bold = borderBold;
-        leftCell.dim = borderDim;
-      }
-      const rightX = x + width - 1;
-      if (rightX >= 0 && rightX < grid.cols) {
-        const rightCell = grid.cells[row][rightX];
-        rightCell.char = BOX_V;
-        rightCell.width = 1;
-        rightCell.fg = borderFg;
-        rightCell.fgMode = borderFgMode;
-        rightCell.bold = borderBold;
-        rightCell.dim = borderDim;
-      }
-    }
+    // Border ring (┌─ label ─────┐ / │ … │ / └──────────┘).
+    drawBox(grid, { x, y, w: width, h: height }, {
+      border: borderAttrs,
+      label: tile.spec.label,
+      labelAttrs,
+    });
 
     // Blit interior: copy bridge cells into grid at (x+1, y+1).
     const bridgeGrid = tile.bridge.getGrid();
@@ -558,100 +526,5 @@ export class GlassView {
     const iRows = height - 2;
 
     blit(grid, bridgeGrid, { destX: iStartX, destY: iStartY, w: iCols, h: iRows });
-  }
-
-  /**
-   * Draw one horizontal border row (top or bottom) with optional label.
-   * Top row: ┌─[label]─────┐
-   * Bottom row: └────────────┘
-   */
-  private drawBorderRow(
-    grid: CellGrid,
-    row: number,
-    startX: number,
-    width: number,
-    isTop: boolean,
-    label: string,
-    borderAttrs: { fg: number; fgMode: ColorMode; bold?: boolean; dim?: boolean },
-    labelAttrs?: CellAttrs,
-  ): void {
-    if (row < 0 || row >= grid.rows) return;
-    if (width < 2) return;
-
-    const bold = borderAttrs.bold ?? false;
-    const dim = borderAttrs.dim ?? false;
-    const leftCorner  = isTop ? BOX_TL : BOX_BL;
-    const rightCorner = isTop ? BOX_TR : BOX_BR;
-
-    // Left corner.
-    const leftX = startX;
-    if (leftX >= 0 && leftX < grid.cols) {
-      const cell = grid.cells[row][leftX];
-      cell.char = leftCorner;
-      cell.width = 1;
-      cell.fg = borderAttrs.fg;
-      cell.fgMode = borderAttrs.fgMode;
-      cell.bold = bold;
-      cell.dim = dim;
-    }
-
-    // Right corner.
-    const rightX = startX + width - 1;
-    if (rightX >= 0 && rightX < grid.cols) {
-      const cell = grid.cells[row][rightX];
-      cell.char = rightCorner;
-      cell.width = 1;
-      cell.fg = borderAttrs.fg;
-      cell.fgMode = borderAttrs.fgMode;
-      cell.bold = bold;
-      cell.dim = dim;
-    }
-
-    // Fill interior of the border row with ─, then overlay label if top.
-    const innerStart = startX + 1;
-    const innerEnd   = startX + width - 1; // exclusive
-
-    for (let c = innerStart; c < innerEnd; c++) {
-      if (c < 0 || c >= grid.cols) continue;
-      const cell = grid.cells[row][c];
-      cell.char = BOX_H;
-      cell.width = 1;
-      cell.fg = borderAttrs.fg;
-      cell.fgMode = borderAttrs.fgMode;
-      cell.bold = bold;
-      cell.dim = dim;
-    }
-
-    // Overlay the label on the top border as ─ label ─, inset one cell from the
-    // corner and wrapped in spaces so it reads as a chip rather than running
-    // into the border line.
-    if (isTop && label.length > 0) {
-      const labelStart = innerStart + 2;          // ┌ ─ <space> label
-      const maxLabelCols = innerEnd - labelStart - 1; // leave a trailing space
-      if (maxLabelCols > 0) {
-        // Truncate by display width, appending an ellipsis when it doesn't fit.
-        let cols = 0;
-        let cutAt = 0;
-        for (const ch of label) {
-          const w = cellWidth(ch.codePointAt(0) ?? 0);
-          if (cols + w > maxLabelCols) break;
-          cols += w;
-          cutAt++;
-        }
-        let labelText = label.slice(0, cutAt);
-        if (cutAt < label.length && maxLabelCols >= 1) {
-          labelText = label.slice(0, Math.max(0, cutAt - 1)) + "…";
-          cols = Math.min(cols, maxLabelCols);
-        }
-        if (labelText.length > 0) {
-          // Render ` label ` as one filled chip: the surrounding spaces carry the
-          // same background as the label so it reads as a contiguous tab.
-          const chipAttrs = labelAttrs ?? { fg: borderAttrs.fg, fgMode: borderAttrs.fgMode };
-          writeString(grid, row, innerStart + 1, " ", chipAttrs);
-          writeString(grid, row, labelStart, labelText, chipAttrs);
-          writeString(grid, row, labelStart + cols, " ", chipAttrs);
-        }
-      }
-    }
   }
 }

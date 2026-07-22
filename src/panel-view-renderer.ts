@@ -1,7 +1,7 @@
 // src/panel-view-renderer.ts
 import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
-import { createGrid, writeString, textCols, type CellAttrs, type StyledLine } from "./cell-grid";
+import { createGrid, writeString, textCols, truncateToCols, type CellAttrs, type StyledLine } from "./cell-grid";
 import type { PanelView, GroupByField } from "./panel-view";
 import type { Issue, IssueStateType, MergeRequest } from "./adapters/types";
 import { fuzzyMatch } from "./fuzzy";
@@ -435,10 +435,7 @@ function renderItem(grid: CellGrid, row: number, cols: number, item: RenderableI
 
   // Primary + title
   const maxTextLen = priCol - col - 1;
-  let text = `${item.primary} ${item.title}`;
-  if (text.length > maxTextLen) {
-    text = text.slice(0, maxTextLen - 1) + "\u2026";
-  }
+  const text = truncateToCols(`${item.primary} ${item.title}`, maxTextLen);
   writeString(grid, row, col, text, selected ? { ...TITLE_ATTRS, bold: true } : TITLE_ATTRS);
 
   if (priBadge) {

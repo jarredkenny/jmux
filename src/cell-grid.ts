@@ -57,8 +57,9 @@ export function textCols(text: string): number {
 }
 
 // Display width of a Unicode codepoint for grid layout purposes.
-// Must agree with terminal rendering for correct column tracking.
-// Used by both writeString (sidebar/modals) and charDisplayWidth (toolbar).
+// Must agree with terminal rendering for correct column tracking. The sole
+// width table — writeString, textCols, writeCell, and truncateToCols all
+// route through this rather than each keeping their own copy.
 export function cellWidth(cp: number): number {
   if (cp < 0x1100) return 1;
   // CJK and wide character ranges
@@ -83,10 +84,10 @@ export function cellWidth(cp: number): number {
 
 // Writes a single glyph at (row, col), handling the wide-character
 // continuation-cell rule: a width-2 glyph is followed by a width-0
-// continuation cell carrying the same background. writeCell owns this for
-// new code; writeString retains an equivalent inline copy in its own wide-char
-// branch, and the toolbar glyph writes in renderer.ts are pending conversion to
-// this API. Grep `char: ""` to find every remaining hand-written instance.
+// continuation cell carrying the same background. writeCell owns this rule;
+// writeStyledLine and drawBox are both built on it rather than re-deriving
+// it. writeString retains an equivalent inline copy in its own wide-char
+// branch (kept for its existing call sites; not worth an API break to unify).
 //
 // Behaviour matches writeString's per-character handling exactly: out of
 // bounds is a silent no-op, and a wide glyph that would overflow the row
@@ -132,6 +133,130 @@ export function writeCell(
     }
   }
   return w;
+}
+
+// Truncates `text` to fit within `maxCols` display columns, appending a
+// single-width "…" when it doesn't fit. Truncation is always by display
+// width (via cellWidth), never by UTF-16 code-unit count — a wide character
+// that would land astride the cut point is dropped whole rather than
+// half-rendered. Returns "" when maxCols <= 0.
+export function truncateToCols(text: string, maxCols: number): string {
+  if (maxCols <= 0) return "";
+  if (textCols(text) <= maxCols) return text;
+
+  const budget = maxCols - 1; // reserve one column for the ellipsis
+  let width = 0;
+  let cut = "";
+  for (const ch of text) {
+    const w = cellWidth(ch.codePointAt(0) ?? 0);
+    if (width + w > budget) break;
+    cut += ch;
+    width += w;
+  }
+  return cut + "…";
+}
+
+// Writes styled segments left-to-right starting at (row, col), one glyph at
+// a time via writeCell — the sole owner of the wide-character
+// continuation-cell rule, so that rule is never re-implemented here. Clips
+// to `maxCols` display columns when given (relative to `col`); a glyph whose
+// width would cross the clip boundary is refused rather than half-written,
+// matching writeCell's own grid-boundary refusal. Returns the number of
+// columns actually consumed, which may be less than the segments' combined
+// width if clipped or if a boundary refusal was hit.
+export function writeStyledLine(
+  grid: CellGrid,
+  row: number,
+  col: number,
+  segments: StyledSegment[],
+  maxCols?: number,
+): number {
+  const limit = maxCols !== undefined ? col + maxCols : Infinity;
+  let c = col;
+  for (const seg of segments) {
+    for (const ch of seg.text) {
+      const w = cellWidth(ch.codePointAt(0) ?? 0);
+      if (c + w > limit) return c - col;
+      const advance = writeCell(grid, row, c, ch, seg.attrs);
+      if (advance === 0) return c - col;
+      c += advance;
+    }
+  }
+  return c - col;
+}
+
+// Draws a rectangular box border (corners + edges) via writeCell, with an
+// optional top-label chip. Folds together what were three separate
+// hand-rolled border drawers (glass tile borders, the modal overlay border,
+// and glass's now-deleted drawBorderRow).
+//
+// Border-ring cells get a full attribute reset (bold/italic/underline/dim
+// default to false unless overridden, and any stray `link` left behind by
+// prior content at that coordinate is cleared) — writeCell only ever sets
+// the attrs it's given, so without this a border cell could inherit
+// leftover dim/bold/link state from whatever was blitted underneath before
+// the box was drawn (e.g. a dimmed, hyperlinked pane cell behind a modal).
+export function drawBox(
+  grid: CellGrid,
+  rect: { x: number; y: number; w: number; h: number },
+  opts: { border: CellAttrs; label?: string; labelAttrs?: CellAttrs },
+): void {
+  const { x, y, w, h } = rect;
+  if (w < 2 || h < 2) return;
+
+  const border: CellAttrs = { bold: false, italic: false, underline: false, dim: false, ...opts.border };
+
+  const top = y;
+  const bottom = y + h - 1;
+  const left = x;
+  const right = x + w - 1;
+
+  const put = (row: number, col: number, ch: string, attrs: CellAttrs): void => {
+    const advance = writeCell(grid, row, col, ch, attrs);
+    if (advance > 0) {
+      // writeCell can't clear `link` (it only sets attrs that are present),
+      // so clear it directly once we know the write landed in-bounds.
+      grid.cells[row][col].link = undefined;
+    }
+  };
+
+  // Corners.
+  put(top, left, "┌", border);    // ┌
+  put(top, right, "┐", border);   // ┐
+  put(bottom, left, "└", border); // └
+  put(bottom, right, "┘", border); // ┘
+
+  // Top/bottom edges.
+  for (let cx = left + 1; cx < right; cx++) {
+    put(top, cx, "─", border);    // ─
+    put(bottom, cx, "─", border); // ─
+  }
+
+  // Side edges.
+  for (let ry = top + 1; ry < bottom; ry++) {
+    put(ry, left, "│", border);  // │
+    put(ry, right, "│", border); // │
+  }
+
+  // Optional top-label chip: " label " inset from the left corner, wrapped
+  // in matching-background spaces so it reads as a filled tab rather than
+  // running into the border line. Truncated to fit via truncateToCols.
+  if (opts.label && opts.label.length > 0) {
+    const innerStart = left + 1;
+    const innerEnd = right; // exclusive
+    const labelCol = innerStart + 2;             // ┌ ─ <space> label
+    const maxLabelCols = innerEnd - labelCol - 1; // reserve a trailing space
+    if (maxLabelCols > 0) {
+      const labelText = truncateToCols(opts.label, maxLabelCols);
+      if (labelText.length > 0) {
+        const chipAttrs: CellAttrs = opts.labelAttrs ?? { fg: border.fg, fgMode: border.fgMode };
+        const chipWidth = 2 + textCols(labelText); // leading + label + trailing space
+        writeStyledLine(grid, top, innerStart + 1, [
+          { text: " " + labelText + " ", attrs: chipAttrs },
+        ], chipWidth);
+      }
+    }
+  }
 }
 
 export interface BlitOptions {
