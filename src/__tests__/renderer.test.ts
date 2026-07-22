@@ -33,7 +33,11 @@ function makeLayout(opts: {
       divider = mainX + mainCols;
       panelSpan = { x: divider + 1, w: panel.cols };
     } else {
-      panelSpan = { x: mainX, w: panel.cols };
+      // Full mode forces panel.w === main.w === available (see
+      // computeFrameLayout, frame-layout.ts) — derive from mainCols rather
+      // than trusting a caller-supplied width so this helper can't build a
+      // layout the real geometry could never produce.
+      panelSpan = { x: mainX, w: mainCols };
     }
   }
 
@@ -196,7 +200,7 @@ describe("compositeGrids window branch row", () => {
     const main = createGrid(20, 4);
     writeString(main, 0, 0, "MAINROW0");
     const toolbar = {
-      buttons: [], mainCols: 20, tabs: [tab({ branch: "main" })], toolbarRows: 2,
+      buttons: [], mainCols: 20, tabs: [tab({ branch: "main" })],
     };
     const layout = makeLayout({ sidebarCols: 6, mainCols: 20, toolbarRows: 2, termRows: 6 });
     const result = compositeGrids(layout, main, sidebar, toolbar);
@@ -208,7 +212,7 @@ describe("compositeGrids window branch row", () => {
     expect(result.cells[2].map((c) => c.char).join("")).toContain("MAINROW0");
   });
 
-  test("toolbarRows unset defaults to 1 — no branch row, main offset by 1", () => {
+  test("layout.toolbarRows=1 renders no branch row, main offset by 1", () => {
     const sidebar = createGrid(6, 4);
     const main = createGrid(20, 3);
     writeString(main, 0, 0, "TOP");
@@ -225,7 +229,7 @@ describe("compositeGrids window branch row", () => {
     const sidebar = createGrid(6, 6);
     const main = createGrid(20, 4);
     const toolbar = {
-      buttons: [], mainCols: 20, tabs: [tab({ branch: undefined })], toolbarRows: 2,
+      buttons: [], mainCols: 20, tabs: [tab({ branch: undefined })],
     };
     const layout = makeLayout({ sidebarCols: 6, mainCols: 20, toolbarRows: 2, termRows: 6 });
     const result = compositeGrids(layout, main, sidebar, toolbar);

@@ -21,8 +21,6 @@ export interface ToolbarConfig {
   hoveredTabId?: string | null;
   /** When set, a dim status chip is rendered between tabs and buttons. */
   statusChip?: string | null;
-  /** Total toolbar height in rows (1 = tabs only; 2 = tabs + per-window branch row). Defaults to 1. */
-  toolbarRows?: number;
 }
 
 export function sgrForCell(cell: Cell): string {
@@ -210,6 +208,10 @@ export function compositeGrids(
   // Invariant maintained by callers (see src/frame-layout.ts): a sidebar
   // grid is only ever passed when `layout.sidebar`/`layout.borderCol` are
   // also non-null — main.ts sizes both from the same relayout() call.
+  // Likewise `layout.divider`/`layout.panel` are non-null whenever
+  // `diffPanel.isActive()` is true, because main.ts's relayout() runs
+  // synchronously after every diffPanel state mutation, so the panel/divider
+  // reads below (guarded by `diffPanel.mode`/`diffPanel` truthiness) are safe.
   const borderCol = layout.borderCol!;
   const mainCols = toolbar ? toolbar.mainCols : main.cols;
   const totalCols = layout.termCols;

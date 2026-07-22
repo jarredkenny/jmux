@@ -453,7 +453,6 @@ function makeToolbar(): ToolbarConfig {
     tabs: currentWindows,
     hoveredTabId,
     statusChip: snapshotChip,
-    toolbarRows: toolbarHeight,
   };
 }
 
@@ -1728,7 +1727,7 @@ const inputRouter = new InputRouter(
         viewState.selectedIndex++;
         viewState.detailScrollOffset = 0; // reset detail scroll on item change
         // Scroll list if selection goes below visible area
-        const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
+        const dpRows = layout.ptyRows;
         const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
         if (viewState.selectedIndex >= viewState.scrollOffset + listRows) {
           viewState.scrollOffset = viewState.selectedIndex - listRows + 1;
@@ -2041,7 +2040,7 @@ const inputRouter = new InputRouter(
       if (!viewState) return;
 
       // Determine if scroll is in list area or detail area
-      const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
+      const dpRows = layout.ptyRows;
       const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
 
       if (row < listRows) {
@@ -2072,7 +2071,7 @@ const inputRouter = new InputRouter(
       const viewState = viewStates.get(view.id);
       if (!viewState) return;
       // Only handle clicks in the list area (top half)
-      const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
+      const dpRows = layout.ptyRows;
       const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
       if (row >= listRows) return; // click was in detail area — ignore
       // row is relative to panel content (after toolbar row)
@@ -2746,7 +2745,7 @@ function focusPanelOnSessionIssue(sessionName: string): void {
         viewState.selectedIndex = i;
         viewState.detailScrollOffset = 0;
         // Ensure visible
-        const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
+        const dpRows = layout.ptyRows;
         const listRows = Math.max(3, Math.floor((dpRows - 2 - 1) * 0.5));
         if (i >= viewState.scrollOffset + listRows) {
           viewState.scrollOffset = i - listRows + 1;
