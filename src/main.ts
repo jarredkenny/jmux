@@ -58,7 +58,7 @@ import { buildCcCommands, NEW_TAB_OPTION_ID } from "./glass/cc-commands";
 import { stripVisibleFor, renderStrip, layoutStrip, chipAtX, STRIP_ROWS, type StripChip } from "./glass/strip";
 import { clampTabSelection } from "./glass/reload";
 import { OtelReceiver } from "./otel-receiver";
-import { computeFrameLayout, SIDEBAR_MIN_TERM_COLS, type FrameLayout } from "./frame-layout";
+import { computeFrameLayout, type FrameLayout } from "./frame-layout";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
 import { installHooks, type ClaudeSettings } from "./hook-installer";
@@ -1071,9 +1071,18 @@ async function spawnHunk(cols: number, rows: number): Promise<void> {
 function relayout(): void {
   const termCols = process.stdout.columns || 80;
   const termRows = process.stdout.rows || 24;
-  const willShowSidebar = termCols >= SIDEBAR_MIN_TERM_COLS;
-  const mainStart = willShowSidebar ? sidebarWidth + BORDER_WIDTH : 0;
-  const available = termCols - mainStart;
+
+  // Probe computeFrameLayout in off mode to derive the available width that
+  // the panel-width calculation depends on.
+  const base = {
+    termCols,
+    termRows,
+    sidebarWidth,
+    borderWidth: BORDER_WIDTH,
+    toolbarRows: toolbarHeight,
+  };
+  const probe = computeFrameLayout({ ...base, diffState: "off", requestedPanelCols: 0 });
+  const available = probe.main.w;
 
   let requestedPanelCols = 0;
   if (diffPanel.state === "split") {
@@ -1083,11 +1092,7 @@ function relayout(): void {
   }
 
   layout = computeFrameLayout({
-    termCols,
-    termRows,
-    sidebarWidth,
-    borderWidth: BORDER_WIDTH,
-    toolbarRows: toolbarHeight,
+    ...base,
     diffState: diffPanel.state,
     requestedPanelCols,
   });
