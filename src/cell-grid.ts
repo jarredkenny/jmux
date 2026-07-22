@@ -84,8 +84,9 @@ export function cellWidth(cp: number): number {
 // Writes a single glyph at (row, col), handling the wide-character
 // continuation-cell rule: a width-2 glyph is followed by a width-0
 // continuation cell carrying the same background. writeCell owns this for
-// new code; writeString retains an equivalent inline copy (lines 214–222),
-// and four toolbar sites in renderer.ts are pending conversion to this API.
+// new code; writeString retains an equivalent inline copy in its own wide-char
+// branch, and the toolbar glyph writes in renderer.ts are pending conversion to
+// this API. Grep `char: ""` to find every remaining hand-written instance.
 //
 // Behaviour matches writeString's per-character handling exactly: out of
 // bounds is a silent no-op, and a wide glyph that would overflow the row
