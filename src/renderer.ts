@@ -1,6 +1,6 @@
 import type { Cell, CellGrid, CursorPosition, WindowTab } from "./types";
 import { ColorMode } from "./types";
-import { createGrid, DEFAULT_CELL, cellWidth } from "./cell-grid";
+import { createGrid, DEFAULT_CELL, cellWidth, blit } from "./cell-grid";
 import { theme, neutralFg, accentFor } from "./theme";
 import type { FrameLayout } from "./frame-layout";
 
@@ -223,9 +223,7 @@ export function compositeGrids(
 
   for (let y = 0; y < totalRows; y++) {
     // Copy sidebar cells
-    for (let x = 0; x < sidebar.cols && x < sidebar.cells[y]?.length; x++) {
-      grid.cells[y][x] = { ...sidebar.cells[y][x] };
-    }
+    blit(grid, sidebar, { destX: 0, destY: y, srcX: 0, srcY: y, w: sidebar.cols, h: 1 });
     // Border column
     grid.cells[y][borderCol] = {
       ...DEFAULT_CELL,
@@ -364,9 +362,7 @@ export function compositeGrids(
         // it overlaps and overwrites these same columns rather than main
         // being replaced by a separate code path.
         if (mainY < main.rows) {
-          for (let x = 0; x < mainCols; x++) {
-            grid.cells[y][layout.main.x + x] = { ...main.cells[mainY][x] };
-          }
+          blit(grid, main, { destX: layout.main.x, destY: y, srcX: 0, srcY: mainY, w: mainCols, h: 1 });
         }
 
         if (diffPanel) {
@@ -382,9 +378,7 @@ export function compositeGrids(
           }
           const panelCol = layout.panel!.x;
           if (mainY < diffPanel.grid.rows) {
-            for (let x = 0; x < diffPanel.grid.cols; x++) {
-              grid.cells[y][panelCol + x] = { ...diffPanel.grid.cells[mainY][x] };
-            }
+            blit(grid, diffPanel.grid, { destX: panelCol, destY: y, srcX: 0, srcY: mainY, w: diffPanel.grid.cols, h: 1 });
           }
         }
       }
@@ -395,9 +389,7 @@ export function compositeGrids(
   if (diffPanel?.tabBar && toolbarRows > 0) {
     const tabBarRow = 0; // toolbar is always row 0
     const panelStartCol = layout.panel!.x;
-    for (let c = 0; c < diffPanel.tabBar.cols && panelStartCol + c < totalCols; c++) {
-      grid.cells[tabBarRow][panelStartCol + c] = { ...diffPanel.tabBar.cells[0][c] };
-    }
+    blit(grid, diffPanel.tabBar, { destX: panelStartCol, destY: tabBarRow, srcX: 0, srcY: 0, w: diffPanel.tabBar.cols, h: 1 });
   }
 
   // Overlay modal centered over entire terminal with border, shadow, and dimmed background
@@ -437,16 +429,14 @@ export function compositeGrids(
       if (bRight < totalCols) grid.cells[bTop][bRight] = borderCell("┐");
     }
 
-    // Side borders + modal content
+    // Modal content
+    blit(grid, modalOverlay, { destX: pos.startCol, destY: pos.startRow, srcX: 0, srcY: 0, w: modalOverlay.cols, h: modalOverlay.rows });
+
+    // Side borders
     for (let py = 0; py < modalOverlay.rows; py++) {
       const gy = pos.startRow + py;
       if (gy >= totalRows) break;
       if (bLeft >= 0 && bLeft < totalCols) grid.cells[gy][bLeft] = borderCell("│");
-      for (let px = 0; px < modalOverlay.cols; px++) {
-        const gx = pos.startCol + px;
-        if (gx >= totalCols) break;
-        grid.cells[gy][gx] = { ...modalOverlay.cells[py][px] };
-      }
       if (bRight < totalCols) grid.cells[gy][bRight] = borderCell("│");
     }
 

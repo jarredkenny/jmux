@@ -1,5 +1,5 @@
 import type { CellGrid, AgentState } from "../types";
-import { createGrid, writeString, cellWidth, type CellAttrs } from "../cell-grid";
+import { createGrid, writeString, cellWidth, blit, type CellAttrs } from "../cell-grid";
 import { ColorMode } from "../types";
 
 // Default border palette by agent state — matches the sidebar's defaults
@@ -557,45 +557,7 @@ export class GlassView {
     const iCols = width - 2;
     const iRows = height - 2;
 
-    for (let bRow = 0; bRow < Math.min(iRows, bridgeGrid.rows); bRow++) {
-      const gRow = iStartY + bRow;
-      if (gRow < 0 || gRow >= grid.rows) continue;
-      for (let bCol = 0; bCol < Math.min(iCols, bridgeGrid.cols); bCol++) {
-        const gCol = iStartX + bCol;
-        if (gCol < 0 || gCol >= grid.cols) continue;
-        const src = bridgeGrid.cells[bRow][bCol];
-        const dst = grid.cells[gRow][gCol];
-
-        // For wide (width=2) cells, skip if it would overflow the interior.
-        if (src.width === 2 && bCol + 1 >= iCols) {
-          // Replace with a space to avoid overflow.
-          dst.char = " ";
-          dst.width = 1;
-          dst.fg = src.fg;
-          dst.fgMode = src.fgMode;
-          dst.bg = src.bg;
-          dst.bgMode = src.bgMode;
-          dst.bold = src.bold;
-          dst.italic = src.italic;
-          dst.underline = src.underline;
-          dst.dim = src.dim;
-          dst.link = src.link;
-          continue;
-        }
-
-        dst.char = src.char;
-        dst.width = src.width;
-        dst.fg = src.fg;
-        dst.fgMode = src.fgMode;
-        dst.bg = src.bg;
-        dst.bgMode = src.bgMode;
-        dst.bold = src.bold;
-        dst.italic = src.italic;
-        dst.underline = src.underline;
-        dst.dim = src.dim;
-        dst.link = src.link;
-      }
-    }
+    blit(grid, bridgeGrid, { destX: iStartX, destY: iStartY, w: iCols, h: iRows });
   }
 
   /**

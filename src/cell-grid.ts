@@ -81,6 +81,106 @@ export function cellWidth(cp: number): number {
   return 1;
 }
 
+// Writes a single glyph at (row, col), handling the wide-character
+// continuation-cell rule in one place: a width-2 glyph is followed by a
+// width-0 continuation cell carrying the same background. This is the sole
+// owner of that rule — no other code should hand-construct a
+// `{ char: "", width: 0 }` continuation cell.
+//
+// Behaviour matches writeString's per-character handling exactly: out of
+// bounds is a silent no-op, and a wide glyph that would overflow the row
+// (i.e. its continuation cell falls off the grid) is refused rather than
+// half-drawn. Returns the column advance (1 or 2), or 0 if nothing was
+// written.
+export function writeCell(
+  grid: CellGrid,
+  row: number,
+  col: number,
+  ch: string,
+  attrs?: CellAttrs,
+): number {
+  if (row < 0 || row >= grid.rows) return 0;
+  if (col < 0 || col >= grid.cols) return 0;
+  const cp = ch.codePointAt(0) ?? 0;
+  const w = cellWidth(cp);
+  // Refuse a wide glyph that would overflow the grid — matches writeString.
+  if (w === 2 && col + 1 >= grid.cols) return 0;
+
+  const cell = grid.cells[row][col];
+  cell.char = ch;
+  cell.width = w;
+  if (attrs) {
+    if (attrs.fg !== undefined) cell.fg = attrs.fg;
+    if (attrs.bg !== undefined) cell.bg = attrs.bg;
+    if (attrs.fgMode !== undefined) cell.fgMode = attrs.fgMode;
+    if (attrs.bgMode !== undefined) cell.bgMode = attrs.bgMode;
+    if (attrs.bold !== undefined) cell.bold = attrs.bold;
+    if (attrs.italic !== undefined) cell.italic = attrs.italic;
+    if (attrs.underline !== undefined) cell.underline = attrs.underline;
+    if (attrs.dim !== undefined) cell.dim = attrs.dim;
+    if (attrs.link !== undefined) cell.link = attrs.link;
+  }
+  if (w === 2) {
+    // Continuation cell — only background propagates, matching writeString.
+    const cont = grid.cells[row][col + 1];
+    cont.char = "";
+    cont.width = 0;
+    if (attrs) {
+      if (attrs.bg !== undefined) cont.bg = attrs.bg;
+      if (attrs.bgMode !== undefined) cont.bgMode = attrs.bgMode;
+    }
+  }
+  return w;
+}
+
+export interface BlitOptions {
+  destX: number;
+  destY: number;
+  srcX?: number;
+  srcY?: number;
+  w?: number;
+  h?: number;
+}
+
+// Copies a clipped rectangle from `src` into `dst`. This is the sole owner
+// of rectangle-copying: out-of-bounds destination/source cells are silently
+// dropped (clipping is blit's responsibility), and a wide (width-2) source
+// cell whose continuation would fall outside the copy rectangle is replaced
+// with a space carrying the source cell's attributes — matching the
+// tile-interior copy this was extracted from — rather than leaving an
+// orphaned width-2 cell with no continuation.
+export function blit(dst: CellGrid, src: CellGrid, opts: BlitOptions): void {
+  const srcX = opts.srcX ?? 0;
+  const srcY = opts.srcY ?? 0;
+  const w = opts.w ?? Math.max(0, src.cols - srcX);
+  const h = opts.h ?? Math.max(0, src.rows - srcY);
+
+  for (let ry = 0; ry < h; ry++) {
+    const sy = srcY + ry;
+    if (sy < 0 || sy >= src.rows) continue;
+    const dy = opts.destY + ry;
+    if (dy < 0 || dy >= dst.rows) continue;
+
+    for (let rx = 0; rx < w; rx++) {
+      const sx = srcX + rx;
+      if (sx < 0 || sx >= src.cols) continue;
+      const dx = opts.destX + rx;
+      if (dx < 0 || dx >= dst.cols) continue;
+
+      const srcCell = src.cells[sy][sx];
+
+      if (srcCell.width === 2 && rx + 1 >= w) {
+        // Continuation would fall outside the copy rectangle — replace
+        // with a space carrying the source's attributes.
+        dst.cells[dy][dx] = { ...srcCell, char: " ", width: 1 };
+        continue;
+      }
+
+      dst.cells[dy][dx] = { ...srcCell };
+    }
+  }
+}
+
 export function writeString(
   grid: CellGrid,
   row: number,
