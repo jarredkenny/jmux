@@ -266,27 +266,63 @@ describe("compositeGrids window branch row", () => {
     expect(zshSlot).not.toBe(" ⎇ … "); // the bare-ellipsis regression this pins
   });
 
+  // HUMAN DECISION (Finding 1 rewrite): a single-tab layout never reaches the
+  // `tabRanges[i + 1]` branch at all (isLast is trivially true), so it can't
+  // tell the widened formula apart from the pre-fix one — the pre-fix code
+  // used the exact same `endCol - startCol + 1` expression for every tab, so
+  // a last-tab-only assertion is mathematically identical before and after
+  // the fix. Two tabs are required to make the test fail against the pre-fix
+  // arithmetic: tab "a" is 1 display column wide (own tabWidth = 3), so the
+  // pre-fix/narrow bound (maxLen = 3 - 2 - iconWidth(2) = -1) renders nothing
+  // for it at all, while the widened budget (rowWidth = next tab's startCol -
+  // own startCol = 6, maxLen = 2) renders its full 2-char branch — that's the
+  // assertion that actually differs old vs. new. The second tab, "workspace",
+  // is last and pins the half of the fix that must stay exactly as before:
+  // bounded to its own endCol, never borrowing a gap that isn't there.
   test("a last-tab branch label stays bounded by its own tab width — no overflow past its right edge", () => {
     const sidebar = createGrid(6, 6);
     const main = createGrid(30, 4);
     const toolbar = {
       buttons: [], mainCols: 30,
-      tabs: [tab({ windowId: "@1", name: "workspace", branch: "feature/a-really-long-branch-name" })],
+      tabs: [
+        tab({ windowId: "@1", name: "a", branch: "hi" }),
+        tab({ windowId: "@2", name: "workspace", branch: "feature/a-really-long-branch-name" }),
+      ],
     };
     const layout = makeLayout({ sidebarCols: 6, mainCols: 30, toolbarRows: 2, termRows: 6 });
     const result = compositeGrids(layout, main, sidebar, toolbar);
     const ranges = getToolbarTabRanges(toolbar);
-    expect(ranges.length).toBe(1);
-    const { endCol } = ranges[0];
+    expect(ranges.length).toBe(2);
     const borderCol = layout.borderCol!;
+    const row1 = result.cells[1].map((c) => c.char).join("");
+
+    // Non-last tab "a" borrows the inter-tab gap up to "workspace"'s startCol.
+    // Under the pre-fix formula (rowWidth = endCol - startCol + 1 = 3) maxLen
+    // is <= 0 and this slot renders nothing; this is the part of the test
+    // that fails against the pre-fix arithmetic.
+    const gapSlotStart = borderCol + 1 + ranges[0].startCol;
+    const gapSlotEnd = borderCol + 1 + ranges[1].startCol; // exclusive — the borrowed gap
+    expect(row1.slice(gapSlotStart, gapSlotEnd)).toBe(" ⎇ hi ");
+
+    // Last tab "workspace" stays bounded to its own endCol regardless of the
+    // fix — the invariant the widening must not disturb, now exercised by a
+    // real non-last neighbor instead of a vacuous single-tab layout.
+    const { endCol } = ranges[1];
     const rightEdgeCol = borderCol + 1 + endCol; // last column belonging to the tab
-    const row1 = result.cells[1];
-    const withinTab = row1.slice(borderCol + 1, rightEdgeCol + 1).map((c) => c.char).join("");
-    expect(withinTab).toContain("…"); // truncated, since it doesn't fit even bounded to the tab
-    // Nothing from the branch row spills past the tab's own right edge.
-    expect(row1[rightEdgeCol + 1].char).toBe(" ");
+    const withinTab = result.cells[1]
+      .slice(borderCol + 1 + ranges[1].startCol, rightEdgeCol + 1)
+      .map((c) => c.char).join("");
+    expect(withinTab).toBe(" ⎇ featur… ");
+    // Nothing from the branch row spills past the last tab's own right edge.
+    expect(result.cells[1][rightEdgeCol + 1].char).toBe(" ");
   });
 
+  // HUMAN DECISION (Finding 2 rewrite): `toContain("…")` / `not.toContain(fullBranch)`
+  // both hold under the pre-fix formula too — zsh's old maxLen was 1, so a
+  // 42-char branch already truncated to a bare "…" before this fix. Only an
+  // exact-string assertion, derived from the widened rowWidth arithmetic,
+  // fails against the pre-fix maxLen=1 (which would render " ⎇ … " here
+  // instead of the 4-char-budget " ⎇ fea… " the widened formula produces).
   test("a long branch under a wide (gap-borrowing) tab still truncates with …", () => {
     const sidebar = createGrid(6, 6);
     const main = createGrid(20, 4);
@@ -304,8 +340,9 @@ describe("compositeGrids window branch row", () => {
     const slotStart = borderCol + 1 + ranges[0].startCol;
     const slotEnd = borderCol + 1 + ranges[1].startCol;
     const zshSlot = result.cells[1].slice(slotStart, slotEnd).map((c) => c.char).join("");
-    expect(zshSlot).toContain("…");
-    expect(zshSlot).not.toContain("feature/an-extremely-long-branch-name-here");
+    // rowWidth = vimRange.startCol - zshRange.startCol = 8; maxLen = 8 - 2 -
+    // iconWidth(2) = 4; truncateToCols(branch, 4) = "fea…" (budget 3 + ellipsis).
+    expect(zshSlot).toBe(" ⎇ fea… ");
   });
 });
 
