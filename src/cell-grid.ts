@@ -204,7 +204,16 @@ export function drawBox(
   const { x, y, w, h } = rect;
   if (w < 2 || h < 2) return;
 
-  const border: CellAttrs = { bold: false, italic: false, underline: false, dim: false, ...opts.border };
+  // Filter out explicitly-`undefined` keys before spreading onto the reset
+  // defaults below — `{ ...{ bold: false }, ...{ bold: undefined } }` yields
+  // `{ bold: undefined }` in JS, which would silently defeat the reset and
+  // reintroduce the stale-attribute bug it exists to prevent.
+  const definedBorderAttrs: CellAttrs = {};
+  for (const key of Object.keys(opts.border) as (keyof CellAttrs)[]) {
+    const value = opts.border[key];
+    if (value !== undefined) (definedBorderAttrs as Record<string, unknown>)[key] = value;
+  }
+  const border: CellAttrs = { bold: false, italic: false, underline: false, dim: false, ...definedBorderAttrs };
 
   const top = y;
   const bottom = y + h - 1;

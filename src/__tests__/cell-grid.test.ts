@@ -467,6 +467,30 @@ describe("writeStyledLine", () => {
     const consumed = writeStyledLine(grid, 0, 10, [{ text: "x", attrs: {} }]);
     expect(consumed).toBe(0);
   });
+
+  test("a wide glyph in a non-final segment advances the next segment's start column by 2", () => {
+    // Pins the drift class this whole task exists to prevent: a wide glyph
+    // mid-line must push everything after it two columns, not one.
+    const grid = createGrid(20, 1);
+    const segments: StyledSegment[] = [
+      { text: "a你", attrs: { fg: 1, fgMode: ColorMode.Palette } },
+      { text: "bc", attrs: { fg: 2, fgMode: ColorMode.Palette } },
+    ];
+    const consumed = writeStyledLine(grid, 0, 0, segments);
+    // "a"(1) + "你"(2) + "bc"(2) = 5 display columns.
+    expect(consumed).toBe(5);
+    expect(grid.cells[0][0].char).toBe("a");
+    expect(grid.cells[0][1].char).toBe("你");
+    expect(grid.cells[0][1].width).toBe(2);
+    expect(grid.cells[0][2].char).toBe(""); // continuation cell
+    expect(grid.cells[0][2].width).toBe(0);
+    // Segment 2 must start at column 3, not column 2 — one past the wide
+    // glyph's continuation cell.
+    expect(grid.cells[0][3].char).toBe("b");
+    expect(grid.cells[0][3].fg).toBe(2);
+    expect(grid.cells[0][4].char).toBe("c");
+    expect(grid.cells[0][4].fg).toBe(2);
+  });
 });
 
 describe("drawBox", () => {
@@ -543,6 +567,49 @@ describe("drawBox", () => {
     expect(grid.cells[1][1].char).toBe(" ");
     drawBox(grid, { x: 1, y: 1, w: 6, h: 1 }, { border });
     expect(grid.cells[1][1].char).toBe(" ");
+  });
+
+  test("truncates a wide-character label without a stray trailing-space artifact (pinned)", () => {
+    // Regression pin: the deleted drawBorderRow packed characters up to
+    // maxLabelCols with no ellipsis column reserved, then replaced the last
+    // packed char with "…" — placing the chip's trailing space at the
+    // pre-truncation width and leaving a border-coloured hole for wide
+    // labels. truncateToCols reserves the ellipsis column up front instead,
+    // so "你好世界和平" truncated to 5 cols is "你好…", not "你…" + a gap.
+    const grid = createGrid(20, 3);
+    drawBox(grid, { x: 0, y: 0, w: 10, h: 3 }, {
+      border,
+      label: "你好世界和平",
+    });
+    expect(grid.cells[0][2].char).toBe(" ");
+    expect(grid.cells[0][3].char).toBe("你");
+    expect(grid.cells[0][3].width).toBe(2);
+    expect(grid.cells[0][4].char).toBe("");
+    expect(grid.cells[0][4].width).toBe(0);
+    expect(grid.cells[0][5].char).toBe("好");
+    expect(grid.cells[0][5].width).toBe(2);
+    expect(grid.cells[0][6].char).toBe("");
+    expect(grid.cells[0][6].width).toBe(0);
+    expect(grid.cells[0][7].char).toBe("…");
+    expect(grid.cells[0][8].char).toBe(" ");
+    // The right corner still lands at the box's own right edge — no hole.
+    expect(grid.cells[0][9].char).toBe("┐");
+  });
+
+  test("an explicitly-undefined border attr does not defeat the attribute reset", () => {
+    // Regression pin for the undefined-key trap: `{ ...defaults, ...{ bold:
+    // undefined } }` yields `{ bold: undefined }` in plain JS spreading,
+    // which would silently reintroduce the stale-attribute bug the reset
+    // exists to prevent. drawBox must filter undefined keys out first.
+    const grid = createGrid(10, 5);
+    grid.cells[1][3] = { ...DEFAULT_CELL, char: "x", bold: true, dim: true, link: "https://example.com" };
+    drawBox(grid, { x: 1, y: 1, w: 6, h: 3 }, {
+      border: { fg: 2, fgMode: ColorMode.Palette, bold: undefined },
+    });
+    expect(grid.cells[1][3].char).toBe("─");
+    expect(grid.cells[1][3].bold).toBe(false);
+    expect(grid.cells[1][3].dim).toBe(false);
+    expect(grid.cells[1][3].link).toBeUndefined();
   });
 });
 

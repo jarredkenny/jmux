@@ -136,6 +136,14 @@ export function getModalPosition(
 // Renders the optional second toolbar row: each window's git branch, aligned
 // under its tab (dim, with a ⎇ glyph, truncated to the tab width). Windows whose
 // pane isn't in a git repo simply leave their slot blank.
+//
+// Row 1 (this row) has no separator glyphs — those only exist on row 0 — so a
+// non-last tab's branch label is allowed to extend across the inter-tab gap,
+// all the way up to the next tab's startCol. This is a display-only widening:
+// it does not change getToolbarTabRanges' own column bookkeeping, so the tab
+// bar itself (row 0) and hit-testing are unaffected. The last tab has no gap
+// to borrow — the button cluster starts beyond it — so it stays bounded by
+// its own tab width, exactly like every tab was before this widening.
 function renderWindowBranchRow(
   grid: CellGrid,
   toolbar: ToolbarConfig,
@@ -144,15 +152,18 @@ function renderWindowBranchRow(
   const branchIcon = "⎇ ";
   const iconWidth = textCols(branchIcon);
   const attrs: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
-  for (const { startCol, endCol, tab } of getToolbarTabRanges(toolbar)) {
+  const tabRanges = getToolbarTabRanges(toolbar);
+  for (let i = 0; i < tabRanges.length; i++) {
+    const { startCol, endCol, tab } = tabRanges[i];
     const branch = tab.branch;
     if (!branch) continue;
-    const tabWidth = endCol - startCol + 1;
-    const maxLen = tabWidth - 2 - iconWidth; // leading + trailing space
+    const isLast = i === tabRanges.length - 1;
+    const rowWidth = isLast ? endCol - startCol + 1 : tabRanges[i + 1].startCol - startCol;
+    const maxLen = rowWidth - 2 - iconWidth; // leading + trailing space
     if (maxLen <= 0) continue;
     const branchText = truncateToCols(branch, maxLen);
     const label = " " + branchIcon + branchText + " ";
-    writeStyledLine(grid, 1, borderCol + 1 + startCol, [{ text: label, attrs }], tabWidth);
+    writeStyledLine(grid, 1, borderCol + 1 + startCol, [{ text: label, attrs }], rowWidth);
   }
 }
 

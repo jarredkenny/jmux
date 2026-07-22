@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { sgrForCell, compositeGrids, getModalPosition, BORDER_CHAR } from "../renderer";
+import { sgrForCell, compositeGrids, getModalPosition, getToolbarTabRanges, BORDER_CHAR } from "../renderer";
 import { createGrid, writeString, textCols } from "../cell-grid";
 import { ColorMode } from "../types";
 import type { Cell } from "../types";
@@ -234,6 +234,78 @@ describe("compositeGrids window branch row", () => {
     const layout = makeLayout({ sidebarCols: 6, mainCols: 20, toolbarRows: 2, termRows: 6 });
     const result = compositeGrids(layout, main, sidebar, toolbar);
     expect(result.cells[1].map((c) => c.char).join("")).not.toContain("⎇");
+  });
+
+  // HUMAN DECISION (Finding 1): a non-last tab's branch label may borrow the
+  // inter-tab gap — nothing else paints row 1 there — instead of being bound
+  // to its own (narrow) tab width. A 3-display-column name like "zsh" would
+  // otherwise leave maxLen at 1, rendering a bare "…".
+  test("a 3-col window name (zsh) borrows the inter-tab gap and renders more than a bare …", () => {
+    const sidebar = createGrid(6, 6);
+    const main = createGrid(20, 4);
+    const toolbar = {
+      buttons: [], mainCols: 20,
+      tabs: [
+        tab({ windowId: "@1", name: "zsh", branch: "main" }),
+        tab({ windowId: "@2", name: "vim", branch: "develop", active: false }),
+      ],
+    };
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 20, toolbarRows: 2, termRows: 6 });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const ranges = getToolbarTabRanges(toolbar);
+    const borderCol = layout.borderCol!;
+    const zshRange = ranges[0];
+    const vimRange = ranges[1];
+    const row1 = result.cells[1].map((c) => c.char).join("");
+    // zsh's branch-row slot runs from its own startCol up to (not including)
+    // vim's startCol — the borrowed gap.
+    const slotStart = borderCol + 1 + zshRange.startCol;
+    const slotEnd = borderCol + 1 + vimRange.startCol; // exclusive
+    const zshSlot = row1.slice(slotStart, slotEnd);
+    expect(zshSlot).toBe(" ⎇ main ");
+    expect(zshSlot).not.toBe(" ⎇ … "); // the bare-ellipsis regression this pins
+  });
+
+  test("a last-tab branch label stays bounded by its own tab width — no overflow past its right edge", () => {
+    const sidebar = createGrid(6, 6);
+    const main = createGrid(30, 4);
+    const toolbar = {
+      buttons: [], mainCols: 30,
+      tabs: [tab({ windowId: "@1", name: "workspace", branch: "feature/a-really-long-branch-name" })],
+    };
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 30, toolbarRows: 2, termRows: 6 });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const ranges = getToolbarTabRanges(toolbar);
+    expect(ranges.length).toBe(1);
+    const { endCol } = ranges[0];
+    const borderCol = layout.borderCol!;
+    const rightEdgeCol = borderCol + 1 + endCol; // last column belonging to the tab
+    const row1 = result.cells[1];
+    const withinTab = row1.slice(borderCol + 1, rightEdgeCol + 1).map((c) => c.char).join("");
+    expect(withinTab).toContain("…"); // truncated, since it doesn't fit even bounded to the tab
+    // Nothing from the branch row spills past the tab's own right edge.
+    expect(row1[rightEdgeCol + 1].char).toBe(" ");
+  });
+
+  test("a long branch under a wide (gap-borrowing) tab still truncates with …", () => {
+    const sidebar = createGrid(6, 6);
+    const main = createGrid(20, 4);
+    const toolbar = {
+      buttons: [], mainCols: 20,
+      tabs: [
+        tab({ windowId: "@1", name: "zsh", branch: "feature/an-extremely-long-branch-name-here" }),
+        tab({ windowId: "@2", name: "vim", branch: "develop", active: false }),
+      ],
+    };
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 20, toolbarRows: 2, termRows: 6 });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const ranges = getToolbarTabRanges(toolbar);
+    const borderCol = layout.borderCol!;
+    const slotStart = borderCol + 1 + ranges[0].startCol;
+    const slotEnd = borderCol + 1 + ranges[1].startCol;
+    const zshSlot = result.cells[1].slice(slotStart, slotEnd).map((c) => c.char).join("");
+    expect(zshSlot).toContain("…");
+    expect(zshSlot).not.toContain("feature/an-extremely-long-branch-name-here");
   });
 });
 
