@@ -3,6 +3,57 @@ import { sgrForCell, compositeGrids, getModalPosition, BORDER_CHAR, charDisplayW
 import { createGrid, writeString } from "../cell-grid";
 import { ColorMode } from "../types";
 import type { Cell } from "../types";
+import type { FrameLayout, PanelMode, Span } from "../frame-layout";
+
+// Hand-rolled FrameLayout fixtures for compositeGrids unit tests. These tests
+// use small grid sizes well below frame-layout's SIDEBAR_MIN_TERM_COLS gate
+// (80 cols), so computeFrameLayout itself would collapse the sidebar to
+// null — this mirrors computeFrameLayout's own arithmetic (border width
+// fixed at 1) without that production-only gate, so the geometry stays
+// faithful to the real invariants relayout() guarantees.
+function makeLayout(opts: {
+  sidebarCols?: number | null; // null => no sidebar (narrow terminal)
+  mainCols: number;
+  toolbarRows?: number;
+  panel?: { cols: number; mode: "split" | "full" } | null;
+  termRows: number;
+}): FrameLayout {
+  const { sidebarCols = null, mainCols, toolbarRows = 0, panel = null, termRows } = opts;
+  const sidebar: Span | null = sidebarCols != null ? { x: 0, w: sidebarCols } : null;
+  const borderCol = sidebar ? sidebar.w : null;
+  const mainX = sidebar ? sidebar.w + 1 : 0;
+  const main: Span = { x: mainX, w: mainCols };
+
+  let divider: number | null = null;
+  let panelSpan: Span | null = null;
+  let mode: PanelMode = "single";
+  if (panel) {
+    mode = panel.mode;
+    if (panel.mode === "split") {
+      divider = mainX + mainCols;
+      panelSpan = { x: divider + 1, w: panel.cols };
+    } else {
+      panelSpan = { x: mainX, w: panel.cols };
+    }
+  }
+
+  const termCols = sidebar
+    ? sidebar.w + 1 + mainCols + (mode === "split" ? 1 + (panelSpan?.w ?? 0) : 0)
+    : mainCols;
+
+  return {
+    termCols,
+    termRows,
+    sidebar,
+    borderCol,
+    toolbarRows,
+    ptyRows: termRows - toolbarRows,
+    mode,
+    main,
+    divider,
+    panel: panelSpan,
+  };
+}
 
 describe("sgrForCell", () => {
   test("returns reset only for default cell", () => {
@@ -90,7 +141,8 @@ describe("compositeGrids", () => {
   test("returns main grid only when no sidebar", () => {
     const main = createGrid(10, 3);
     writeString(main, 0, 0, "hello");
-    const result = compositeGrids(main, null);
+    const layout = makeLayout({ mainCols: 10, termRows: 3 });
+    const result = compositeGrids(layout, main, null);
     expect(result.cols).toBe(10);
     expect(result.cells[0][0].char).toBe("h");
   });
@@ -100,7 +152,8 @@ describe("compositeGrids", () => {
     writeString(sidebar, 0, 0, "side");
     const main = createGrid(6, 2);
     writeString(main, 0, 0, "main!!");
-    const result = compositeGrids(main, sidebar);
+    const layout = makeLayout({ sidebarCols: 4, mainCols: 6, termRows: 2 });
+    const result = compositeGrids(layout, main, sidebar);
     // sidebar: 4 cols + border: 1 col + main: 6 cols = 11 cols
     expect(result.cols).toBe(11);
     expect(result.cells[0][0].char).toBe("s");
@@ -145,7 +198,8 @@ describe("compositeGrids window branch row", () => {
     const toolbar = {
       buttons: [], mainCols: 20, tabs: [tab({ branch: "main" })], toolbarRows: 2,
     };
-    const result = compositeGrids(main, sidebar, toolbar);
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 20, toolbarRows: 2, termRows: 6 });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
     expect(result.rows).toBe(6); // main(4) + 2 toolbar rows
     const row1 = result.cells[1].map((c) => c.char).join("");
     expect(row1).toContain("⎇");
@@ -159,7 +213,8 @@ describe("compositeGrids window branch row", () => {
     const main = createGrid(20, 3);
     writeString(main, 0, 0, "TOP");
     const toolbar = { buttons: [], mainCols: 20, tabs: [tab({ branch: "main" })] };
-    const result = compositeGrids(main, sidebar, toolbar);
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 4 });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
     expect(result.rows).toBe(4); // main(3) + 1 toolbar row
     const allText = result.cells.map((r) => r.map((c) => c.char).join("")).join("\n");
     expect(allText).not.toContain("⎇");
@@ -172,7 +227,8 @@ describe("compositeGrids window branch row", () => {
     const toolbar = {
       buttons: [], mainCols: 20, tabs: [tab({ branch: undefined })], toolbarRows: 2,
     };
-    const result = compositeGrids(main, sidebar, toolbar);
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 20, toolbarRows: 2, termRows: 6 });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
     expect(result.cells[1].map((c) => c.char).join("")).not.toContain("⎇");
   });
 });
@@ -193,7 +249,8 @@ describe("compositeGrids with palette overlay", () => {
     writeString(palette, 0, 0, "▷ query       ");
     writeString(palette, 1, 0, " result       ");
 
-    const result = compositeGrids(main, sidebar, toolbar, palette);
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 40, toolbarRows: 1, termRows: 19 });
+    const result = compositeGrids(layout, main, sidebar, toolbar, palette);
     // Total grid: sidebar(6) + border(1) + main(40) = 47 cols, 19 rows
     expect(result.cols).toBe(47);
 
@@ -224,7 +281,8 @@ describe("compositeGrids with palette overlay", () => {
 
     const palette = createGrid(10, 2);
 
-    const result = compositeGrids(main, sidebar, toolbar, palette);
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 30, toolbarRows: 1, termRows: 13 });
+    const result = compositeGrids(layout, main, sidebar, toolbar, palette);
     // Main content area starts at col 7 (sidebar 6 + border 1), should be dimmed
     expect(result.cells[1][7].dim).toBe(true);
   });
@@ -240,7 +298,8 @@ describe("compositeGrids with palette overlay", () => {
     };
 
     const palette = createGrid(14, 2);
-    const result = compositeGrids(main, sidebar, toolbar, palette);
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 50, toolbarRows: 1, termRows: 23 });
+    const result = compositeGrids(layout, main, sidebar, toolbar, palette);
 
     const pos = getModalPosition(57, 23, 14, 2); // totalCols=6+1+50=57, totalRows=22+1=23
     const bRight = pos.startCol + 14; // right border col
@@ -266,7 +325,8 @@ describe("compositeGrids with palette overlay", () => {
       tabs: [],
     };
 
-    const result = compositeGrids(main, sidebar, toolbar, null);
+    const layout = makeLayout({ sidebarCols: 4, mainCols: 10, toolbarRows: 1, termRows: 3 });
+    const result = compositeGrids(layout, main, sidebar, toolbar, null);
     expect(result.rows).toBe(3);
     // No dimming when palette is null
     expect(result.cells[1][5].dim).toBe(false);
@@ -357,7 +417,11 @@ describe("compositeGrids with diff panel", () => {
     writeString(diffGrid, 0, 0, "diff stuff");
 
     const toolbar = { buttons: [], mainCols: 20, tabs: [] };
-    const result = compositeGrids(main, sidebar, toolbar, null, {
+    const layout = makeLayout({
+      sidebarCols: 4, mainCols: 20, toolbarRows: 1, termRows: 4,
+      panel: { cols: 10, mode: "split" },
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar, null, {
       grid: diffGrid,
       mode: "split",
       focused: false,
@@ -382,7 +446,11 @@ describe("compositeGrids with diff panel", () => {
     const diffGrid = createGrid(10, 3);
 
     const toolbar = { buttons: [], mainCols: 20, tabs: [] };
-    const result = compositeGrids(main, sidebar, toolbar, null, {
+    const layout = makeLayout({
+      sidebarCols: 4, mainCols: 20, toolbarRows: 1, termRows: 4,
+      panel: { cols: 10, mode: "split" },
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar, null, {
       grid: diffGrid,
       mode: "split",
       focused: true,
@@ -396,13 +464,21 @@ describe("compositeGrids with diff panel", () => {
 
   test("full mode: sidebar + diff panel only, no main", () => {
     const sidebar = createGrid(4, 3);
-    const main = createGrid(20, 3);
+    // main is sized to mainCols (30, matching toolbar.mainCols below) — in
+    // production the pty/bridge are always resized to layout.main.w
+    // regardless of diff-panel mode (frame-layout.ts), so main and the
+    // panel always agree on width even though the panel visually covers it.
+    const main = createGrid(30, 3);
     writeString(main, 0, 0, "should not appear");
     const diffGrid = createGrid(30, 3);
     writeString(diffGrid, 0, 0, "full diff view here");
 
     const toolbar = { buttons: [], mainCols: 30, tabs: [] };
-    const result = compositeGrids(main, sidebar, toolbar, null, {
+    const layout = makeLayout({
+      sidebarCols: 4, mainCols: 30, toolbarRows: 1, termRows: 4,
+      panel: { cols: 30, mode: "full" },
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar, null, {
       grid: diffGrid,
       mode: "full",
       focused: true,
@@ -425,7 +501,11 @@ describe("compositeGrids with diff panel", () => {
     const modal = createGrid(6, 2);
 
     const toolbar = { buttons: [], mainCols: 20, tabs: [] };
-    const result = compositeGrids(main, sidebar, toolbar, modal, {
+    const layout = makeLayout({
+      sidebarCols: 4, mainCols: 20, toolbarRows: 1, termRows: 9,
+      panel: { cols: 10, mode: "split" },
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar, modal, {
       grid: diffGrid,
       mode: "split",
       focused: false,
@@ -445,7 +525,11 @@ describe("compositeGrids with diff panel", () => {
     const diffGrid = createGrid(10, 3);
 
     const toolbar = { buttons: [], mainCols: 20, tabs: [] };
-    const result = compositeGrids(main, sidebar, toolbar, null, {
+    const layout = makeLayout({
+      sidebarCols: 4, mainCols: 20, toolbarRows: 1, termRows: 4,
+      panel: { cols: 10, mode: "split" },
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar, null, {
       grid: diffGrid,
       mode: "split",
       focused: false,
@@ -467,7 +551,12 @@ describe("compositeGrids with panel tab bar", () => {
       tabBar.cells[0][i + 1].char = text[i];
     }
 
+    const layout = makeLayout({
+      sidebarCols: 24, mainCols: 40, toolbarRows: 1, termRows: 11,
+      panel: { cols: 20, mode: "split" },
+    });
     const result = compositeGrids(
+      layout,
       main,
       sidebar,
       { buttons: [], mainCols: 40 }, // toolbar config

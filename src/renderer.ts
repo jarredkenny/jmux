@@ -2,6 +2,7 @@ import type { Cell, CellGrid, CursorPosition, WindowTab } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, DEFAULT_CELL, cellWidth } from "./cell-grid";
 import { theme, neutralFg, accentFor } from "./theme";
+import type { FrameLayout } from "./frame-layout";
 
 export const BORDER_CHAR = "\u2502"; // │
 
@@ -192,6 +193,7 @@ function renderWindowBranchRow(
 }
 
 export function compositeGrids(
+  layout: FrameLayout,
   main: CellGrid,
   sidebar: CellGrid | null,
   toolbar?: ToolbarConfig | null,
@@ -205,19 +207,13 @@ export function compositeGrids(
 ): CellGrid {
   if (!sidebar) return main;
 
+  // Invariant maintained by callers (see src/frame-layout.ts): a sidebar
+  // grid is only ever passed when `layout.sidebar`/`layout.borderCol` are
+  // also non-null — main.ts sizes both from the same relayout() call.
+  const borderCol = layout.borderCol!;
   const mainCols = toolbar ? toolbar.mainCols : main.cols;
-  let contentCols: number;
-  if (diffPanel) {
-    if (diffPanel.mode === "split") {
-      contentCols = mainCols + 1 + diffPanel.grid.cols; // main + divider + diff
-    } else {
-      contentCols = diffPanel.grid.cols; // full: diff replaces main
-    }
-  } else {
-    contentCols = mainCols;
-  }
-  const totalCols = sidebar.cols + 1 + contentCols;
-  const toolbarRows = toolbar ? (toolbar.toolbarRows ?? 1) : 0;
+  const totalCols = layout.termCols;
+  const toolbarRows = toolbar ? layout.toolbarRows : 0;
   const totalRows = main.rows + toolbarRows;
   const grid = createGrid(totalCols, totalRows);
 
@@ -227,7 +223,6 @@ export function compositeGrids(
       grid.cells[y][x] = { ...sidebar.cells[y][x] };
     }
     // Border column
-    const borderCol = sidebar.cols;
     grid.cells[y][borderCol] = {
       ...DEFAULT_CELL,
       char: BORDER_CHAR,
@@ -360,23 +355,19 @@ export function compositeGrids(
       // Main content — offset by toolbar rows
       const mainY = toolbar ? y - toolbarRows : y;
       if (mainY >= 0) {
-        if (diffPanel && diffPanel.mode === "full") {
-          // Full mode: copy diff grid instead of main
-          if (mainY < diffPanel.grid.rows) {
-            for (let x = 0; x < diffPanel.grid.cols; x++) {
-              grid.cells[y][borderCol + 1 + x] = { ...diffPanel.grid.cells[mainY][x] };
-            }
+        // Copy main grid at layout.main.x. In full mode the diff panel
+        // below is painted at layout.panel.x, which equals layout.main.x —
+        // it overlaps and overwrites these same columns rather than main
+        // being replaced by a separate code path.
+        if (mainY < main.rows) {
+          for (let x = 0; x < mainCols; x++) {
+            grid.cells[y][layout.main.x + x] = { ...main.cells[mainY][x] };
           }
-        } else {
-          // Normal or split mode: copy main grid
-          if (mainY < main.rows) {
-            for (let x = 0; x < mainCols; x++) {
-              grid.cells[y][borderCol + 1 + x] = { ...main.cells[mainY][x] };
-            }
-          }
-          // Split mode: add divider + diff panel
-          if (diffPanel && diffPanel.mode === "split") {
-            const dividerCol = borderCol + 1 + mainCols;
+        }
+
+        if (diffPanel) {
+          if (diffPanel.mode === "split") {
+            const dividerCol = layout.divider!;
             const focusColor = accentFor((0x58 << 16) | (0xa6 << 8) | 0xff);
             grid.cells[y][dividerCol] = {
               ...DEFAULT_CELL,
@@ -384,10 +375,11 @@ export function compositeGrids(
               fg: diffPanel.focused ? focusColor : 8,
               fgMode: diffPanel.focused ? ColorMode.RGB : ColorMode.Palette,
             };
-            if (mainY < diffPanel.grid.rows) {
-              for (let x = 0; x < diffPanel.grid.cols; x++) {
-                grid.cells[y][dividerCol + 1 + x] = { ...diffPanel.grid.cells[mainY][x] };
-              }
+          }
+          const panelCol = layout.panel!.x;
+          if (mainY < diffPanel.grid.rows) {
+            for (let x = 0; x < diffPanel.grid.cols; x++) {
+              grid.cells[y][panelCol + x] = { ...diffPanel.grid.cells[mainY][x] };
             }
           }
         }
@@ -398,13 +390,7 @@ export function compositeGrids(
   // Tab bar rendering — writes into the toolbar row of the panel area
   if (diffPanel?.tabBar && toolbarRows > 0) {
     const tabBarRow = 0; // toolbar is always row 0
-    const sidebarOffset = sidebar.cols + 1;
-    let panelStartCol: number;
-    if (diffPanel.mode === "split") {
-      panelStartCol = sidebarOffset + mainCols + 1; // after divider
-    } else {
-      panelStartCol = sidebarOffset; // full mode replaces main
-    }
+    const panelStartCol = layout.panel!.x;
     for (let c = 0; c < diffPanel.tabBar.cols && panelStartCol + c < totalCols; c++) {
       grid.cells[tabBarRow][panelStartCol + c] = { ...diffPanel.tabBar.cells[0][c] };
     }
@@ -415,7 +401,7 @@ export function compositeGrids(
     const pos = getModalPosition(totalCols, totalRows, modalOverlay.cols, modalOverlay.rows);
 
     // Dim all content cells behind the palette (main area + toolbar, not sidebar)
-    const mainStart = sidebar.cols + 1;
+    const mainStart = layout.main.x;
     for (let y = 0; y < totalRows; y++) {
       for (let x = mainStart; x < totalCols; x++) {
         grid.cells[y][x].dim = true;
@@ -542,6 +528,7 @@ export class Renderer {
   }
 
   render(
+    layout: FrameLayout,
     main: CellGrid,
     cursor: CursorPosition,
     sidebar: CellGrid | null,
@@ -555,8 +542,8 @@ export class Renderer {
       tabBar?: CellGrid;
     },
   ): void {
-    const grid = compositeGrids(main, sidebar, toolbar, modalOverlay, diffPanel);
-    const cursorOffset = sidebar ? sidebar.cols + 1 : 0;
+    const grid = compositeGrids(layout, main, sidebar, toolbar, modalOverlay, diffPanel);
+    const cursorOffset = layout.main.x;
     const buf: string[] = [];
 
     // Row-level diffing: skip rows whose cells are identical to the

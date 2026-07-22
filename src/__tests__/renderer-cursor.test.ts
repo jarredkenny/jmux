@@ -3,6 +3,7 @@ import { Renderer } from "../renderer";
 import { createGrid } from "../cell-grid";
 import { ColorMode } from "../types";
 import type { Cell } from "../types";
+import type { FrameLayout, Span } from "../frame-layout";
 
 function makeCell(char: string, width: number = 1): Cell {
   return {
@@ -10,6 +11,28 @@ function makeCell(char: string, width: number = 1): Cell {
     fg: 0, bg: 0,
     fgMode: ColorMode.Default, bgMode: ColorMode.Default,
     bold: false, italic: false, underline: false, dim: false,
+  };
+}
+
+// Hand-rolled FrameLayout fixtures — see the equivalent helper in
+// renderer.test.ts for why these bypass computeFrameLayout's
+// SIDEBAR_MIN_TERM_COLS gate (these grids are far smaller than a real
+// terminal).
+function noSidebarLayout(mainCols: number, termRows: number): FrameLayout {
+  return {
+    termCols: mainCols, termRows, sidebar: null, borderCol: null,
+    toolbarRows: 0, ptyRows: termRows, mode: "single",
+    main: { x: 0, w: mainCols }, divider: null, panel: null,
+  };
+}
+
+function withSidebarLayout(sidebarCols: number, mainCols: number, termRows: number): FrameLayout {
+  const sidebar: Span = { x: 0, w: sidebarCols };
+  const mainX = sidebarCols + 1;
+  return {
+    termCols: sidebarCols + 1 + mainCols, termRows, sidebar, borderCol: sidebarCols,
+    toolbarRows: 0, ptyRows: termRows, mode: "single",
+    main: { x: mainX, w: mainCols }, divider: null, panel: null,
   };
 }
 
@@ -45,7 +68,7 @@ describe("Renderer cursor repositioning", () => {
     grid.cells[0][3] = makeCell("─");  // U+2500, width 1 → no reposition
     grid.cells[0][4] = makeCell("c");
 
-    renderer.render(grid, { x: 0, y: 0 }, null);
+    renderer.render(noSidebarLayout(5, 1), grid, { x: 0, y: 0 }, null);
 
     // No CUP sequences between characters — all emitted contiguously
     expect(captured).not.toContain("\x1b[1;3H");
@@ -62,7 +85,7 @@ describe("Renderer cursor repositioning", () => {
     grid.cells[0][2] = makeCell("b");
     grid.cells[0][3] = makeCell("c");
 
-    renderer.render(grid, { x: 0, y: 0 }, null);
+    renderer.render(noSidebarLayout(4, 1), grid, { x: 0, y: 0 }, null);
 
     // After "你" (width=2), there SHOULD be a reposition to col 3
     expect(captured).toContain("\x1b[1;3H");
@@ -78,7 +101,7 @@ describe("Renderer cursor repositioning", () => {
     grid.cells[0][1] = makeCell("⚙");  // U+2699, width 1 → no reposition
     grid.cells[0][2] = makeCell("b");
 
-    renderer.render(grid, { x: 0, y: 0 }, null);
+    renderer.render(noSidebarLayout(3, 1), grid, { x: 0, y: 0 }, null);
 
     expect(captured).not.toContain("\x1b[1;3H");
     expect(captured).toContain("a⚙b");
@@ -92,7 +115,7 @@ describe("Renderer cursor repositioning", () => {
     grid.cells[0][1] = makeCell("é");  // U+00E9, width 1 → no reposition
     grid.cells[0][2] = makeCell("b");
 
-    renderer.render(grid, { x: 0, y: 0 }, null);
+    renderer.render(noSidebarLayout(3, 1), grid, { x: 0, y: 0 }, null);
 
     expect(captured).not.toContain("\x1b[1;3H");
     expect(captured).toContain("aéb");
@@ -122,7 +145,7 @@ describe("Renderer.getLinkAt", () => {
     }
     const sidebar = createGrid(6, 3); // cols 0..5, border at col 6
 
-    renderer.render(main, { x: 0, y: 0 }, sidebar);
+    renderer.render(withSidebarLayout(6, 40, 3), main, { x: 0, y: 0 }, sidebar);
 
     const absX = sidebar.cols + 1 + mainX; // 6 + 1 + 2 = 9
     expect(renderer.getLinkAt(absX, 1)).toBe(url);

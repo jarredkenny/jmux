@@ -1292,11 +1292,12 @@ function renderFrame(): void {
   // Settings screen replaces main content
   if (settingsScreen.isOpen) {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
-    const totalCols = process.stdout.columns || 80;
+    const totalCols = layout.termCols;
     const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
     const contentRows = process.stdout.rows || 24;
     const settingsGrid = settingsScreen.render(contentCols, contentRows);
     renderer.render(
+      layout,
       settingsGrid,
       { x: 0, y: 0 },
       sidebarGrid,
@@ -1315,7 +1316,7 @@ function renderFrame(): void {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
     const overlay = computeModalOverlay();
     const stripVisible = stripVisibleFor(commandCenterTabs);
-    const totalCols = process.stdout.columns || 80;
+    const totalCols = layout.termCols;
     const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
 
     let content = glassView.getGrid();
@@ -1338,7 +1339,7 @@ function renderFrame(): void {
       currentStripChips = [];
     }
 
-    renderer.render(content, cursor, sidebarGrid, null, overlay?.grid ?? null, overlay?.cursor ?? null, undefined);
+    renderer.render(layout, content, cursor, sidebarGrid, null, overlay?.grid ?? null, overlay?.cursor ?? null, undefined);
     return;
   }
 
@@ -1351,7 +1352,7 @@ function renderFrame(): void {
   let diffPanelArg: { grid: import("./types").CellGrid; mode: "split" | "full"; focused: boolean; tabBar?: import("./types").CellGrid } | undefined;
   if (diffPanel.isActive()) {
     const dpCols = getDiffPanelCols();
-    const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
+    const dpRows = layout.ptyRows;
 
     let contentGrid: import("./types").CellGrid;
     if (infoPanel.activeTab === "diff") {
@@ -1408,6 +1409,7 @@ function renderFrame(): void {
     };
   }
   renderer.render(
+    layout,
     grid, cursor,
     sidebarShown ? sidebar.getGrid() : null,
     tb,
@@ -3758,7 +3760,7 @@ control.onEvent((event: ControlEvent) => {
           fetchWindows();
           if (diffPanel.isActive() && !diffPanel.hunkExited) {
             const dpCols = getDiffPanelCols();
-            const dpRows = toolbarEnabled ? (process.stdout.rows || 24) - toolbarHeight : (process.stdout.rows || 24);
+            const dpRows = layout.ptyRows;
             await spawnHunk(dpCols, dpRows);
           }
           // Sync issue panel and snapshotter to the new session's linked issue
@@ -4071,7 +4073,7 @@ function ensureGlassView(): GlassView {
 
 function resizeGlass(): void {
   if (!glassView) return;
-  const totalCols = process.stdout.columns || 80;
+  const totalCols = layout.termCols;
   const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
   const stripRows = stripVisibleFor(commandCenterTabs) ? STRIP_ROWS : 0;
   const contentRows = (process.stdout.rows || 24) - stripRows;
