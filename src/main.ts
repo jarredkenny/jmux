@@ -1131,8 +1131,9 @@ async function zoomDiffPanel(): Promise<void> {
   relayout();
 
   if (diffPanel.state === "full") {
-    // split → full: zooming always grabs focus (relayout() alone only
-    // re-applies whatever diffPanelFocused already was).
+    // split → full: zooming always grabs focus. relayout() only pushes
+    // geometry (inputRouter.setLayout) and never touches panel focus, so
+    // that state has to be set explicitly here via setDiffFocus.
     setDiffFocus(true);
   }
 }

@@ -542,6 +542,120 @@ describe("diff panel routing", () => {
     router.handleInput("\x1b[1;2C"); // Shift+Right
     expect(ptyData).toBe("\x1b[1;2C");
   });
+
+  // Full mode: panel.x === main.x (the panel overlaps main rather than
+  // sitting after a divider) and divider is null. The setMainCols(0) deletion
+  // in main.ts rests on this routing actually sending content-area clicks to
+  // the panel instead of tmux's main pane.
+  test("full mode: content-area click routes to panel, not main, translated by panel.x", () => {
+    let diffData = "";
+    let ptyData = "";
+    const layout = baseLayout(4, "full", 10);
+    // Sanity-check the geometry this test (and the setMainCols(0) deletion)
+    // depends on before asserting router behavior against it.
+    expect(layout.divider).toBeNull();
+    expect(layout.panel!.x).toBe(layout.main.x);
+
+    const router = new InputRouter(
+      {
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onDiffPanelData: (d) => { diffData += d; },
+      },
+      layout,
+    );
+    // A click 5 (1-indexed) columns into the panel, row 2 into content —
+    // same convention as the split-mode panel test above.
+    const mouseX = layout.panel!.x + 5;
+    const mouseY = layout.toolbarRows + 2;
+    router.handleInput(`\x1b[<0;${mouseX};${mouseY}M`);
+    expect(diffData).toBe("\x1b[<0;5;2M");
+    expect(ptyData).toBe("");
+  });
+
+  test("full mode: no divider exists, so no column is ever classified as a divider drag", () => {
+    let diffData = "";
+    let focusToggled = false;
+    const layout = baseLayout(4, "full", 10);
+    expect(layout.divider).toBeNull();
+
+    const router = new InputRouter(
+      {
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onDiffPanelData: (d) => { diffData += d; },
+        onDiffPanelFocusToggle: () => { focusToggled = true; },
+      },
+      layout,
+    );
+    // Pre-focus the panel so the (unrelated) "click acquires focus" branch
+    // can't fire and confound this assertion — isolates the divider check.
+    router.setPanelFocused(true);
+    // Click at the column that would have been the divider in a
+    // comparably-sized split layout (main.x + main.w). With layout.divider
+    // === null this must still route to the panel as ordinary content, never
+    // trigger the divider-toggle branch.
+    const mouseX = layout.main.x + layout.main.w; // 1-indexed grid col
+    const mouseY = layout.toolbarRows + 3;
+    router.handleInput(`\x1b[<0;${mouseX};${mouseY}M`);
+    expect(focusToggled).toBe(false);
+    expect(diffData.length).toBeGreaterThan(0);
+  });
+});
+
+describe("toolbar column routing", () => {
+  // gridX - layout.main.x is the corrected formula (replacing the old
+  // `mouse.x - sidebarCols - 1`, which was off by one — see the
+  // "glass strip mouse routing" comment above for the corroborating trace).
+  test("onToolbarClick receives gridX - layout.main.x for a click in the toolbar row", () => {
+    let clickedCol = -1;
+    const layout = baseLayout(24);
+    const router = new InputRouter(
+      {
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onToolbarClick: (col) => { clickedCol = col; },
+      },
+      layout,
+    );
+    const gridX = layout.main.x + 5;
+    const mouseX = gridX + 1; // SGR mouse x is 1-indexed
+    router.handleInput(`\x1b[<0;${mouseX};1M`); // row 1 → gridY 0, within toolbarRows
+    expect(clickedCol).toBe(5);
+  });
+
+  test("onHover reports the same column for a motion event in the toolbar row", () => {
+    const hovers: Array<{ area: "sidebar"; row: number } | { area: "toolbar"; col: number } | null> = [];
+    const layout = baseLayout(24);
+    const router = new InputRouter(
+      {
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onHover: (target) => { hovers.push(target); },
+      },
+      layout,
+    );
+    const gridX = layout.main.x + 5;
+    const mouseX = gridX + 1;
+    router.handleInput(`\x1b[<32;${mouseX};1M`); // button 32 = plain motion
+    expect(hovers).toEqual([{ area: "toolbar", col: 5 }]);
+  });
+
+  test("a click at gridX === layout.main.x yields column 0 (the boundary the old -1 offset got wrong)", () => {
+    let clickedCol = -1;
+    const layout = baseLayout(24);
+    const router = new InputRouter(
+      {
+        onPtyData: () => {},
+        onSidebarClick: () => {},
+        onToolbarClick: (col) => { clickedCol = col; },
+      },
+      layout,
+    );
+    const mouseX = layout.main.x + 1; // gridX === layout.main.x
+    router.handleInput(`\x1b[<0;${mouseX};1M`);
+    expect(clickedCol).toBe(0);
+  });
 });
 
 describe("InfoPanel tab switching", () => {
