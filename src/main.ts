@@ -1362,16 +1362,14 @@ let renderTimer: ReturnType<typeof setTimeout> | null = null;
  * no modal is open. Shared by every render branch so modals composite the same
  * way over the main view, the settings screen, and the Command Center.
  */
-function computeModalOverlay(): {
+function computeModalOverlay(activeLayout: FrameLayout): {
   grid: import("./types").CellGrid;
   cursor: { row: number; col: number } | null;
 } | null {
   if (!activeModal?.isOpen()) return null;
-  const termCols = process.stdout.columns || 80;
-  const termRows = process.stdout.rows || 24;
-  const modalWidth = activeModal.preferredWidth(termCols);
+  const modalWidth = activeModal.preferredWidth(activeLayout.termCols);
   const grid = activeModal.getGrid(modalWidth);
-  const pos = getModalPosition(termCols, termRows, modalWidth, grid.rows);
+  const pos = getModalPosition(activeLayout, modalWidth, grid.rows);
   const cursorPos = activeModal.getCursorPosition();
   const cursor = cursorPos
     ? { row: pos.startRow + cursorPos.row, col: pos.startCol + cursorPos.col }
@@ -1418,7 +1416,7 @@ function renderFrame(): void {
   // like settings above — rendered through fullScreenLayout, no footer.
   if (inGlass && glassView) {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
-    const overlay = computeModalOverlay();
+    const overlay = computeModalOverlay(fullScreenLayout);
     const stripVisible = stripVisibleFor(commandCenterTabs);
     const totalCols = fullScreenLayout.termCols;
     const contentCols = sidebarShown ? totalCols - fullScreenLayout.main.x : totalCols;
@@ -1450,7 +1448,7 @@ function renderFrame(): void {
   const grid = bridge.getGrid();
   const cursor = bridge.getCursor();
   const tb = toolbarEnabled ? makeToolbar() : null;
-  const overlay = computeModalOverlay();
+  const overlay = computeModalOverlay(layout);
   const modalGrid = overlay?.grid ?? null;
   const modalCursorPos = overlay?.cursor ?? null;
   let diffPanelArg: { grid: import("./types").CellGrid; mode: "split" | "full"; focused: boolean; tabBar?: import("./types").CellGrid } | undefined;

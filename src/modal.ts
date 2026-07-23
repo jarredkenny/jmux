@@ -2,6 +2,7 @@ import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
 import type { CellAttrs } from "./cell-grid";
 import { theme, neutralFg } from "./theme";
+import { tokens } from "./chrome-tokens";
 
 // --- Modal interface ---
 
@@ -25,8 +26,10 @@ export interface Modal {
 // writeString() on every render, so mutating them in place (see
 // rebuildModalAttrs) re-themes every modal without re-importing. They start
 // populated from DEFAULT_THEME and are rebuilt once a terminal background is
-// detected. Neutral text (white/gray) follows `neutralFg`; accent colors
-// (green prompt/match, yellow tag) are palette and theme-independent.
+// detected. Neutral text (white/gray) follows `neutralFg`; the prompt caret
+// and fuzzy-match highlight follow `tokens.accent` (green now means
+// "running", not focus) and the current-tag chip follows `tokens.textPrimary`
+// bold (yellow retired — weight signals "current", not hue).
 
 export const HEADER_ATTRS: CellAttrs = {};
 export const SUBHEADER_ATTRS: CellAttrs = {};
@@ -68,23 +71,22 @@ export function rebuildModalAttrs(): void {
 
   assign(HEADER_ATTRS, { ...primary, bold: true, ...onSurface });
   assign(SUBHEADER_ATTRS, { ...secondary, ...onSurface });
-  assign(PROMPT_ATTRS, { fg: 2, fgMode: ColorMode.Palette, ...onSurface });
+  assign(PROMPT_ATTRS, { ...tokens.accent, ...onSurface });
   assign(INPUT_ATTRS, { ...primary, bold: true, ...onSurface });
   assign(RESULT_ATTRS, { ...primary, dim: true, ...onSurface });
   assign(SELECTED_RESULT_ATTRS, { ...primary, ...onSelected });
-  assign(MATCH_ATTRS, { fg: 2, fgMode: ColorMode.Palette, ...onSurface });
+  assign(MATCH_ATTRS, { ...tokens.accent, ...onSurface });
   assign(SELECTED_MATCH_ATTRS, {
-    fg: 2,
-    fgMode: ColorMode.Palette,
+    ...tokens.accent,
     bold: true,
     ...onSelected,
   });
   assign(CATEGORY_ATTRS, { ...secondary, ...onSurface });
   assign(SELECTED_CATEGORY_ATTRS, { ...secondary, ...onSelected });
-  assign(CURRENT_TAG_ATTRS, { fg: 3, fgMode: ColorMode.Palette, ...onSurface });
+  assign(CURRENT_TAG_ATTRS, { ...tokens.textPrimary, bold: true, ...onSurface });
   assign(SELECTED_CURRENT_TAG_ATTRS, {
-    fg: 3,
-    fgMode: ColorMode.Palette,
+    ...tokens.textPrimary,
+    bold: true,
     ...onSelected,
   });
   assign(BREADCRUMB_ATTRS, { ...secondary, ...onSurface });

@@ -189,23 +189,65 @@ describe("compositeGrids", () => {
 });
 
 describe("getModalPosition", () => {
-  test("centers modal horizontally over entire terminal", () => {
-    const pos = getModalPosition(100, 30, 60, 6);
+  test("centers modal horizontally over the entire terminal", () => {
+    const layout = makeLayout({ sidebarCols: null, mainCols: 100, termRows: 30 });
+    const pos = getModalPosition(layout, 60, 6);
     // totalW = 63, startCol = max(2, floor((100-63)/2) + 1) = max(2, 18+1) = 19
     expect(pos.startCol).toBe(19);
   });
 
-  test("positions modal in upper third vertically", () => {
-    const pos = getModalPosition(100, 30, 60, 6);
-    // totalH = 9, startRow = max(2, floor((30-9)/3)+1) = max(2, 7+1) = 8
+  test("positions modal in the upper third of the content band (no toolbar: contentTop=0)", () => {
+    const layout = makeLayout({ sidebarCols: null, mainCols: 100, termRows: 30 });
+    const pos = getModalPosition(layout, 60, 6);
+    // contentTop=0, contentRows=30, totalH=9: startRow = 0 + floor((30-9)/3)+1 = 8
     expect(pos.startRow).toBe(8);
   });
 
-  test("minimum startRow and startCol leave room for border", () => {
-    const pos = getModalPosition(20, 6, 18, 5);
-    // Very tight — startCol = max(2, ...) = 2, startRow = max(2, ...) = 2
+  test("centering offsets by contentTop when a toolbar/rule sits above the content band", () => {
+    const layout = makeLayout({
+      sidebarCols: null, mainCols: 100, toolbarRows: 1, termRows: 32,
+      frameRulesEnabled: true,
+    });
+    // contentTop = 1 (toolbar) + 1 (rule) = 2, contentRows = 32 - 2 = 30
+    expect(layout.contentTop).toBe(2);
+    const pos = getModalPosition(layout, 60, 6);
+    // Same shape as the no-toolbar case, offset by contentTop: 2 + 8 = 10
+    expect(pos.startRow).toBe(10);
+  });
+
+  test("minimum startRow/startCol leave room for a border, relative to the content band", () => {
+    // A modal that comfortably fits within a small band still respects both
+    // the horizontal floor and the content-band top.
+    const layout = makeLayout({ sidebarCols: null, mainCols: 20, termRows: 6 });
+    const pos = getModalPosition(layout, 10, 2);
     expect(pos.startCol).toBeGreaterThanOrEqual(2);
-    expect(pos.startRow).toBeGreaterThanOrEqual(2);
+    expect(pos.startRow).toBeGreaterThanOrEqual(layout.contentTop);
+  });
+
+  test("a tall modal's bottom (shadow) row never reaches the footer rule", () => {
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 40, toolbarRows: 1, termRows: 20,
+      frameRulesEnabled: true, footerEnabled: true,
+    });
+    expect(layout.footerRuleRow).not.toBeNull();
+    // A modal almost as tall as the whole content band.
+    const modalHeight = layout.contentRows - 2;
+    const pos = getModalPosition(layout, 30, modalHeight);
+    const shadowRow = pos.startRow + modalHeight + 1; // bBottom + 1, per compositeGrids
+    expect(shadowRow).toBeLessThan(layout.footerRuleRow!);
+  });
+
+  test("a normally-sized modal stays fully within [contentTop, contentTop+contentRows)", () => {
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 40, toolbarRows: 1, termRows: 20,
+      frameRulesEnabled: true, footerEnabled: true,
+    });
+    const modalHeight = 6;
+    const pos = getModalPosition(layout, 30, modalHeight);
+    const boxTop = pos.startRow - 1;
+    const shadowRow = pos.startRow + modalHeight + 1;
+    expect(boxTop).toBeGreaterThanOrEqual(layout.contentTop);
+    expect(shadowRow).toBeLessThan(layout.contentTop + layout.contentRows);
   });
 });
 
@@ -396,7 +438,7 @@ describe("compositeGrids with palette overlay", () => {
     // Total grid: sidebar(6) + border(1) + main(40) = 47 cols, 19 rows
     expect(result.cols).toBe(47);
 
-    const pos = getModalPosition(47, 19, 14, 2);
+    const pos = getModalPosition(layout, 14, 2);
 
     // Box border: ┌ at top-left
     expect(result.cells[pos.startRow - 1][pos.startCol - 1].char).toBe("┌");
@@ -443,7 +485,7 @@ describe("compositeGrids with palette overlay", () => {
     const layout = makeLayout({ sidebarCols: 6, mainCols: 50, toolbarRows: 1, termRows: 23 });
     const result = compositeGrids(layout, main, sidebar, toolbar, palette);
 
-    const pos = getModalPosition(57, 23, 14, 2); // totalCols=6+1+50=57, totalRows=22+1=23
+    const pos = getModalPosition(layout, 14, 2); // totalCols=6+1+50=57, totalRows=22+1=23
     const bRight = pos.startCol + 14; // right border col
     const bBottom = pos.startRow + 2; // bottom border row
 

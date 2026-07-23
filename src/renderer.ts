@@ -182,18 +182,38 @@ export function getToolbarTabRanges(toolbar: ToolbarConfig): Array<{ id: string;
 }
 
 // Returns the absolute grid position for modal content.
-// Centered over the entire terminal (not just the main area).
-// Accounts for border (1 cell each side) and shadow (1 cell right/bottom).
+// Centered horizontally over the entire terminal (not just the main area);
+// positioned vertically within the content band — [layout.contentTop,
+// layout.contentTop + layout.contentRows) — so a modal never overlaps the
+// toolbar/rule rows above it or the footer-rule/footer rows below it, even
+// when the footer chrome is showing. Accounts for border (1 cell each side)
+// and shadow (1 cell right/bottom).
 export function getModalPosition(
-  totalGridCols: number, totalGridRows: number,
+  layout: FrameLayout,
   modalWidth: number, modalHeight: number,
 ): { startCol: number; startRow: number } {
   const totalW = modalWidth + 3; // border left + content + border right + shadow
   const totalH = modalHeight + 3; // border top + content + border bottom + shadow
-  return {
-    startCol: Math.max(2, Math.floor((totalGridCols - totalW) / 2) + 1),
-    startRow: Math.max(2, Math.floor((totalGridRows - totalH) / 3) + 1),
-  };
+  const startCol = Math.max(2, Math.floor((layout.termCols - totalW) / 2) + 1);
+
+  const { contentTop, contentRows } = layout;
+  // Ideal: same one-third-down centering as before, but relative to the
+  // content band rather than the whole terminal.
+  const idealStartRow = contentTop + Math.floor((contentRows - totalH) / 3) + 1;
+  // The box top (startRow - 1) must not rise above the content band...
+  const minStartRow = contentTop + 1;
+  // ...and the shadow's bottom row (startRow + modalHeight + 1) must not
+  // reach the footer-rule/footer rows below the content band.
+  const maxStartRow = contentTop + contentRows - modalHeight - 2;
+
+  // When the band is too short for the modal to fit within both bounds,
+  // protecting the footer boundary wins — better to overlap the toolbar than
+  // paint over the footer.
+  const startRow = minStartRow <= maxStartRow
+    ? Math.max(minStartRow, Math.min(idealStartRow, maxStartRow))
+    : maxStartRow;
+
+  return { startCol, startRow };
 }
 
 // Renders the optional second toolbar row: each window's git branch, aligned
@@ -502,7 +522,7 @@ export function compositeGrids(
 
   // Overlay modal centered over entire terminal with border, shadow, and dimmed background
   if (modalOverlay) {
-    const pos = getModalPosition(totalCols, totalRows, modalOverlay.cols, modalOverlay.rows);
+    const pos = getModalPosition(layout, modalOverlay.cols, modalOverlay.rows);
 
     // Dim all content cells behind the palette (main area + toolbar, not sidebar)
     const mainStart = layout.main.x;
