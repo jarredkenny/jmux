@@ -1248,7 +1248,7 @@ describe("toolbar action buttons pack with a one-column inter-glyph gutter (Task
   });
 });
 
-describe("toolbar status chip removed from the live toolbar (Task 7)", () => {
+describe("toolbar snapshot status chip (restored to the live toolbar after the footer's removal)", () => {
   test("getToolbarStatusChipRange returns null when the toolbar carries no statusChip", () => {
     const toolbar = { buttons: buildToolbarButtons({ panelActive: false }), mainCols: 40, tabs: [] };
     expect(getToolbarStatusChipRange(toolbar)).toBeNull();
@@ -1262,6 +1262,33 @@ describe("toolbar status chip removed from the live toolbar (Task 7)", () => {
     const result = compositeGrids(layout, main, sidebar, toolbar);
     const row0 = result.cells[0].map((c) => c.char).join("");
     expect(row0).not.toContain("snapshot");
+  });
+
+  test("getToolbarStatusChipRange returns a non-null range when the toolbar carries a statusChip", () => {
+    const toolbar = {
+      buttons: buildToolbarButtons({ panelActive: false }),
+      mainCols: 40,
+      tabs: [],
+      statusChip: "snapshot stale",
+    };
+    const range = getToolbarStatusChipRange(toolbar);
+    expect(range).not.toBeNull();
+    expect(range!.endCol).toBeGreaterThan(range!.startCol);
+  });
+
+  test("compositeGrids paints the chip text on row 0 when statusChip is present — the toolbar's own home again, not the footer's", () => {
+    const sidebar = createGrid(6, 6);
+    const main = createGrid(40, 4);
+    const toolbar = {
+      buttons: buildToolbarButtons({ panelActive: false }),
+      mainCols: 40,
+      tabs: [],
+      statusChip: "snapshot stale",
+    };
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 40, toolbarRows: 1, termRows: 4 });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const row0 = result.cells[0].map((c) => c.char).join("");
+    expect(row0).toContain("snapshot stale");
   });
 });
 

@@ -166,6 +166,13 @@ export function rebuildSidebarColors(): void {
   GROUP_HAIRLINE_ATTRS.fg = tokens.ruleHairline.fg;
   GROUP_HAIRLINE_ATTRS.fgMode = tokens.ruleHairline.fgMode;
   GROUP_HAIRLINE_ATTRS.dim = tokens.ruleHairline.dim;
+
+  VERSION_ATTRS.fg = tokens.textTertiary.fg;
+  VERSION_ATTRS.fgMode = tokens.textTertiary.fgMode;
+  VERSION_ATTRS.dim = tokens.textTertiary.dim;
+
+  UPDATE_AVAILABLE_ATTRS.fg = tokens.attention.fg;
+  UPDATE_AVAILABLE_ATTRS.fgMode = tokens.attention.fgMode;
 }
 // Group-header label tone — textSecondary, not the old bold palette-8. (The
 // Command Center header, which shares this const, re-adds bold explicitly at
@@ -404,6 +411,19 @@ function itemHeight(item: RenderItem): number {
 
 // --- Sidebar class ---
 
+// Version indicator on the sidebar's last row. The plain version reads as
+// receded chrome (tertiary); an available update is an urgency cue, so it
+// gets the attention (yellow) token instead.
+const VERSION_ATTRS: CellAttrs = {
+  fg: tokens.textTertiary.fg,
+  fgMode: tokens.textTertiary.fgMode,
+  dim: tokens.textTertiary.dim,
+};
+const UPDATE_AVAILABLE_ATTRS: CellAttrs = {
+  fg: tokens.attention.fg,
+  fgMode: tokens.attention.fgMode,
+};
+
 export class Sidebar {
   private width: number;
   private height: number;
@@ -562,6 +582,10 @@ export class Sidebar {
     return this.latestVersion;
   }
 
+  isVersionRow(row: number): boolean {
+    return this.currentVersion !== "" && row === this.height - 1;
+  }
+
   getSessionByRow(row: number): SessionInfo | null {
     const sessionIdx = this.rowToSessionIndex.get(row);
     if (sessionIdx === undefined) return null;
@@ -630,8 +654,12 @@ export class Sidebar {
     }
   }
 
+  private footerRows(): number {
+    return this.currentVersion ? 1 : 0;
+  }
+
   private viewportHeight(): number {
-    return this.height - HEADER_ROWS;
+    return this.height - HEADER_ROWS - this.footerRows();
   }
 
   private clampScroll(): void {
@@ -775,7 +803,22 @@ export class Sidebar {
       writeString(grid, HEADER_ROWS, this.width - 1, "\u25b2", DIM_ATTRS);
     }
     if (this.scrollOffset + vpHeight < totalRows) {
-      writeString(grid, this.height - 1, this.width - 1, "\u25bc", DIM_ATTRS);
+      const scrollRow = this.footerRows() ? contentBottom - 1 : this.height - 1;
+      writeString(grid, scrollRow, this.width - 1, "\u25bc", DIM_ATTRS);
+    }
+
+    // Version footer
+    if (this.currentVersion) {
+      const footerRow = this.height - 1;
+      const versionText = `v${this.currentVersion}`;
+      if (this.hasUpdate()) {
+        const updateText = `v${this.latestVersion} avail`;
+        const maxLen = this.width - 2;
+        const display = updateText.length <= maxLen ? updateText : `v${this.latestVersion}`;
+        writeString(grid, footerRow, 1, display, UPDATE_AVAILABLE_ATTRS);
+      } else {
+        writeString(grid, footerRow, 1, versionText, VERSION_ATTRS);
+      }
     }
 
     return grid;

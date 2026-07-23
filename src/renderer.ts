@@ -21,9 +21,8 @@ export interface ToolbarConfig {
   hoveredButton?: string | null;
   tabs?: WindowTab[];
   hoveredTabId?: string | null;
-  /** When set, a dim status chip is rendered between tabs and buttons.
-   * Unused by the live toolbar since Task 7 — the footer owns the snapshot
-   * chip now — but kept for the layout/hit-test plumbing and its tests. */
+  /** When set, a dim status chip is rendered between tabs and buttons —
+   * the toolbar's snapshot-health indicator (see main.ts's makeToolbar()). */
   statusChip?: string | null;
 }
 

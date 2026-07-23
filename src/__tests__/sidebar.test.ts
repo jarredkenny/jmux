@@ -439,6 +439,73 @@ describe("Sidebar", () => {
     expect(grid.cells[2][SIDEBAR_WIDTH - 1].char).toBe("▲");
   });
 
+  test("renders the version on the sidebar's last row", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setVersion("1.2.3");
+    const grid = sidebar.getGrid();
+    const lastRow = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[9][i].char,
+    ).join("");
+    expect(lastRow).toContain("v1.2.3");
+    expect(sidebar.isVersionRow(9)).toBe(true);
+    expect(sidebar.isVersionRow(8)).toBe(false);
+  });
+
+  test("isVersionRow is false when no version has been set", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    expect(sidebar.isVersionRow(9)).toBe(false);
+  });
+
+  test("plain version text renders in the textTertiary token", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setVersion("1.2.3");
+    const grid = sidebar.getGrid();
+    const cell = grid.cells[9][1];
+    expect(cell.fg).toBe(tokens.textTertiary.fg!);
+    expect(cell.fgMode).toBe(tokens.textTertiary.fgMode!);
+  });
+
+  test("update-available version text renders in the attention token", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setVersion("1.2.3", "1.3.0");
+    const grid = sidebar.getGrid();
+    const lastRow = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[9][i].char,
+    ).join("");
+    expect(lastRow).toContain("v1.3.0 avail");
+    const cell = grid.cells[9][1];
+    expect(cell.fg).toBe(tokens.attention.fg!);
+    expect(cell.fgMode).toBe(tokens.attention.fgMode!);
+  });
+
+  test("the footer version row reserves a row from the viewport, moving the scroll indicator up", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
+    sidebar.updateSessions(
+      makeSessions([
+        { name: "a" },
+        { name: "b" },
+        { name: "c" },
+        { name: "d" },
+      ]),
+    );
+    sidebar.setVersion("1.2.3");
+    const grid = sidebar.getGrid();
+    // Version row occupies the last row (9); the ▼ indicator must move to
+    // the row above it rather than colliding with the version text.
+    expect(grid.cells[8][SIDEBAR_WIDTH - 1].char).toBe("▼");
+    const lastRow = Array.from(
+      { length: SIDEBAR_WIDTH },
+      (_, i) => grid.cells[9][i].char,
+    ).join("");
+    expect(lastRow).toContain("v1.2.3");
+  });
+
   test("scrollToActive snaps back after manual scroll", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 10);
     sidebar.updateSessions(

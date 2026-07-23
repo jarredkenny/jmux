@@ -400,10 +400,10 @@ let layout: FrameLayout = computeFrameLayout({
   toolbarRows: toolbarHeight,
   diffState: "off",
   requestedPanelCols: 0,
-  // Matches relayout()'s `base` (below) — the top rule and footer are both
-  // on from first paint, not just after the first relayout().
+  // Matches relayout()'s `base` (below) — the top rule is on from first
+  // paint; the footer is disabled (see main.ts footer-removal notes).
   frameRulesEnabled: true,
-  footerEnabled: true,
+  footerEnabled: false,
 });
 let mainCols = layout.main.w;
 
@@ -477,15 +477,16 @@ function makeToolbar(): ToolbarConfig {
     hoveredButton: hoveredToolbarButton,
     tabs: currentWindows,
     hoveredTabId,
+    statusChip: snapshotChipLabel(getSnapshotHealth()),
   };
 }
 
 /**
- * Builds the footer's model from live state — the snapshot health chip
- * (the toolbar had its own copy of this chip until Task 7 removed it there;
- * the footer is now its sole home) and the version indicator, which moved
- * off the sidebar's last row to the footer's right side (see sidebar.ts's
- * getVersion/getLatestVersion/hasUpdate).
+ * Builds the footer's model from live state. The footer itself is disabled
+ * (footerEnabled: false) — the snapshot chip and version indicator moved
+ * back to the toolbar and sidebar respectively (see makeToolbar()'s
+ * statusChip and sidebar.ts's version render / isVersionRow). This stays
+ * only so footer.ts remains trivially re-enableable; it's unused at runtime.
  */
 function makeFooter(): FooterModel {
   return buildFooter({
@@ -1115,10 +1116,11 @@ function relayout(): void {
     sidebarWidth,
     borderWidth: BORDER_WIDTH,
     toolbarRows: toolbarHeight,
-    // The top rule (+ junctions + tab underline) and the footer row (+ its
-    // own rule) are both on — compositeGrids paints both (renderer.ts).
+    // The top rule (+ junctions + tab underline) is on — compositeGrids
+    // paints it (renderer.ts). The footer is disabled (see footer-removal
+    // notes) — content reclaims the bottom row for tmux.
     frameRulesEnabled: true,
-    footerEnabled: true,
+    footerEnabled: false,
   };
   const probe = computeFrameLayout({ ...base, diffState: "off", requestedPanelCols: 0 });
   const available = probe.main.w;
@@ -1380,10 +1382,10 @@ function computeModalOverlay(activeLayout: FrameLayout): {
 function renderFrame(): void {
   if (writesPending > 0) return;
 
-  // Built once per frame — the footer is persistent chrome, painted the same
-  // way regardless of which content branch (settings screen, glass, normal)
-  // is active below.
-  const footerCells = layoutFooter(makeFooter(), layout.termCols).cells;
+  // The footer is disabled (footerEnabled: false — see footer-removal notes),
+  // so layout.footerRow is always null and the renderer never paints it.
+  // Skip building it each frame; footer.ts stays intact for a trivial re-enable.
+  const footerCells = layout.footerRow !== null ? layoutFooter(makeFooter(), layout.termCols).cells : undefined;
 
   // Settings screen replaces main content. It's a frameless full-screen
   // takeover — no window tabs, so no toolbar — rendered through
@@ -1615,6 +1617,10 @@ const inputRouter = new InputRouter(
       clearSessionIndicators();
     },
     onSidebarClick: (row) => {
+      if (sidebar.isVersionRow(row)) {
+        void showVersionInfo();
+        return;
+      }
       const groupLabel = sidebar.getGroupByRow(row);
       if (groupLabel) {
         sidebar.toggleGroup(groupLabel);
