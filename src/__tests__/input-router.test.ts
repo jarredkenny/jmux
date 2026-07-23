@@ -48,6 +48,25 @@ function diffPanelLayout(sidebarWidth: number, mainCols: number, panelCols: numb
   });
 }
 
+// A layout with the chrome rows (top rule, footer rule, footer) turned on —
+// termRows=40 clears computeFrameLayout's degradation ladder floor (>=12) so
+// every chrome row is present. Used only by the chrome-row routing tests
+// below; every other fixture in this file keeps the flags off (today's
+// production wiring) so contentTop === toolbarRows there.
+function chromeLayout(sidebarWidth: number, diffState: "off" | "split" | "full" = "off", requestedPanelCols = 0): FrameLayout {
+  return computeFrameLayout({
+    termCols: 120,
+    termRows: 40,
+    sidebarWidth,
+    borderWidth: 1,
+    toolbarRows: 1,
+    diffState,
+    requestedPanelCols,
+    frameRulesEnabled: true,
+    footerEnabled: true,
+  });
+}
+
 describe("parseSgrMouse", () => {
   test("parses SGR mouse button press", () => {
     const result = parseSgrMouse("\x1b[<0;30;5M");
@@ -659,6 +678,125 @@ describe("toolbar column routing", () => {
     const mouseX = layout.main.x + 1; // gridX === layout.main.x
     router.handleInput(`\x1b[<0;${mouseX};1M`);
     expect(clickedCol).toBe(0);
+  });
+});
+
+describe("chrome row classification and routing", () => {
+  test("classifyRow reads toolbar/rule/content/footer off the layout", () => {
+    const layout = chromeLayout(24);
+    const router = new InputRouter(
+      { onPtyData: () => {}, onSidebarClick: () => {} },
+      layout,
+    );
+    // Sanity-check the fixture actually exercises every chrome row before
+    // asserting classification against it.
+    expect(layout.topRuleRow).toBe(1);
+    expect(layout.footerRuleRow).toBe(38);
+    expect(layout.footerRow).toBe(39);
+    expect(layout.contentTop).toBe(2);
+
+    expect(router.classifyRow(1)).toBe("toolbar"); // y1=1 -> row 0
+    expect(router.classifyRow(layout.topRuleRow! + 1)).toBe("rule");
+    expect(router.classifyRow(layout.footerRuleRow! + 1)).toBe("rule");
+    expect(router.classifyRow(layout.footerRow! + 1)).toBe("footer");
+    expect(router.classifyRow(layout.contentTop + 1)).toBe("content");
+  });
+
+  test("a click on the frame-rule row is inert: no toolbar action, nothing forwarded to tmux", () => {
+    let toolbarClicked = false;
+    let ptyData = "";
+    const layout = chromeLayout(24);
+    const router = new InputRouter(
+      {
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onToolbarClick: () => { toolbarClicked = true; },
+      },
+      layout,
+    );
+    const mouseX = layout.main.x + 5 + 1; // 1-indexed, arbitrary main-area column
+    const mouseY = layout.topRuleRow! + 1; // 1-indexed row of the top rule
+    router.handleInput(`\x1b[<0;${mouseX};${mouseY}M`);
+    expect(toolbarClicked).toBe(false);
+    expect(ptyData).toBe("");
+  });
+
+  test("a click on the footer rule row is also inert", () => {
+    let ptyData = "";
+    const layout = chromeLayout(24);
+    const router = new InputRouter(
+      {
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+      },
+      layout,
+    );
+    const mouseX = layout.main.x + 3 + 1;
+    const mouseY = layout.footerRuleRow! + 1;
+    router.handleInput(`\x1b[<0;${mouseX};${mouseY}M`);
+    expect(ptyData).toBe("");
+  });
+
+  test("a click on the footer row classifies footer and calls onFooterClick with the 0-indexed grid column", () => {
+    let footerCol = -1;
+    let ptyData = "";
+    const layout = chromeLayout(24);
+    const router = new InputRouter(
+      {
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+        onFooterClick: (col) => { footerCol = col; },
+      },
+      layout,
+    );
+    const mouseX = 10; // 1-indexed -> gridX 9
+    const mouseY = layout.footerRow! + 1;
+    router.handleInput(`\x1b[<0;${mouseX};${mouseY}M`);
+    expect(footerCol).toBe(9);
+    expect(ptyData).toBe(""); // consumed, not forwarded
+  });
+
+  test("footer click over the sidebar's column range still dispatches onFooterClick, not onSidebarClick", () => {
+    // The footer band spans the full terminal width (it joins the sidebar
+    // divider with a junction glyph — see the chrome-frame plan's Task 6),
+    // so a click there is footer chrome even where x falls inside what
+    // would otherwise be the sidebar's column range.
+    let footerCol = -1;
+    let sidebarClicked = false;
+    const layout = chromeLayout(24);
+    const router = new InputRouter(
+      {
+        onPtyData: () => {},
+        onSidebarClick: () => { sidebarClicked = true; },
+        onFooterClick: (col) => { footerCol = col; },
+      },
+      layout,
+    );
+    const mouseX = 5; // well inside the 24-wide sidebar's column range
+    const mouseY = layout.footerRow! + 1;
+    router.handleInput(`\x1b[<0;${mouseX};${mouseY}M`);
+    expect(footerCol).toBe(4);
+    expect(sidebarClicked).toBe(false);
+  });
+
+  test("a content click is forwarded to tmux translated by contentTop, not toolbarRows", () => {
+    let ptyData = "";
+    const layout = chromeLayout(24); // toolbarRows=1, topRule on -> contentTop=2
+    expect(layout.contentTop).toBe(2);
+    const router = new InputRouter(
+      {
+        onPtyData: (d) => { ptyData += d; },
+        onSidebarClick: () => {},
+      },
+      layout,
+    );
+    const mouseX = layout.main.x + 1; // gridX === layout.main.x
+    const mouseY = 3; // terminal row 3 (1-indexed) -> gridY=2, content row 0 given contentTop=2
+    router.handleInput(`\x1b[<0;${mouseX};${mouseY}M`);
+    // contentTop (2) is what must be subtracted from the raw 1-indexed y —
+    // toolbarRows (1) would be off by exactly the top-rule row and forward
+    // tmux row 2 instead of 1.
+    expect(ptyData).toBe(`\x1b[<0;1;1M`);
   });
 });
 

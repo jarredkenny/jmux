@@ -38,6 +38,10 @@ export interface InputRouterOptions {
   onSidebarClick: (row: number) => void;
   onSidebarScroll?: (delta: number) => void;
   onToolbarClick?: (col: number) => void;
+  // Chrome footer row — see classifyRow. col is the 0-indexed absolute grid
+  // column (the footer band spans the full terminal width, joining the
+  // sidebar divider, so it is not relative to layout.main.x).
+  onFooterClick?: (col: number) => void;
   onHover?: (target: { area: "sidebar"; row: number } | { area: "toolbar"; col: number } | null) => void;
   onModalInput?: (data: string) => void;
   onModalToggle?: () => void;
@@ -121,6 +125,25 @@ export class InputRouter {
 
   setModalOpen(open: boolean): void {
     this.modalOpen = open;
+  }
+
+  /**
+   * Classifies a 1-indexed SGR mouse row against the frame's chrome bands
+   * (see src/frame-layout.ts). Rule and footer rows span the full terminal
+   * width — including over the sidebar's column range — so this is a
+   * row-only classification; it is checked before any column-based routing
+   * (sidebar/toolbar/panel/main) in handleInput. With both chrome flags off
+   * (today's production wiring) topRuleRow/footerRuleRow/footerRow are all
+   * null, row can never equal null, and every row below toolbarRows falls
+   * through to "content" — unchanged from pre-chrome behaviour.
+   */
+  classifyRow(y1: number): "toolbar" | "rule" | "content" | "footer" {
+    const row = y1 - 1;
+    const layout = this.layout;
+    if (row < layout.toolbarRows) return "toolbar";
+    if (row === layout.topRuleRow || row === layout.footerRuleRow) return "rule";
+    if (row === layout.footerRow) return "footer";
+    return "content";
   }
 
   /** Diff-panel keyboard focus. Geometry lives in `layout.panel` (setLayout); this is the one piece of diff-panel state that isn't geometry. */
@@ -264,6 +287,25 @@ export class InputRouter {
       const isMotion = (mouse.button & 32) !== 0;
       const isWheel = (mouse.button & 64) !== 0;
 
+      // Chrome rule/footer rows span the full terminal width (they join the
+      // sidebar divider — see docs/superpowers/plans/2026-07-23-chrome-frame.md
+      // Tasks 5-6), so they're classified and routed here, before any
+      // column-based routing (sidebar/toolbar/panel/main) gets a look. Rule
+      // rows are purely decorative chrome: inert, swallowed outright. The
+      // footer row dispatches a bare click to onFooterClick with the
+      // absolute grid column, then is likewise consumed. With both chrome
+      // flags off (today's production wiring) these rows are never present,
+      // so classifyRow always returns "toolbar" or "content" here and this
+      // block never fires — no behaviour change yet.
+      const rowKind = this.classifyRow(mouse.y);
+      if (rowKind === "rule") return;
+      if (rowKind === "footer") {
+        if (!mouse.release && !isMotion && !isWheel) {
+          this.opts.onFooterClick?.(gridX);
+        }
+        return;
+      }
+
       // Dispatch hover on any motion event
       if (isMotion && this.opts.onHover) {
         if (gridX < sidebar.w) {
@@ -391,14 +433,14 @@ export class InputRouter {
           // Non-diff tab: wheel scrolls the view
           if (this.panelTabsActive && isWheel) {
             const delta = (mouse.button & 1) ? 3 : -3;
-            const panelRow = gridY - layout.toolbarRows;
+            const panelRow = gridY - layout.contentTop;
             this.opts.onPanelScroll?.(delta, panelRow);
             return;
           }
 
           // Non-diff tab: clicks in list area select items
           if (this.panelTabsActive && !mouse.release && !isMotion && !isWheel) {
-            const panelRow = gridY - layout.toolbarRows;
+            const panelRow = gridY - layout.contentTop;
             if (panelRow >= 0) {
               this.opts.onPanelItemClick?.(panelRow); // main.ts bounds-checks against listRows
             }
@@ -406,7 +448,7 @@ export class InputRouter {
           }
 
           if (isMotion && (mouse.button & 0x03) === 3) return; // bare motion, skip
-          const translated = translateMouse(data, layout.panel.x, layout.toolbarRows);
+          const translated = translateMouse(data, layout.panel.x, layout.contentTop);
           if (translated) {
             this.opts.onDiffPanelData?.(translated);
           }
@@ -414,14 +456,16 @@ export class InputRouter {
         }
       }
 
-      // Mouse in main area — translate X coordinate and Y (offset by toolbar)
+      // Mouse in main area — translate X coordinate and Y (offset by the
+      // first content row, layout.contentTop — not layout.toolbarRows, which
+      // undercounts by the top rule row once chrome rules are enabled).
       // Click in main area releases diff panel focus
       if (!mouse.release && !isMotion && !isWheel && this.diffPanelFocused && layout.panel) {
         this.opts.onDiffPanelFocusToggle?.();
       }
       // Don't forward bare motion events to PTY (too noisy)
       if (isMotion && (mouse.button & 0x03) === 3) return;
-      const mainTranslated = translateMouse(data, layout.main.x, layout.toolbarRows);
+      const mainTranslated = translateMouse(data, layout.main.x, layout.contentTop);
       if (mainTranslated) {
         this.opts.onPtyData(mainTranslated);
       }
