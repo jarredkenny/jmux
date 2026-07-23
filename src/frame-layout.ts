@@ -187,3 +187,23 @@ export function computeFrameLayout(input: FrameLayoutInput): FrameLayout {
     panel,
   };
 }
+
+/**
+ * The row just past the sidebar's last usable row — i.e. the height the
+ * sidebar must be resized to so its content band ends exactly where the
+ * footer chrome begins, never painting into it. Bottom-exclusive: a sidebar
+ * of this height occupies rows `[0, sidebarBottomRow)`.
+ *
+ * Prefers the footer rule row over the footer row over the raw terminal
+ * height, since whichever of those is the topmost reserved footer row is
+ * the true boundary — when both are null (footer chrome degraded away on a
+ * short terminal, see resolveChrome's degradation ladder), the sidebar gets
+ * the full terminal height back, matching pre-chrome behaviour.
+ *
+ * Every call site that sizes the sidebar (construction and relayout()) must
+ * go through this helper so they can't drift from one another or from the
+ * footer geometry.
+ */
+export function sidebarBottomRow(layout: Pick<FrameLayout, "footerRuleRow" | "footerRow" | "termRows">): number {
+  return layout.footerRuleRow ?? layout.footerRow ?? layout.termRows;
+}

@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   computeFrameLayout,
+  sidebarBottomRow,
   SIDEBAR_MIN_TERM_COLS,
   type FrameLayoutInput,
 } from "../frame-layout";
@@ -306,5 +307,50 @@ describe("chrome rows", () => {
         for (let i = 1; i < sorted.length; i++) expect(sorted[i]).toBe(sorted[i - 1] + 1);
       }
     }
+  });
+});
+
+// sidebarBottomRow is the single source of truth every sidebar-sizing call
+// site (Sidebar construction, relayout()'s sidebar.resize) must use so the
+// sidebar's content band ends exactly where the footer chrome begins,
+// rather than painting session rows underneath the footer rule/footer —
+// see the chrome-visual-language footer-band bugfix.
+describe("sidebarBottomRow", () => {
+  test("full chrome: bottom-exclusive row is the footer rule row (not termRows)", () => {
+    const layout = computeFrameLayout(chromeInput({ termRows: 50 }));
+    expect(layout.footerRuleRow).toBe(48);
+    expect(layout.footerRow).toBe(49);
+    expect(sidebarBottomRow(layout)).toBe(48);
+  });
+
+  test("footer row only (no footer rule): bottom-exclusive row is the footer row", () => {
+    // resolveChrome's degradation ladder: 10 <= termRows < 12 keeps the
+    // footer but drops the footer rule ahead of it.
+    const layout = computeFrameLayout(chromeInput({ termRows: 11 }));
+    expect(layout.footerRuleRow).toBeNull();
+    expect(layout.footerRow).toBe(10);
+    expect(sidebarBottomRow(layout)).toBe(10);
+  });
+
+  test("no footer chrome at all: sidebar gets the full terminal height back", () => {
+    const layout = computeFrameLayout(chromeInput({ termRows: 9 }));
+    expect(layout.footerRuleRow).toBeNull();
+    expect(layout.footerRow).toBeNull();
+    expect(sidebarBottomRow(layout)).toBe(layout.termRows);
+  });
+
+  test("both flags disabled (pre-chrome callers): falls all the way back to termRows", () => {
+    const layout = computeFrameLayout(chromeInput({ frameRulesEnabled: false, footerEnabled: false }));
+    expect(layout.footerRuleRow).toBeNull();
+    expect(layout.footerRow).toBeNull();
+    expect(sidebarBottomRow(layout)).toBe(layout.termRows);
+  });
+
+  test("bottom-exclusive row equals contentTop + contentRows + reserved footer rows, never overlapping content", () => {
+    const layout = computeFrameLayout(chromeInput({ termRows: 50 }));
+    // The sidebar's height must not reach into the footer rule/footer rows:
+    // sidebarBottomRow sits strictly below the content band's last row and
+    // strictly at-or-below the first reserved footer row.
+    expect(sidebarBottomRow(layout)).toBe(layout.contentTop + layout.contentRows);
   });
 });

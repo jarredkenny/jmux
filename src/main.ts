@@ -65,7 +65,7 @@ import { stripVisibleFor, renderStrip, layoutStrip, STRIP_ROWS } from "./glass/s
 import { chipAtCol, type PlacedChip } from "./band-layout";
 import { clampTabSelection } from "./glass/reload";
 import { OtelReceiver } from "./otel-receiver";
-import { computeFrameLayout, type FrameLayout } from "./frame-layout";
+import { computeFrameLayout, sidebarBottomRow, type FrameLayout } from "./frame-layout";
 import { AgentStateTracker, coerceStaleAgentState } from "./agent-state";
 import { logError } from "./log";
 import { installHooks, type ClaudeSettings } from "./hook-installer";
@@ -745,7 +745,7 @@ const pty = new TmuxPty({
 });
 const bridge = new ScreenBridge(mainCols, layout.ptyRows);
 const renderer = new Renderer();
-const sidebar = new Sidebar(sidebarWidth, rows);
+const sidebar = new Sidebar(sidebarWidth, sidebarBottomRow(layout));
 sidebar.setStateColors(paletteFromStateColors(resolveStateColors(configStore.config.stateColors)));
 const agentStateTracker = new AgentStateTracker();
 agentStateTracker.onChange((sessionId) => {
@@ -1122,7 +1122,7 @@ function relayout(): void {
 
   inputRouter.setLayout(layout);
 
-  sidebar.resize(sidebarWidth, layout.termRows);
+  sidebar.resize(sidebarWidth, sidebarBottomRow(layout));
 
   scheduleRender();
 }
@@ -1319,8 +1319,7 @@ function renderFrame(): void {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
     const totalCols = layout.termCols;
     const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
-    const contentRows = process.stdout.rows || 24;
-    const settingsGrid = settingsScreen.render(contentCols, contentRows);
+    const settingsGrid = settingsScreen.render(contentCols, layout.contentRows);
     renderer.render(
       layout,
       settingsGrid,
@@ -1353,7 +1352,7 @@ function renderFrame(): void {
       const stripInput = { tabs: commandCenterTabs, activeTabId, summaryByTab, width: contentCols, palette };
       currentStripChips = layoutStrip(stripInput);
       const strip = renderStrip(stripInput, currentStripChips);
-      const combined = createGrid(contentCols, (process.stdout.rows || 24));
+      const combined = createGrid(contentCols, layout.contentRows);
       // Blit strip on top rows, glass content below.
       for (let r = 0; r < STRIP_ROWS && r < combined.rows; r++)
         for (let c = 0; c < contentCols; c++) combined.cells[r][c] = strip.cells[r][c];
@@ -4121,7 +4120,7 @@ function resizeGlass(): void {
   const totalCols = layout.termCols;
   const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
   const stripRows = stripVisibleFor(commandCenterTabs) ? STRIP_ROWS : 0;
-  const contentRows = (process.stdout.rows || 24) - stripRows;
+  const contentRows = Math.max(1, layout.contentRows - stripRows);
   glassView.resize(contentCols, contentRows);
 }
 

@@ -3,7 +3,7 @@ import { sgrForCell, compositeGrids, getModalPosition, getToolbarTabRanges, getT
 import { createGrid, writeString, textCols } from "../cell-grid";
 import { ColorMode } from "../types";
 import type { Cell } from "../types";
-import type { FrameLayout, PanelMode, Span } from "../frame-layout";
+import { sidebarBottomRow, type FrameLayout, type PanelMode, type Span } from "../frame-layout";
 import { tokens, frame } from "../chrome-tokens";
 
 // Hand-rolled FrameLayout fixtures for compositeGrids unit tests. These tests
@@ -1023,6 +1023,70 @@ describe("compositeGrids footer row and footer rule", () => {
     const result = compositeGrids(layout, main, sidebar, toolbar, null, undefined, [{ text: "unused" }]);
     const lastRow = result.cells[layout.termRows - 1].map((c) => c.char).join("");
     expect(lastRow).not.toContain("unused");
+  });
+});
+
+// Regression coverage for the chrome-visual-language footer-band bugfix:
+// the sidebar must be sized to sidebarBottomRow(layout), not layout.termRows,
+// or its bottom rows (e.g. a scrolled-to-the-bottom session list) paint
+// straight through the footer rule/footer bands. compositeGrids itself does
+// no clipping — it trusts the caller to hand it a correctly-sized sidebar
+// grid — so these tests demonstrate both the failure mode (an oversized
+// sidebar, matching the pre-fix `sidebar.resize(w, layout.termRows)` call)
+// and the fix (a sidebar sized via sidebarBottomRow) side by side.
+describe("compositeGrids — sidebar sizing must respect the footer bands", () => {
+  test("an oversized sidebar (sized to termRows) bleeds session content into the footer rule row", () => {
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 12,
+      frameRulesEnabled: true, footerEnabled: true,
+    });
+    expect(layout.footerRuleRow).toBe(10);
+    expect(layout.footerRow).toBe(11);
+
+    // Pre-fix behaviour: sidebar.resize(w, layout.termRows) — a sidebar
+    // grid as tall as the whole terminal, its last two rows landing on the
+    // footer rule row and the footer row.
+    const oversizedSidebar = createGrid(6, layout.termRows);
+    for (let y = 0; y < oversizedSidebar.rows; y++) {
+      writeString(oversizedSidebar, y, 0, "SESH", { fg: 0, fgMode: ColorMode.Default });
+    }
+    const main = createGrid(20, 6);
+
+    const result = compositeGrids(layout, main, oversizedSidebar, toolbar);
+
+    // The footer rule row's sidebar columns still show session content
+    // instead of the rule — this is the "session row bleeds through beside
+    // the ┴" bug from the review.
+    const ruleRowSidebarText = result.cells[layout.footerRuleRow!].slice(0, 6).map((c) => c.char).join("");
+    expect(ruleRowSidebarText).toContain("SESH");
+  });
+
+  test("a sidebar sized via sidebarBottomRow never paints into the footer rule row or the footer row", () => {
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 12,
+      frameRulesEnabled: true, footerEnabled: true,
+    });
+    const bottomRow = sidebarBottomRow(layout);
+    expect(bottomRow).toBe(layout.footerRuleRow!);
+
+    // Fixed behaviour: sidebar.resize(w, sidebarBottomRow(layout)) — the
+    // sidebar grid stops exactly at the content band's last row, same as
+    // relayout() now does.
+    const fittedSidebar = createGrid(6, bottomRow);
+    for (let y = 0; y < fittedSidebar.rows; y++) {
+      writeString(fittedSidebar, y, 0, "SESH", { fg: 0, fgMode: ColorMode.Default });
+    }
+    const main = createGrid(20, 6);
+
+    const result = compositeGrids(layout, main, fittedSidebar, toolbar);
+
+    const ruleRowSidebarText = result.cells[layout.footerRuleRow!].slice(0, 6).map((c) => c.char).join("");
+    expect(ruleRowSidebarText).not.toContain("SESH");
+
+    const footerRowSidebarText = result.cells[layout.footerRow!].slice(0, 6).map((c) => c.char).join("");
+    expect(footerRowSidebarText).not.toContain("SESH");
   });
 });
 
