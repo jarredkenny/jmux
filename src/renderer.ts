@@ -117,7 +117,13 @@ interface ToolbarLayout {
 // of those sits leftmost) — mirroring the dependency order the original
 // three standalone functions had.
 function layoutToolbar(toolbar: ToolbarConfig): ToolbarLayout {
-  const buttonItems = toolbar.buttons.map((b) => ({ id: b.id, width: textCols(b.label) + 2 }));
+  // Each button's box is its glyph plus a single trailing gutter column
+  // (space.glyphGutter) — no leading space. Packed contiguously (no gap/
+  // sepWidth) right to left, that trailing gutter is the only blank column
+  // between two adjacent glyphs, so the cluster reads as one tight group
+  // (Task 7) instead of the old glyph+2 box, whose leading+trailing spaces
+  // stacked into a two-column gap between buttons.
+  const buttonItems = toolbar.buttons.map((b) => ({ id: b.id, width: textCols(b.label) + space.glyphGutter }));
   // No overflow guard on buttons — matches the original, which never checked
   // a budget for them either. `-Infinity` means "never overflow".
   const buttons = packChips(buttonItems, { start: toolbar.mainCols, budget: -Infinity, align: "right" });
@@ -411,9 +417,13 @@ export function compositeGrids(
         // separator, and the tab underline (Task 5) delimits tabs from below.
       }
 
-      // Render action buttons (right side). The icon glyph and its
-      // surrounding padding spaces get different foregrounds, so they're
-      // built as separate segments rather than one uniformly-styled string.
+      // Render action buttons (right side): glyph + one trailing gutter
+      // space (no leading space — see layoutToolbar), so adjacent buttons
+      // read as a tight one-space-gutter cluster. The icon glyph and its
+      // trailing gutter get different foregrounds, so they're built as
+      // separate segments rather than one uniformly-styled string. The
+      // hover background covers both segments, i.e. the button's whole
+      // painted range, matching the hit-test range from the same placement.
       for (const { id, x, width } of toolbarLayout!.buttons) {
         const btn = toolbar.buttons.find(b => b.id === id)!;
         const isHovered = toolbar.hoveredButton === id;
@@ -422,7 +432,6 @@ export function compositeGrids(
         const spaceAttrs: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, bg, bgMode };
         const iconAttrs: CellAttrs = { fg: btn.fg ?? 8, fgMode: btn.fgMode ?? ColorMode.Palette, bg, bgMode };
         const segments: StyledSegment[] = [
-          { text: " ", attrs: spaceAttrs },
           { text: btn.label, attrs: iconAttrs },
           { text: " ", attrs: spaceAttrs },
         ];

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { sgrForCell, compositeGrids, getModalPosition, getToolbarTabRanges, getToolbarStatusChipRange, buildToolbarButtons, BORDER_CHAR } from "../renderer";
+import { sgrForCell, compositeGrids, getModalPosition, getToolbarTabRanges, getToolbarButtonRanges, getToolbarStatusChipRange, buildToolbarButtons, BORDER_CHAR } from "../renderer";
 import { createGrid, writeString, textCols } from "../cell-grid";
 import { ColorMode } from "../types";
 import type { Cell } from "../types";
@@ -497,14 +497,14 @@ describe("textCols (single character)", () => {
     expect(textCols("●")).toBe(1); // U+25CF
     expect(textCols("▲")).toBe(1); // U+25B2
     expect(textCols("▼")).toBe(1); // U+25BC
-    expect(textCols("◈")).toBe(1); // U+25C8 — used in toolbar
+    expect(textCols("◈")).toBe(1); // U+25C8
     expect(textCols("▸")).toBe(1); // U+25B8
   });
 
   test("miscellaneous technical symbols are 1-wide in text presentation", () => {
     // U+2300-U+23FF
-    expect(textCols("⏸")).toBe(1); // U+23F8 — toolbar pause
-    expect(textCols("⏏")).toBe(1); // U+23CF — toolbar eject
+    expect(textCols("⏸")).toBe(1); // U+23F8
+    expect(textCols("⏏")).toBe(1); // U+23CF
   });
 
   test("miscellaneous symbols are 1-wide in text presentation", () => {
@@ -524,7 +524,7 @@ describe("textCols (single character)", () => {
   });
 
   test("Fullwidth Forms are 2-wide", () => {
-    expect(textCols("＋")).toBe(2); // U+FF0B — toolbar plus
+    expect(textCols("＋")).toBe(2); // U+FF0B
     expect(textCols("Ａ")).toBe(2); // U+FF21
   });
 
@@ -1065,6 +1065,80 @@ describe("buildToolbarButtons (Task 7 glyph set)", () => {
     expect(settingsBtn.label).toBe("⚙");
     expect(settingsBtn.label.length).toBe(1); // no trailing U+FE0E/U+FE0F
     expect(textCols(settingsBtn.label)).toBe(1);
+  });
+});
+
+// Task 7 follow-up: the button cluster's inter-glyph gutter drops from two
+// blank columns to one. Each button's box is glyph + one trailing space
+// (space.glyphGutter), packed with no additional gap/separator, so adjacent
+// buttons' boxes are contiguous and the only blank column between two glyphs
+// is the left button's own trailing space.
+describe("toolbar action buttons pack with a one-column inter-glyph gutter (Task 7 follow-up)", () => {
+  test("getToolbarButtonRanges: adjacent buttons are contiguous with a 2-column box each", () => {
+    const toolbar = { buttons: buildToolbarButtons({ panelActive: false }), mainCols: 40, tabs: [] };
+    const ranges = getToolbarButtonRanges(toolbar);
+    expect(ranges.map((r) => r.id)).toEqual([
+      "panel", "new-window", "split-v", "split-h", "claude", "settings",
+    ]);
+    expect(ranges).toEqual([
+      { id: "panel", startCol: 28, endCol: 29 },
+      { id: "new-window", startCol: 30, endCol: 31 },
+      { id: "split-v", startCol: 32, endCol: 33 },
+      { id: "split-h", startCol: 34, endCol: 35 },
+      { id: "claude", startCol: 36, endCol: 37 },
+      { id: "settings", startCol: 38, endCol: 39 },
+    ]);
+  });
+
+  test("adjacent button boxes are contiguous (no gap) and exactly one blank column separates their glyphs", () => {
+    const toolbar = { buttons: buildToolbarButtons({ panelActive: false }), mainCols: 40, tabs: [] };
+    const ranges = getToolbarButtonRanges(toolbar);
+    for (let i = 0; i < ranges.length - 1; i++) {
+      const left = ranges[i];
+      const right = ranges[i + 1];
+      // Boxes are contiguous: the next button's box starts exactly where
+      // this one's ends (no packing gap between the boxes themselves).
+      expect(right.startCol).toBe(left.endCol + 1);
+      // Each box is glyph (startCol) + one trailing space (endCol) — so the
+      // blank column between glyph_i (left.startCol) and glyph_{i+1}
+      // (right.startCol) is exactly the single trailing space at left.endCol.
+      expect(right.startCol - left.startCol).toBe(2);
+    }
+  });
+
+  test("the rightmost button still sits flush at mainCols", () => {
+    const toolbar = { buttons: buildToolbarButtons({ panelActive: false }), mainCols: 40, tabs: [] };
+    const ranges = getToolbarButtonRanges(toolbar);
+    const last = ranges[ranges.length - 1];
+    expect(last.endCol).toBe(39); // mainCols - 1
+  });
+
+  test("compositeGrids: the hover background covers exactly the hovered button's painted range, no more", () => {
+    const sidebar = createGrid(6, 6);
+    const main = createGrid(40, 4);
+    const toolbar = {
+      buttons: buildToolbarButtons({ panelActive: false }),
+      mainCols: 40,
+      tabs: [],
+      hoveredButton: "claude",
+    };
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 40, toolbarRows: 1, termRows: 4 });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const borderCol = layout.borderCol!;
+    const ranges = getToolbarButtonRanges(toolbar);
+    const claudeRange = ranges.find((r) => r.id === "claude")!;
+    const neighborRange = ranges.find((r) => r.id === "split-h")!; // immediate left neighbor
+
+    for (let col = 0; col <= 39; col++) {
+      const cell = result.cells[0][borderCol + 1 + col];
+      const inClaudeRange = col >= claudeRange.startCol && col <= claudeRange.endCol;
+      if (inClaudeRange) {
+        expect(cell.bgMode).toBe(ColorMode.RGB);
+      } else if (col >= neighborRange.startCol && col <= neighborRange.endCol) {
+        // The neighboring button's own box must not pick up the hover bg.
+        expect(cell.bgMode).not.toBe(ColorMode.RGB);
+      }
+    }
   });
 });
 
