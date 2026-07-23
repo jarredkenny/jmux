@@ -18,10 +18,17 @@ function makeCell(char: string, width: number = 1): Cell {
 // renderer.test.ts for why these bypass computeFrameLayout's
 // SIDEBAR_MIN_TERM_COLS gate (these grids are far smaller than a real
 // terminal).
+// toolbarRows is 0 in both fixtures, so pre-chrome semantics apply: no rule
+// or footer rows, and the content band is the whole frame (contentRows ===
+// ptyRows === termRows), matching computeFrameLayout with both chrome flags
+// off.
 function noSidebarLayout(mainCols: number, termRows: number): FrameLayout {
   return {
     termCols: mainCols, termRows, sidebar: null, borderCol: null,
-    toolbarRows: 0, ptyRows: termRows, mode: "single",
+    toolbarRows: 0, topRuleRow: null, contentTop: 0, contentRows: termRows,
+    footerRuleRow: null, footerRow: null,
+    chrome: { toolbar: false, topRule: false, footerRule: false, footer: false },
+    ptyRows: termRows, mode: "single",
     main: { x: 0, w: mainCols }, divider: null, panel: null,
   };
 }
@@ -31,7 +38,10 @@ function withSidebarLayout(sidebarCols: number, mainCols: number, termRows: numb
   const mainX = sidebarCols + 1;
   return {
     termCols: sidebarCols + 1 + mainCols, termRows, sidebar, borderCol: sidebarCols,
-    toolbarRows: 0, ptyRows: termRows, mode: "single",
+    toolbarRows: 0, topRuleRow: null, contentTop: 0, contentRows: termRows,
+    footerRuleRow: null, footerRow: null,
+    chrome: { toolbar: false, topRule: false, footerRule: false, footer: false },
+    ptyRows: termRows, mode: "single",
     main: { x: mainX, w: mainCols }, divider: null, panel: null,
   };
 }

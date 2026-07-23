@@ -28,6 +28,18 @@ export interface FrameLayoutInput {
   toolbarRows: number;
   diffState: "off" | "split" | "full";
   requestedPanelCols: number;
+  /** Whether to draw the rule rows (under the toolbar, above the footer). */
+  frameRulesEnabled: boolean;
+  /** Whether to reserve a footer row at the bottom of the frame. */
+  footerEnabled: boolean;
+}
+
+/** Which chrome rows are actually shown, after the degradation ladder. */
+export interface ChromeVisibility {
+  toolbar: boolean;
+  topRule: boolean;
+  footerRule: boolean;
+  footer: boolean;
 }
 
 export interface FrameLayout {
@@ -36,6 +48,18 @@ export interface FrameLayout {
   sidebar: Span | null;
   borderCol: number | null;
   toolbarRows: number;
+  /** Row index of the rule under the toolbar, or null when not shown. */
+  topRuleRow: number | null;
+  /** First row of the content band (the pty). */
+  contentTop: number;
+  /** Height, in rows, of the content band. Always `=== ptyRows`. */
+  contentRows: number;
+  /** Row index of the rule above the footer, or null when not shown. */
+  footerRuleRow: number | null;
+  /** Row index of the footer, or null when not shown. */
+  footerRow: number | null;
+  /** Which chrome rows resolveChrome decided to actually show. */
+  chrome: ChromeVisibility;
   ptyRows: number;
   mode: PanelMode;
   main: Span;
@@ -51,13 +75,45 @@ const MODE_FOR_DIFF_STATE: Record<FrameLayoutInput["diffState"], PanelMode> = {
   full: "full",
 };
 
+/**
+ * Decides which chrome rows (toolbar, top rule, footer rule, footer) are
+ * actually shown, given the caller's requested flags and the terminal's
+ * row count. This is the degradation ladder: on short terminals, chrome
+ * drops away in a fixed order (footer rule first, then footer, then top
+ * rule, then — as an absolute floor — the toolbar itself) so the content
+ * band never disappears entirely above 5 rows.
+ *
+ * Both flags false reproduces today's pre-chrome behaviour exactly: only
+ * the toolbar (when toolbarRows > 0) is ever shown.
+ */
+function resolveChrome(input: FrameLayoutInput): ChromeVisibility {
+  const NONE: ChromeVisibility = {
+    toolbar: false,
+    topRule: false,
+    footerRule: false,
+    footer: false,
+  };
+  if (input.toolbarRows === 0) return NONE;
+  const rules = input.frameRulesEnabled;
+  const footer = input.footerEnabled;
+  if (!rules && !footer) {
+    return { toolbar: true, topRule: false, footerRule: false, footer: false };
+  }
+  const r = input.termRows;
+  if (r < 6) return NONE;
+  if (r < 8) return { toolbar: true, topRule: false, footerRule: false, footer: false };
+  if (r < 10) return { toolbar: true, topRule: rules, footerRule: false, footer: false };
+  if (r < 12) return { toolbar: true, topRule: rules, footerRule: false, footer };
+  return { toolbar: true, topRule: rules, footerRule: rules && footer, footer };
+}
+
 export function computeFrameLayout(input: FrameLayoutInput): FrameLayout {
   const {
     termCols,
     termRows,
     sidebarWidth,
     borderWidth,
-    toolbarRows,
+    toolbarRows: toolbarRowsInput,
     diffState,
     requestedPanelCols,
   } = input;
@@ -66,7 +122,17 @@ export function computeFrameLayout(input: FrameLayoutInput): FrameLayout {
     termCols >= SIDEBAR_MIN_TERM_COLS ? { x: 0, w: sidebarWidth } : null;
   const borderCol = sidebar ? sidebar.x + sidebar.w : null;
 
-  const ptyRows = termRows - toolbarRows;
+  const chrome = resolveChrome(input);
+  const toolbarRows = chrome.toolbar ? toolbarRowsInput : 0;
+  const topRuleRow = chrome.topRule ? toolbarRows : null;
+  const contentTop = toolbarRows + (chrome.topRule ? 1 : 0);
+  const footerRow = chrome.footer ? termRows - 1 : null;
+  const footerRuleRow = chrome.footerRule ? termRows - 2 : null;
+  const contentRows = Math.max(
+    1,
+    termRows - contentTop - (chrome.footer ? 1 : 0) - (chrome.footerRule ? 1 : 0),
+  );
+  const ptyRows = contentRows;
 
   const mainStart = sidebar ? (borderCol as number) + borderWidth : 0;
   const available = termCols - mainStart;
@@ -108,6 +174,12 @@ export function computeFrameLayout(input: FrameLayoutInput): FrameLayout {
     sidebar,
     borderCol,
     toolbarRows,
+    topRuleRow,
+    contentTop,
+    contentRows,
+    footerRuleRow,
+    footerRow,
+    chrome,
     ptyRows,
     mode,
     main,

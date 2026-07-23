@@ -17,6 +17,8 @@ function baseLayout(sidebarWidth: number, diffState: "off" | "split" | "full" = 
     toolbarRows: 1,
     diffState,
     requestedPanelCols,
+    frameRulesEnabled: false,
+    footerEnabled: false,
   });
 }
 
@@ -41,6 +43,8 @@ function diffPanelLayout(sidebarWidth: number, mainCols: number, panelCols: numb
     toolbarRows: 1,
     diffState: "split",
     requestedPanelCols: panelCols,
+    frameRulesEnabled: false,
+    footerEnabled: false,
   });
 }
 

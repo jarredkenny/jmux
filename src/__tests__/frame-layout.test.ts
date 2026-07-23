@@ -15,6 +15,8 @@ describe("computeFrameLayout — sidebar shown, single mode", () => {
       toolbarRows: 1,
       diffState: "off",
       requestedPanelCols: 0,
+      frameRulesEnabled: false,
+      footerEnabled: false,
     };
     const layout = computeFrameLayout(input);
 
@@ -39,6 +41,8 @@ describe("computeFrameLayout — sidebar shown, single mode", () => {
       toolbarRows: 2,
       diffState: "off",
       requestedPanelCols: 0,
+      frameRulesEnabled: false,
+      footerEnabled: false,
     });
     expect(layout.toolbarRows).toBe(2);
     expect(layout.ptyRows).toBe(38);
@@ -55,6 +59,8 @@ describe("computeFrameLayout — sidebar shown, single mode", () => {
       toolbarRows: 1,
       diffState: "off",
       requestedPanelCols: 0,
+      frameRulesEnabled: false,
+      footerEnabled: false,
     });
     expect(layout.sidebar).toEqual({ x: 0, w: 26 });
     expect(layout.borderCol).toBe(26);
@@ -72,6 +78,8 @@ describe("computeFrameLayout — sidebar shown, split mode", () => {
       toolbarRows: 1,
       diffState: "split",
       requestedPanelCols: 30,
+      frameRulesEnabled: false,
+      footerEnabled: false,
     });
 
     expect(layout.sidebar).toEqual({ x: 0, w: 26 });
@@ -99,6 +107,8 @@ describe("computeFrameLayout — sidebar shown, full mode", () => {
       // requestedPanelCols is irrelevant in full mode — panel is always
       // forced to the full available width, not the requested value.
       requestedPanelCols: 999,
+      frameRulesEnabled: false,
+      footerEnabled: false,
     });
 
     expect(layout.mode).toBe("full");
@@ -122,6 +132,8 @@ describe("computeFrameLayout — sidebar auto-hidden on narrow terminal", () => 
       toolbarRows: 1,
       diffState: "off",
       requestedPanelCols: 0,
+      frameRulesEnabled: false,
+      footerEnabled: false,
     });
 
     expect(layout.sidebar).toBeNull();
@@ -142,6 +154,8 @@ describe("computeFrameLayout — sidebar auto-hidden on narrow terminal", () => 
       toolbarRows: 1,
       diffState: "split",
       requestedPanelCols: 25,
+      frameRulesEnabled: false,
+      footerEnabled: false,
     });
 
     expect(layout.sidebar).toBeNull();
@@ -164,6 +178,8 @@ describe("computeFrameLayout — sidebar auto-hidden on narrow terminal", () => 
       toolbarRows: 1,
       diffState: "full",
       requestedPanelCols: 0,
+      frameRulesEnabled: false,
+      footerEnabled: false,
     });
 
     expect(layout.sidebar).toBeNull();
@@ -182,6 +198,8 @@ describe("computeFrameLayout — sidebar auto-hidden on narrow terminal", () => 
       toolbarRows: 1,
       diffState: "off",
       requestedPanelCols: 0,
+      frameRulesEnabled: false,
+      footerEnabled: false,
     });
     expect(layout.sidebar).toBeNull();
   });
@@ -203,6 +221,8 @@ describe("computeFrameLayout — borderWidth is threaded through, not hardcoded"
       toolbarRows: 1,
       diffState: "split",
       requestedPanelCols: 30,
+      frameRulesEnabled: false,
+      footerEnabled: false,
     });
 
     expect(layout.sidebar).toEqual({ x: 0, w: 26 });
@@ -217,5 +237,74 @@ describe("computeFrameLayout — borderWidth is threaded through, not hardcoded"
     expect(
       layout.main.w + 2 + (layout.panel as { x: number; w: number }).w,
     ).toBe(available);
+  });
+});
+
+const chromeInput = (over: Partial<FrameLayoutInput> = {}): FrameLayoutInput => ({
+  termCols: 200, termRows: 50, sidebarWidth: 26, borderWidth: 1,
+  toolbarRows: 1, diffState: "off", requestedPanelCols: 0,
+  frameRulesEnabled: true, footerEnabled: true, ...over,
+});
+
+describe("chrome rows", () => {
+  test("with both flags false, geometry is byte-identical to pre-chrome", () => {
+    const g = computeFrameLayout(chromeInput({ frameRulesEnabled: false, footerEnabled: false }));
+    expect(g.toolbarRows).toBe(1);
+    expect(g.topRuleRow).toBeNull();
+    expect(g.contentTop).toBe(1);
+    expect(g.contentRows).toBe(49);
+    expect(g.ptyRows).toBe(49);
+    expect(g.footerRuleRow).toBeNull();
+    expect(g.footerRow).toBeNull();
+  });
+
+  test("full chrome reserves four rows", () => {
+    const g = computeFrameLayout(chromeInput({ termRows: 50 }));
+    expect(g.toolbarRows).toBe(1);
+    expect(g.topRuleRow).toBe(1);
+    expect(g.contentTop).toBe(2);
+    expect(g.contentRows).toBe(46);
+    expect(g.ptyRows).toBe(46);
+    expect(g.footerRuleRow).toBe(48);
+    expect(g.footerRow).toBe(49);
+  });
+
+  test("two-row toolbar pushes content to row 3", () => {
+    const g = computeFrameLayout(chromeInput({ toolbarRows: 2 }));
+    expect(g.topRuleRow).toBe(2);
+    expect(g.contentTop).toBe(3);
+    expect(g.contentRows).toBe(45);
+  });
+
+  test("degradation ladder", () => {
+    const at = (termRows: number) => {
+      const g = computeFrameLayout(chromeInput({ termRows }));
+      return { toolbar: g.chrome.toolbar, topRule: g.chrome.topRule, footerRule: g.chrome.footerRule, footer: g.chrome.footer };
+    };
+    expect(at(24)).toEqual({ toolbar: true, topRule: true, footerRule: true, footer: true });
+    expect(at(11)).toEqual({ toolbar: true, topRule: true, footerRule: false, footer: true });
+    expect(at(9)).toEqual({ toolbar: true, topRule: true, footerRule: false, footer: false });
+    expect(at(7)).toEqual({ toolbar: true, topRule: false, footerRule: false, footer: false });
+    expect(at(5)).toEqual({ toolbar: false, topRule: false, footerRule: false, footer: false });
+  });
+
+  test("contentRows never below 1, and row bands are contiguous and cover termRows", () => {
+    for (const termRows of [5, 6, 8, 10, 12, 24]) {
+      for (const toolbarRows of [1, 2]) {
+        const g = computeFrameLayout(chromeInput({ termRows, toolbarRows }));
+        expect(g.contentRows).toBeGreaterThanOrEqual(1);
+        const rows: number[] = [];
+        for (let r = 0; r < g.toolbarRows; r++) rows.push(r);
+        if (g.topRuleRow !== null) rows.push(g.topRuleRow);
+        for (let r = 0; r < g.contentRows; r++) rows.push(g.contentTop + r);
+        if (g.footerRuleRow !== null) rows.push(g.footerRuleRow);
+        if (g.footerRow !== null) rows.push(g.footerRow);
+        const sorted = [...rows].sort((a, b) => a - b);
+        expect(new Set(rows).size).toBe(rows.length);
+        expect(sorted[0]).toBe(0);
+        expect(sorted[sorted.length - 1]).toBe(termRows - 1);
+        for (let i = 1; i < sorted.length; i++) expect(sorted[i]).toBe(sorted[i - 1] + 1);
+      }
+    }
   });
 });

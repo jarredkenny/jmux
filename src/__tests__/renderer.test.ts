@@ -45,13 +45,24 @@ function makeLayout(opts: {
     ? sidebar.w + 1 + mainCols + (mode === "split" ? 1 + (panelSpan?.w ?? 0) : 0)
     : mainCols;
 
+  // These fixtures bypass computeFrameLayout, so there's no frameRulesEnabled
+  // / footerEnabled input to resolve chrome from — they always represent the
+  // pre-chrome case (both flags off): no rule or footer rows, and the
+  // content band fills everything below the toolbar.
+  const contentRows = termRows - toolbarRows;
   return {
     termCols,
     termRows,
     sidebar,
     borderCol,
     toolbarRows,
-    ptyRows: termRows - toolbarRows,
+    topRuleRow: null,
+    contentTop: toolbarRows,
+    contentRows,
+    footerRuleRow: null,
+    footerRow: null,
+    chrome: { toolbar: toolbarRows > 0, topRule: false, footerRule: false, footer: false },
+    ptyRows: contentRows,
     mode,
     main,
     divider,

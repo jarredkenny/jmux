@@ -395,6 +395,8 @@ let layout: FrameLayout = computeFrameLayout({
   toolbarRows: toolbarHeight,
   diffState: "off",
   requestedPanelCols: 0,
+  frameRulesEnabled: false,
+  footerEnabled: false,
 });
 let mainCols = layout.main.w;
 
@@ -1072,6 +1074,11 @@ function relayout(): void {
     sidebarWidth,
     borderWidth: BORDER_WIDTH,
     toolbarRows: toolbarHeight,
+    // Chrome (rule rows + footer) is implemented in frame-layout.ts but not
+    // yet turned on anywhere in production; both flags stay false until the
+    // rendering tasks that actually draw this chrome land.
+    frameRulesEnabled: false,
+    footerEnabled: false,
   };
   const probe = computeFrameLayout({ ...base, diffState: "off", requestedPanelCols: 0 });
   const available = probe.main.w;
