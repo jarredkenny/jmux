@@ -9,12 +9,14 @@ function rowText(grid: CellGrid, row: number, from: number, to: number): string 
   return Array.from({ length: to - from }, (_, i) => grid.cells[row][from + i].char).join("");
 }
 
-// Mirrors the render()'s own centring formula so tests assert against the
-// documented contract, not just "whatever the code happens to do".
+// Mirrors the render()'s own width/origin formula so tests assert against
+// the documented contract, not just "whatever the code happens to do".
+// Below the measure, content uses the full available width (left = 0,
+// right = cols); at/above it, content is capped at space.measure and
+// centred with symmetric margins.
 function expectedBounds(cols: number): { left: number; right: number } {
-  const pad = 2;
   const measureWidth = Math.min(cols, space.measure);
-  const left = pad + Math.max(0, Math.floor((cols - space.measure) / 2));
+  const left = cols > space.measure ? Math.floor((cols - space.measure) / 2) : 0;
   return { left, right: left + measureWidth };
 }
 
@@ -111,13 +113,12 @@ describe("SettingsScreen measure + centring", () => {
       expect(rowText(grid, 0, 0, left).trim()).toBe("");
       expect(grid.cells[0][left].char).toBe("S"); // "Settings"
 
-      // Roughly centred: the gap kept on the left vs. the right of the
-      // measured column should be close (the formula's own `pad` term
-      // introduces a small, fixed, deterministic bias — never growth with
-      // terminal width, which is the bug being fixed).
+      // Truly centred: the gap kept on the left vs. the right of the
+      // measured column must be symmetric (within 1, for odd remainders) —
+      // no fixed bias term shifting content off-centre.
       const leftGap = left;
       const rightGap = cols - right;
-      expect(Math.abs(leftGap - rightGap)).toBeLessThanOrEqual(4);
+      expect(Math.abs(leftGap - rightGap)).toBeLessThanOrEqual(1);
     });
   }
 
@@ -132,6 +133,48 @@ describe("SettingsScreen measure + centring", () => {
     // the measure's right edge must be blank.
     expect(rowText(grid, 3, right, cols).trim()).toBe("");
   });
+});
+
+// Regression coverage for the clip bug: on an ordinary terminal, contentCols
+// (totalCols - sidebarWidth) is commonly narrower than space.measure (64) —
+// e.g. an 80-col terminal minus a ~26-col sidebar leaves ~54 cols. Unless
+// `right` is clamped to `cols`, right-anchored writes (setting values, the
+// "n hidden" label) land past the grid edge and are silently dropped by
+// writeString's bounds check.
+describe("SettingsScreen narrow-width measure clamp", () => {
+  for (const cols of [40, 50, 54]) {
+    test(`at cols=${cols}, content fills the full width with no centring inset`, () => {
+      const screen = new SettingsScreen();
+      screen.open(twoCategories());
+      const grid = screen.render(cols, 30);
+      const { left, right } = expectedBounds(cols);
+
+      expect(left).toBe(0);
+      expect(right).toBe(cols);
+    });
+
+    test(`at cols=${cols}, no write ever lands at col >= cols (right <= cols)`, () => {
+      const { right } = expectedBounds(cols);
+      expect(right).toBeLessThanOrEqual(cols);
+    });
+
+    test(`at cols=${cols}, a short boolean value ("on") renders fully on-grid, not clipped`, () => {
+      const screen = new SettingsScreen();
+      screen.open(twoCategories());
+      const grid = screen.render(cols, 30);
+
+      // Row 3 is "Enable frobnicate" ... "on" (nodes: General@2, a@3, b@4, ...).
+      const rowChars = Array.from({ length: cols }, (_, i) => grid.cells[3][i].char);
+      const rendered = rowChars.join("");
+      expect(rendered).toContain("on");
+
+      // The value's own cell attrs confirm it's the boolean "on" styling
+      // (ON_ATTRS, palette fg 2), i.e. actually the value glyph, not a
+      // coincidental substring of the label.
+      const onCol = rendered.lastIndexOf("on");
+      expect(grid.cells[3][onCol].fg).toBe(2);
+    });
+  }
 });
 
 describe("SettingsScreen section hairlines", () => {

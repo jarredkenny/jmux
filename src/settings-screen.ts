@@ -208,14 +208,17 @@ export class SettingsScreen {
     }
 
     const grid = createGrid(cols, rows);
-    const pad = 2;
 
     // Content is capped at space.measure and centred within the render
     // area (which is already the main rect, excluding the sidebar) rather
     // than laid out edge-to-edge — the dot leaders used to fill the whole
     // terminal width, so the layout got worse the wider the terminal.
+    // measureWidth is clamped to `cols` so `right` never lands past the
+    // grid edge: below the measure, content uses the full available width
+    // (left = 0); at/above it, content is capped at the measure and
+    // centred with symmetric margins.
     const measureWidth = Math.min(cols, space.measure);
-    const left = pad + Math.max(0, Math.floor((cols - space.measure) / 2));
+    const left = cols > space.measure ? Math.floor((cols - space.measure) / 2) : 0;
     const right = left + measureWidth;
 
     const nodes = this.buildNodes();
