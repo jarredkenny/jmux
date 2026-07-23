@@ -1005,7 +1005,10 @@ describe("Sidebar", () => {
   //   spacer: row 11
   //   γ: rows 12,13,14
 
-  test("every session is 3 rows tall", () => {
+  // Row 3 (context + agent-state label) only exists once a session is
+  // promoted; before that it would render blank, which is what made a list of
+  // un-promoted sessions look ragged. So height is 2 or 3 by promotion.
+  test("a non-promoted session is 2 rows tall", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([
       { name: "alpha" },
@@ -1014,12 +1017,29 @@ describe("Sidebar", () => {
     sidebar.setActiveSession("$0");
     const grid = sidebar.getGrid();
 
-    // alpha at rows 4,5,6; spacer at 7; beta at rows 8,9,10
-    const row8Text = Array.from(
-      { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[8][i].char,
-    ).join("");
-    expect(row8Text).toContain("beta");
+    // alpha at rows 4,5; spacer at 6; beta at rows 7,8
+    const rowText = (r: number) =>
+      Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[r][i].char).join("");
+    expect(rowText(7)).toContain("beta");
+    // The row the old fixed-height layout would have put it on is now blank.
+    expect(rowText(8)).not.toContain("beta");
+  });
+
+  test("a promoted session is 3 rows tall — the state row reappears", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([
+      { name: "alpha" },
+      { name: "beta" },
+    ]));
+    sidebar.setActiveSession("$0");
+    sidebar.setAgentStateRecord("$0", { state: "running", since: Date.now() });
+    const grid = sidebar.getGrid();
+
+    // alpha now occupies 4,5,6; spacer at 7; beta starts at 8 again.
+    const rowText = (r: number) =>
+      Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[r][i].char).join("");
+    expect(rowText(6)).toContain("RUNNING");
+    expect(rowText(8)).toContain("beta");
   });
 
   test("hovering row 3 keeps hover styling", () => {
@@ -1029,22 +1049,25 @@ describe("Sidebar", () => {
       { name: "beta" },
     ]));
     sidebar.setActiveSession("$0");
-    // Layout: overview 2, spacer 3, alpha at 4,5,6; spacer 7; beta at 8,9,10.
-    // Hover beta's row 3 (row 10).
-    sidebar.setHoveredRow(10);
+    // Promote beta so it actually HAS a third row to hover.
+    sidebar.setAgentStateRecord("$1", { state: "running", since: Date.now() });
+    // Layout: overview 2, spacer 3, alpha (non-promoted, 2 rows) at 4,5;
+    // spacer 6; beta (promoted, 3 rows) at 7,8,9. Hover beta's third row.
+    sidebar.setHoveredRow(9);
     const grid = sidebar.getGrid();
 
-    // Beta's name row (row 8) should have hover bg painted.
-    expect(grid.cells[8][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
-    // Row 10 (the third row) should also have hover bg.
-    expect(grid.cells[10][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
+    // Beta's name row (row 7) should have hover bg painted.
+    expect(grid.cells[7][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
+    // Its third row should too — hovering any row highlights the whole slot.
+    expect(grid.cells[9][0].bg).toBe((0x1a << 16) | (0x1f << 8) | 0x26);
   });
 
-  test("session shows context tokens on row 3", () => {
+  test("a promoted session shows context tokens on row 3", () => {
     const width = 30;
     const sidebar = new Sidebar(width, 30);
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
     sidebar.setActiveSession("$0");
+    sidebar.setAgentStateRecord("$0", { state: "running", since: Date.now() });
     sidebar.setSessionOtelState("$0", {
       ...makeBlankOtelState(),
       contextTokens: 112000,
@@ -1056,6 +1079,25 @@ describe("Sidebar", () => {
     expect(text).not.toContain("$");
   });
 
+  // A non-promoted session has no row 3, so its context figure moves into
+  // row 2's right cluster rather than being lost.
+  test("a non-promoted session shows context tokens on row 2", () => {
+    const width = 30;
+    const sidebar = new Sidebar(width, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setActiveSession("$0");
+    sidebar.setSessionOtelState("$0", {
+      ...makeBlankOtelState(),
+      contextTokens: 112000,
+    });
+    const grid = sidebar.getGrid();
+    const rowText = (r: number) =>
+      Array.from({ length: width }, (_, i) => grid.cells[r][i].char).join("");
+    expect(rowText(5)).toContain("112k");
+    // Row 6 belongs to the next item now — nothing of this session is there.
+    expect(rowText(6)).not.toContain("112k");
+  });
+
   test("switching active session does not shift layout", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([
@@ -1065,12 +1107,13 @@ describe("Sidebar", () => {
     ]));
     sidebar.setActiveSession("$0");
     const grid1 = sidebar.getGrid();
-    // Row 2: overview, Row 3: spacer, alpha at 4,5,6, spacer 7, beta at 8,9,10, spacer 11, gamma at 12,13,14
-    const before = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid1.cells[12][i].char).join("");
+    // All three are non-promoted (2 rows each): overview 2, spacer 3,
+    // alpha 4,5, spacer 6, beta 7,8, spacer 9, gamma 10,11.
+    const before = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid1.cells[10][i].char).join("");
 
     sidebar.setActiveSession("$1");
     const grid2 = sidebar.getGrid();
-    const after = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid2.cells[12][i].char).join("");
+    const after = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid2.cells[10][i].char).join("");
 
     // Same row should still contain whatever was there before (gamma).
     expect(after).toBe(before);
@@ -1327,25 +1370,29 @@ describe("Sidebar inline link data", () => {
     expect(detailRow).toContain("✓");
   });
 
-  test("sessions always take 3 rows", () => {
+  test("a non-promoted session with link data still takes 2 rows", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "api" }, { name: "other" }]));
     sidebar.setSessionContexts(makeContexts([{
       name: "api", issueIds: ["ENG-1234"], mrCount: 2,
     }]));
     const grid = sidebar.getGrid();
-    // Row 2: overview, Row 3: spacer, Row 4: api name, Row 5: api detail, Row 6: api row3, Row 7: spacer, Row 8: other name
-    const row8text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[8][i].char).join("");
-    expect(row8text).toContain("other");
+    // Neither session is promoted, so each is 2 rows: overview 2, spacer 3,
+    // api 4,5, spacer 6, other 7.
+    const rowText = (r: number) =>
+      Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[r][i].char).join("");
+    expect(rowText(7)).toContain("other");
   });
 
-  test("no link data shows clean 3-row session", () => {
+  test("no link data shows a clean 2-row session", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "api" }, { name: "other" }]));
     const grid = sidebar.getGrid();
-    // Row 2: overview, Row 3: spacer, Row 4: api name, Row 5: api detail, Row 6: api row3, Row 7: spacer, Row 8: other name
-    const row8text = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[8][i].char).join("");
-    expect(row8text).toContain("other");
+    // Neither session is promoted, so each is 2 rows: overview 2, spacer 3,
+    // api 4,5, spacer 6, other 7.
+    const rowText = (r: number) =>
+      Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[r][i].char).join("");
+    expect(rowText(7)).toContain("other");
   });
 });
 

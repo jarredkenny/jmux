@@ -402,8 +402,18 @@ function buildRenderPlan(
   return { items, displayOrder };
 }
 
-function itemHeight(item: RenderItem): number {
-  if (item.type === "session") return 3;
+/**
+ * Rows a render item occupies.
+ *
+ * A session's third row carries its context figure and agent-state label, which
+ * only exist once the session is promoted (it has an agent state). Before that
+ * the row is blank, which is what made a list of un-promoted sessions look
+ * ragged — so a non-promoted session collapses to two rows. `hasStateRow` is
+ * supplied by the caller because promotion lives on the Sidebar instance, not
+ * on the plan item.
+ */
+function itemHeight(item: RenderItem, hasStateRow: (sessionIndex: number) => boolean): number {
+  if (item.type === "session") return hasStateRow(item.sessionIndex) ? 3 : 2;
   // Command Center: header row + an agent-state breakdown row when panes exist.
   if (item.type === "overview") return item.paneCount > 0 ? 2 : 1;
   return 1; // group-header or spacer
@@ -542,8 +552,18 @@ export class Sidebar {
     sessionId: string,
     record: AgentStateRecord | null,
   ): void {
+    const had = this.agentStateRecords.has(sessionId);
     if (record === null) this.agentStateRecords.delete(sessionId);
     else this.agentStateRecords.set(sessionId, record);
+
+    // Promotion (or de-promotion) changes this session's row count, which
+    // shifts every item below it — so the scroll offset can fall out of range.
+    // Re-clamp, and keep the active session on screen so a promotion elsewhere
+    // in the list can't scroll the row you're looking at out of view.
+    if (had !== this.agentStateRecords.has(sessionId)) {
+      this.clampScroll();
+      this.scrollToActive();
+    }
   }
 
   setSessionContexts(contexts: Map<string, SessionContext>): void {
@@ -637,7 +657,7 @@ export class Sidebar {
     const viewportHeight = this.viewportHeight();
     let vRow = 0;
     for (const item of this.items) {
-      const h = itemHeight(item);
+      const h = this.heightOf(item);
       if (item.type === "session") {
         const session = this.sessions[item.sessionIndex];
         if (session?.id === this.activeSessionId) {
@@ -662,8 +682,21 @@ export class Sidebar {
     return this.height - HEADER_ROWS - this.footerRows();
   }
 
+  /**
+   * True when a session renders its third row (context + agent-state label).
+   * Promotion is what creates that row; before it the row would be blank.
+   */
+  private sessionHasStateRow = (sessionIndex: number): boolean => {
+    const session = this.sessions[sessionIndex];
+    return session !== undefined && this.agentStateRecords.has(session.id);
+  };
+
+  private heightOf(item: RenderItem): number {
+    return itemHeight(item, this.sessionHasStateRow);
+  }
+
   private clampScroll(): void {
-    const totalRows = this.items.reduce((sum, item) => sum + itemHeight(item), 0);
+    const totalRows = this.items.reduce((sum, item) => sum + this.heightOf(item), 0);
     const maxOffset = Math.max(0, totalRows - this.viewportHeight());
     this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset));
   }
@@ -684,7 +717,7 @@ export class Sidebar {
     let totalRows = 0;
 
     for (const item of this.items) {
-      const h = itemHeight(item);
+      const h = this.heightOf(item);
       const screenRow = HEADER_ROWS + vRow - this.scrollOffset;
 
       // Skip items entirely above viewport
@@ -992,6 +1025,22 @@ export class Sidebar {
       }
     }
 
+    // Context figure (before the timer) — only for a NON-promoted session,
+    // which has no row 3 to carry it. A promoted session leaves it on row 3
+    // beside its state label. Dropped first when the cluster runs out of room,
+    // since it is the least urgent field here.
+    if (!agentStateRecord) {
+      const otelForRow2 = this.otelStates.get(session.id);
+      const contextText = otelForRow2 ? buildSessionRow3(otelForRow2, this.width - 3, null).text.trim() : "";
+      if (contextText) {
+        const ctxCol = rightEdge - contextText.length + 1;
+        if (ctxCol > nameStart) {
+          writeString(grid, detailRow, ctxCol, contextText, { ...DIM_ATTRS, ...bgAttrs });
+          rightEdge = ctxCol - 2;
+        }
+      }
+    }
+
     // Pinned pane count (right side, before branch)
     if (item.pinnedCount && item.pinnedCount > 0) {
       const pinnedStr = `(${item.pinnedCount} pinned)`;
@@ -1012,9 +1061,11 @@ export class Sidebar {
       }
     }
 
-    // Row 3: context tokens (left) / agent state label (right). Non-promoted
-    // sessions show the context figure alone.
-    if (row3 < this.height) {
+    // Row 3: context tokens (left) / agent state label (right). Only a promoted
+    // session has this row at all — see itemHeight. A non-promoted session
+    // stops at row 2 (its context figure moved into that row's right cluster
+    // above), so rendering here would paint over the NEXT item.
+    if (agentStateRecord && row3 < this.height) {
       this.paintRowChrome(grid, row3, isActive, isHovered);
       this.rowToSessionIndex.set(row3, sessionIdx);
 
