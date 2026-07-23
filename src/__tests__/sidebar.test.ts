@@ -31,10 +31,10 @@ describe("Sidebar", () => {
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
     const grid = sidebar.getGrid();
     const headerText = Array.from(
-      { length: 4 },
+      { length: 8 },
       (_, i) => grid.cells[0][1 + i].char,
     ).join("");
-    expect(headerText).toBe("jmux");
+    expect(headerText).toBe("Sessions");
   });
 
   test("renders ungrouped sessions without a group header", () => {
@@ -992,7 +992,7 @@ describe("Sidebar", () => {
   });
 
   // Row layout reminder for ungrouped sessions:
-  // row 0: jmux header
+  // row 0: "Sessions" header
   // row 1: separator
   // row 2: overview entry (permanent synthetic block)
   // row 3: spacer (after overview block)

@@ -20,7 +20,7 @@ export type SidebarSelection =
   | { type: "session"; id: string }
   | { type: "pinnedPane"; paneId: string };
 
-const HEADER_ROWS = 2; // "jmux" header + separator
+const HEADER_ROWS = 2; // "Sessions" header + separator
 
 const DIM_ATTRS: CellAttrs = { dim: true };
 const ACCENT_ATTRS: CellAttrs = {
@@ -708,7 +708,7 @@ export class Sidebar {
     this.rowToSelection.clear();
 
     // Header
-    writeString(grid, 0, 1, "jmux", { ...ACCENT_ATTRS, bold: true });
+    writeString(grid, 0, 1, "Sessions", { ...ACCENT_ATTRS, bold: true });
     writeString(grid, 1, 0, "\u2500".repeat(this.width), DIM_ATTRS);
 
     const vpHeight = this.viewportHeight();
