@@ -2,20 +2,19 @@ import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeStyledLine, textCols, type CellAttrs } from "./cell-grid";
 import { packChips, type PlacedChip } from "./band-layout";
-import { theme, accentFor, neutralFg } from "./theme";
+import { theme, neutralFg } from "./theme";
+import { tokens } from "./chrome-tokens";
 
 export type InfoTab = "diff" | string; // "diff" is special, others are view IDs
 
-// Warm accent for the active tab (peach on dark themes, darkened on light).
-const ACTIVE_TAB_ACCENT = (0xfb << 16) | (0xd4 << 8) | 0xb8;
-
 // These attr objects are re-themed in place by rebuildInfoPanelColors(): the
-// active tab uses the adaptive warm accent, the hovered tab uses neutral text
-// (terminal default fg once a theme is detected), and the tab-bar surface
-// tracks the detected background. They start on the dark defaults.
+// active tab uses the shared chrome accent (the same one the window-tab
+// underline uses, so "active tab" looks identical in both tab strips), the
+// hovered tab uses neutral text (terminal default fg once a theme is
+// detected), and the tab-bar surface tracks the detected background.
 const ACTIVE_TAB: CellAttrs = {
-  fg: ACTIVE_TAB_ACCENT,
-  fgMode: ColorMode.RGB,
+  fg: tokens.accent.fg,
+  fgMode: tokens.accent.fgMode,
   bold: true,
 };
 
@@ -37,7 +36,10 @@ const TAB_BG: CellAttrs = {
 
 export function rebuildInfoPanelColors(): void {
   TAB_BG.bg = theme.surface;
-  ACTIVE_TAB.fg = accentFor(ACTIVE_TAB_ACCENT);
+  // chrome-tokens is rebuilt before this (main.ts's onBackground handler), so
+  // the accent read here is already adapted to the detected background.
+  ACTIVE_TAB.fg = tokens.accent.fg;
+  ACTIVE_TAB.fgMode = tokens.accent.fgMode;
   const hovered = neutralFg(7);
   HOVERED_TAB.fg = hovered.fg;
   HOVERED_TAB.fgMode = hovered.fgMode;

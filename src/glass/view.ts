@@ -2,6 +2,7 @@ import type { CellGrid, AgentState } from "../types";
 import { createGrid, writeString, blit, drawBox, type CellAttrs } from "../cell-grid";
 import { ColorMode } from "../types";
 import { stateAttrs, type StateColor } from "../state-colors";
+import { tokens } from "../chrome-tokens";
 
 // Default border palette by agent state — matches the sidebar's defaults
 // (running=green 2, waiting=yellow 3, complete=blue 4). Overridable via config.
@@ -13,40 +14,42 @@ export const DEFAULT_BORDER_PALETTE: Record<AgentState, StateColor> = {
 
 /**
  * Resolve a tile's border cell attributes from its agent state and focus.
- * State colors come from the configured palette (via stateAttrs); focus
- * stays legible via bold (focused) / dim (unfocused). Panes with no state
- * fall back to bright-white (focused) / dark-gray (unfocused).
+ *
+ * Focus outranks state: the focused tile's border is the shared chrome accent,
+ * so exactly one accent border can be on screen and "orange border = the pane
+ * I'm in" is unambiguous. Every unfocused tile keeps its state colour (via
+ * stateAttrs), so the state read across the rest of the grid is untouched; an
+ * unfocused pane with no state falls back to the frame rule tone.
  */
 export function borderAttrsForState(
   state: AgentState | null | undefined,
   isFocused: boolean,
   palette: Record<AgentState, StateColor>,
 ): CellAttrs {
-  if (!state) {
-    return {
-      fg: isFocused ? 15 : 8,
-      fgMode: ColorMode.Palette,
-      bold: false,
-      dim: false,
-    };
+  if (isFocused) {
+    return { fg: tokens.accent.fg, fgMode: tokens.accent.fgMode, bold: true, dim: false };
   }
-  return stateAttrs(palette[state], { bold: isFocused, dim: !isFocused });
+  if (!state) {
+    return { fg: tokens.ruleFrame.fg, fgMode: tokens.ruleFrame.fgMode, bold: false, dim: true };
+  }
+  return stateAttrs(palette[state], { bold: false, dim: true });
 }
 
 // ─── Tile label chip ─────────────────────────────────────────────────────────
 // The label renders as a filled chip on the top border, like the toolbar's
-// window tabs. Focused: bold green text on the selection background; unfocused:
-// dim gray on the subtler hover background — so focus reads at a glance. Both
-// the text (palette colors, terminal-tuned for legibility) and the chip
-// background (theme.selected / theme.hover, read live) track the detected
-// terminal theme, so the chip stays readable on light backgrounds too.
+// window tabs. Focused: bold accent text on the selection background — the same
+// accent as the focused border and the active window tab, since this is a focus
+// cue, not a state cue (it was green before, which read as "running").
+// Unfocused: secondary text on the subtler hover background. The chip
+// background (theme.selected / theme.hover) is read live so it tracks the
+// detected terminal theme.
 import { theme } from "../theme";
 
 /** Label-chip cell attributes for a tile, by focus. Read the live theme. */
 export function labelChipAttrs(isFocused: boolean): CellAttrs {
   return isFocused
-    ? { fg: 2, fgMode: ColorMode.Palette, bold: true, bg: theme.selected, bgMode: ColorMode.RGB }
-    : { fg: 8, fgMode: ColorMode.Palette, dim: true, bg: theme.hover, bgMode: ColorMode.RGB };
+    ? { fg: tokens.accent.fg, fgMode: tokens.accent.fgMode, bold: true, bg: theme.selected, bgMode: ColorMode.RGB }
+    : { fg: tokens.textSecondary.fg, fgMode: tokens.textSecondary.fgMode, dim: true, bg: theme.hover, bgMode: ColorMode.RGB };
 }
 import { ScreenBridge } from "../screen-bridge";
 import { TmuxPty } from "../tmux-pty";

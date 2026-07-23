@@ -11,13 +11,24 @@ describe("borderAttrsForState", () => {
     complete: { kind: "palette", index: 7 },
   };
 
-  test("uses configured palette color, bold when focused", () => {
-    expect(borderAttrsForState("running", true, palette)).toEqual({
-      fg: 6,
-      fgMode: ColorMode.Palette,
-      bold: true,
-      dim: false,
-    });
+  // Focus outranks state: the focused tile is always the shared accent, so
+  // exactly one accent border exists on screen. Unfocused tiles keep state.
+  test("focused border is the accent regardless of state", () => {
+    for (const state of ["running", "waiting", "complete"] as const) {
+      expect(borderAttrsForState(state, true, palette)).toEqual({
+        fg: tokens.accent.fg,
+        fgMode: tokens.accent.fgMode,
+        bold: true,
+        dim: false,
+      });
+    }
+  });
+
+  test("focused accent does not leak the configured state palette", () => {
+    // Guards the precedence direction: a configured state colour must not win
+    // over focus, which would put two "focus-looking" borders on screen.
+    const focused = borderAttrsForState("running", true, palette);
+    expect(focused.fg).not.toBe(6);
   });
 
   test("uses configured palette color, dim when unfocused", () => {
@@ -43,21 +54,21 @@ describe("borderAttrsForState", () => {
     });
   });
 
-  test("falls back to bright-white when focused and no state", () => {
+  test("a stateless focused tile still gets the accent", () => {
     expect(borderAttrsForState(null, true, palette)).toEqual({
-      fg: 15,
-      fgMode: ColorMode.Palette,
-      bold: false,
+      fg: tokens.accent.fg,
+      fgMode: tokens.accent.fgMode,
+      bold: true,
       dim: false,
     });
   });
 
-  test("falls back to dark-gray when unfocused and no state", () => {
+  test("a stateless unfocused tile falls back to the frame rule tone", () => {
     expect(borderAttrsForState(undefined, false, palette)).toEqual({
-      fg: 8,
-      fgMode: ColorMode.Palette,
+      fg: tokens.ruleFrame.fg,
+      fgMode: tokens.ruleFrame.fgMode,
       bold: false,
-      dim: false,
+      dim: true,
     });
   });
 

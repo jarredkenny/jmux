@@ -6,7 +6,8 @@ import type { PanelView, GroupByField } from "./panel-view";
 import type { Issue, IssueStateType, MergeRequest } from "./adapters/types";
 import { fuzzyMatch } from "./fuzzy";
 import { renderMarkdownToStyledLines } from "./markdown";
-import { accentFor, neutralFg } from "./theme";
+import { neutralFg } from "./theme";
+import { tokens } from "./chrome-tokens";
 
 export type IssueSessionState = "none" | "worktree" | "session";
 
@@ -255,23 +256,23 @@ function sortItems(items: RenderableItem[], sortBy: string, order: "asc" | "desc
 
 // --- Rendering ---
 
-// Warm accent / link accent bases and the neutral primary-text role are re-themed
-// in place by rebuildPanelViewColors() so the panel is legible on light terminals.
-const CURSOR_ACCENT = (0xFB << 16) | (0xD4 << 8) | 0xB8; // peach
-const PRIORITY2_ACCENT = (0xFF << 16) | (0x8C << 8) | 0x00; // orange
-const LINK_ACCENT = (0x58 << 16) | (0xA6 << 8) | 0xFF; // blue
-
-const CURSOR_ATTRS: CellAttrs = { fg: CURSOR_ACCENT, fgMode: ColorMode.RGB };
+// Colours come from chrome-tokens (rebuilt in place on theme detection), so the
+// panel shares the chrome's single accent rather than keeping its own peach.
+// Priority 2 previously had a third orange of its own (#FF8C00); under the
+// colour inventory only one accent may exist, so priority is now carried by
+// weight (bold) on the neutral ramp instead of a hue.
+const CURSOR_ATTRS: CellAttrs = { fg: tokens.accent.fg, fgMode: tokens.accent.fgMode };
 const LINKED_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const SESSION_CURRENT_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette, bold: true };
 const WORKTREE_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette, dim: true };
 const UNLINKED_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const TITLE_ATTRS: CellAttrs = { fg: 7, fgMode: ColorMode.Palette };
 const GROUP_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, bold: true };
-const GROUP_SELECTED_ATTRS: CellAttrs = { fg: CURSOR_ACCENT, fgMode: ColorMode.RGB, bold: true };
+const GROUP_SELECTED_ATTRS: CellAttrs = { fg: tokens.accent.fg, fgMode: tokens.accent.fgMode, bold: true };
 const PRIORITY_ATTRS: Record<number, CellAttrs> = {
   1: { fg: 1, fgMode: ColorMode.Palette, bold: true },
-  2: { fg: PRIORITY2_ACCENT, fgMode: ColorMode.RGB },
+  // Weight, not a third orange — see the note above.
+  2: { fg: tokens.textPrimary.fg, fgMode: tokens.textPrimary.fgMode, bold: true },
   3: { fg: 3, fgMode: ColorMode.Palette },
   4: { fg: 8, fgMode: ColorMode.Palette, dim: true },
 };
@@ -281,14 +282,19 @@ const DETAIL_VALUE: CellAttrs = { fg: 7, fgMode: ColorMode.Palette };
 const DETAIL_KEY: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const SEPARATOR_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const HINT_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
-const URL_ATTRS: CellAttrs = { fg: LINK_ACCENT, fgMode: ColorMode.RGB, underline: true };
+const URL_ATTRS: CellAttrs = { fg: tokens.link.fg, fgMode: tokens.link.fgMode, underline: true };
 
 export function rebuildPanelViewColors(): void {
-  const peach = accentFor(CURSOR_ACCENT);
-  CURSOR_ATTRS.fg = peach;
-  GROUP_SELECTED_ATTRS.fg = peach;
-  PRIORITY_ATTRS[2]!.fg = accentFor(PRIORITY2_ACCENT);
-  URL_ATTRS.fg = accentFor(LINK_ACCENT);
+  // chrome-tokens is rebuilt first (see main.ts's onBackground handler), so the
+  // token reads below are already adapted to the detected background.
+  for (const a of [CURSOR_ATTRS, GROUP_SELECTED_ATTRS]) {
+    a.fg = tokens.accent.fg;
+    a.fgMode = tokens.accent.fgMode;
+  }
+  PRIORITY_ATTRS[2]!.fg = tokens.textPrimary.fg;
+  PRIORITY_ATTRS[2]!.fgMode = tokens.textPrimary.fgMode;
+  URL_ATTRS.fg = tokens.link.fg;
+  URL_ATTRS.fgMode = tokens.link.fgMode;
   const n = neutralFg(7);
   for (const a of [TITLE_ATTRS, DETAIL_VALUE]) { a.fg = n.fg; a.fgMode = n.fgMode; }
 }
