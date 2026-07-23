@@ -2762,9 +2762,15 @@ function toggleSettingsScreen(): void {
 }
 
 function handleSettingsInput(data: string): void {
+  const wasOpen = settingsScreen.isOpen;
   settingsScreen.handleInput(data);
 
-  if (!settingsScreen.isOpen) {
+  if (wasOpen && !settingsScreen.isOpen) {
+    // Settings can close itself (Escape/q in navigation mode) without going
+    // through toggleSettingsScreen(). Re-sync the chrome layout the same way
+    // that path does, or the input router keeps classifying clicks against
+    // the stale frameless layout until the next resize.
+    applyChromeLayout();
     inputRouter.setModalOpen(false);
   }
 
