@@ -45,7 +45,13 @@ import type { DemoContext } from "./demo/setup";
 import type { SessionInfo, WindowTab, PaletteCommand, PaletteResult, AgentState } from "./types";
 import { loadProjectDirsCache, saveProjectDirsCache } from "./project-dirs-cache";
 import { ConfigStore, sanitizeTmuxSessionName } from "./config";
-import { resolveStateColors, STATE_COLOR_NAMES, DEFAULT_STATE_COLORS } from "./state-colors";
+import {
+  resolveStateColors,
+  stateColorToPalette,
+  STATE_COLOR_NAMES,
+  DEFAULT_STATE_COLORS,
+  type StateColor,
+} from "./state-colors";
 import { INTERNAL_SESSION_FILTER, PARK_SESSION } from "./glass/internal-sessions";
 import { PinnedPaneTracker } from "./glass/pinned-pane-tracker";
 import { parsePaneStateLines, PANE_STATE_FORMAT } from "./glass/reflect";
@@ -732,7 +738,7 @@ const pty = new TmuxPty({
 const bridge = new ScreenBridge(mainCols, layout.ptyRows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, rows);
-sidebar.setStateColors(resolveStateColors(configStore.config.stateColors));
+sidebar.setStateColors(paletteFromStateColors(resolveStateColors(configStore.config.stateColors)));
 const agentStateTracker = new AgentStateTracker();
 agentStateTracker.onChange((sessionId) => {
   const record = agentStateTracker.getRecord(sessionId);
@@ -1330,7 +1336,7 @@ function renderFrame(): void {
     let cursor = glassView.getFocusedCursor() ?? { x: 0, y: 0 };
 
     if (stripVisible) {
-      const palette = resolveStateColors(configStore.config.stateColors);
+      const palette = paletteFromStateColors(resolveStateColors(configStore.config.stateColors));
       const stripInput = { tabs: commandCenterTabs, activeTabId, summaryByTab, width: contentCols, palette };
       currentStripChips = layoutStrip(stripInput);
       const strip = renderStrip(stripInput, currentStripChips);
@@ -2450,6 +2456,19 @@ function buildPaletteCommands(): PaletteCommand[] {
   }
 
   return commands;
+}
+
+/**
+ * Bridge from resolveStateColors' StateColor union to the palette-index map
+ * sidebar/glass consumers still expect. Temporary — plan 3's stateAttrs
+ * replaces this with union-aware rendering throughout.
+ */
+function paletteFromStateColors(colors: Record<AgentState, StateColor>): Record<AgentState, number> {
+  return {
+    running: stateColorToPalette(colors.running),
+    waiting: stateColorToPalette(colors.waiting),
+    complete: stateColorToPalette(colors.complete),
+  };
 }
 
 function currentStateColorName(state: AgentState): string {
@@ -3594,7 +3613,7 @@ try {
     }
 
     // Hot-apply agent-state indicator colors to sidebar + Command Center.
-    const newStateColors = resolveStateColors(updated.stateColors);
+    const newStateColors = paletteFromStateColors(resolveStateColors(updated.stateColors));
     sidebar.setStateColors(newStateColors);
     glassView?.setStateColors(newStateColors);
     scheduleRender();
@@ -4072,7 +4091,7 @@ function ensureGlassView(): GlassView {
       minTileWidth: 80,
       minTileHeight: 10,
       onFrame: scheduleRender,
-      stateColors: resolveStateColors(configStore.config.stateColors),
+      stateColors: paletteFromStateColors(resolveStateColors(configStore.config.stateColors)),
     });
   }
   return glassView;

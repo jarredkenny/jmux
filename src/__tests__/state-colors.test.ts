@@ -1,9 +1,11 @@
 import { test, expect, describe } from "bun:test";
 import {
   STATE_COLOR_NAMES,
+  STATE_COLOR_CHOICES,
   DEFAULT_STATE_COLORS,
   colorNameToPalette,
   resolveStateColors,
+  stateColorToPalette,
 } from "../state-colors";
 
 describe("colorNameToPalette", () => {
@@ -45,43 +47,88 @@ describe("colorNameToPalette", () => {
 });
 
 describe("resolveStateColors", () => {
-  test("returns defaults when config is undefined", () => {
+  test("returns defaults when config is undefined — complete is neutral", () => {
     expect(resolveStateColors(undefined)).toEqual({
-      running: 2,   // green
-      waiting: 3,   // yellow
-      complete: 4,  // blue
+      running: { kind: "palette", index: 2 },   // green
+      waiting: { kind: "palette", index: 3 },   // yellow
+      complete: { kind: "neutral" },
     });
   });
 
-  test("defaults match DEFAULT_STATE_COLORS", () => {
+  test("defaults match DEFAULT_STATE_COLORS — complete defaults to neutral", () => {
     expect(DEFAULT_STATE_COLORS).toEqual({
       running: "green",
       waiting: "yellow",
-      complete: "blue",
+      complete: "neutral",
     });
   });
 
   test("applies configured names", () => {
     expect(resolveStateColors({ running: "cyan", waiting: "magenta", complete: "white" })).toEqual({
-      running: 6,
-      waiting: 5,
-      complete: 7,
+      running: { kind: "palette", index: 6 },
+      waiting: { kind: "palette", index: 5 },
+      complete: { kind: "palette", index: 7 },
+    });
+  });
+
+  test("an explicit complete: blue still resolves to palette index 4", () => {
+    expect(resolveStateColors({ complete: "blue" })).toEqual({
+      running: { kind: "palette", index: 2 },
+      waiting: { kind: "palette", index: 3 },
+      complete: { kind: "palette", index: 4 },
+    });
+  });
+
+  test("explicit complete: neutral resolves to the neutral kind", () => {
+    expect(resolveStateColors({ complete: "neutral" })).toEqual({
+      running: { kind: "palette", index: 2 },
+      waiting: { kind: "palette", index: 3 },
+      complete: { kind: "neutral" },
     });
   });
 
   test("falls back to that state's default for invalid name", () => {
     expect(resolveStateColors({ running: "chartreuse" })).toEqual({
-      running: 2,   // fallback to green default
-      waiting: 3,
-      complete: 4,
+      running: { kind: "palette", index: 2 },   // fallback to green default
+      waiting: { kind: "palette", index: 3 },
+      complete: { kind: "neutral" },
     });
   });
 
   test("falls back per-state when a name is missing", () => {
     expect(resolveStateColors({ waiting: "brightred" })).toEqual({
-      running: 2,
-      waiting: 9,
-      complete: 4,
+      running: { kind: "palette", index: 2 },
+      waiting: { kind: "palette", index: 9 },
+      complete: { kind: "neutral" },
     });
+  });
+
+  test("neutral is never emitted as a palette index, and never index 16", () => {
+    const resolved = resolveStateColors({ running: "neutral", waiting: "neutral", complete: "neutral" });
+    for (const state of ["running", "waiting", "complete"] as const) {
+      expect(resolved[state]).toEqual({ kind: "neutral" });
+      if (resolved[state].kind === "palette") {
+        expect((resolved[state] as { kind: "palette"; index: number }).index).not.toBe(16);
+      }
+    }
+  });
+});
+
+describe("STATE_COLOR_CHOICES", () => {
+  test("is the 16 ANSI names plus neutral, without disturbing STATE_COLOR_NAMES", () => {
+    expect(STATE_COLOR_NAMES.length).toBe(16);
+    expect(STATE_COLOR_CHOICES).toEqual([...STATE_COLOR_NAMES, "neutral"]);
+    expect(STATE_COLOR_CHOICES.length).toBe(17);
+  });
+});
+
+describe("stateColorToPalette", () => {
+  test("maps neutral to palette 8 (the grey the old dim complete approximated)", () => {
+    expect(stateColorToPalette({ kind: "neutral" })).toBe(8);
+  });
+
+  test("maps palette kind through unchanged", () => {
+    expect(stateColorToPalette({ kind: "palette", index: 2 })).toBe(2);
+    expect(stateColorToPalette({ kind: "palette", index: 4 })).toBe(4);
   });
 });

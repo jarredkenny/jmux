@@ -22,9 +22,10 @@ export interface SnapshotConfig {
 }
 
 /**
- * Agent-state indicator colors, stored as ANSI color names (e.g. "green").
- * Resolution + validation lives in state-colors.ts; any unset or invalid name
- * falls back to that state's default there.
+ * Agent-state indicator colors, stored as ANSI color names (e.g. "green") or
+ * the special value "neutral" (a finished agent recedes rather than taking
+ * on a palette color). Resolution + validation lives in state-colors.ts; any
+ * unset or invalid name falls back to that state's default there.
  */
 export interface StateColorConfig {
   running?: string;
