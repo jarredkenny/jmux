@@ -589,6 +589,7 @@ export class Sidebar {
   getFilterMode(): FilterMode { return this.filterMode; }
 
   setSortMode(mode: SortMode): void {
+    if (mode === this.sortMode) return; // no-op — avoids a redundant rebuild
     this.sortMode = mode;
     // Show the TOP of the re-ordered list — the whole point of sorting by
     // status is to see what rose to the top, not to chase the active session.
@@ -596,6 +597,7 @@ export class Sidebar {
     this.rebuildPlan();
   }
   setFilterMode(mode: FilterMode): void {
+    if (mode === this.filterMode) return;
     this.filterMode = mode;
     this.scrollOffset = 0;
     this.rebuildPlan();
