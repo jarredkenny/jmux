@@ -23,6 +23,7 @@ export interface FooterSegment {
   key?: string;
   label: string;
   onClick?: "changelog";
+  urgent?: boolean;
 }
 
 export interface FooterModel {
@@ -69,6 +70,7 @@ export function buildFooter(state: {
   right.push({
     label: state.updateAvailable ?? `v${state.version}`,
     onClick: "changelog",
+    urgent: state.updateAvailable !== null,
   });
   return { left: LEFT_KEYBINDS.slice(), right };
 }
@@ -109,8 +111,10 @@ export function layoutFooter(model: FooterModel, cols: number): FooterLayout {
   const labelAttrs: CellAttrs = tokens.textSecondary;
   // Right-side segments that carry a click affordance render in the same
   // accentMuted tone as a left-side key — it's the one generic signal
-  // `FooterSegment` gives us for "this is actionable".
+  // `FooterSegment` gives us for "this is actionable", unless the segment is
+  // urgent (e.g., an update available) in which case it uses attention colour.
   const clickableLabelAttrs: CellAttrs = tokens.accentMuted;
+  const urgentLabelAttrs: CellAttrs = tokens.attention;
   const sepDotAttrs: CellAttrs = tokens.ruleHairline;
 
   const pushSegment = (seg: FooterSegment): void => {
@@ -121,7 +125,12 @@ export function layoutFooter(model: FooterModel, cols: number): FooterLayout {
       cells.push({ text: " ", attrs: labelAttrs });
       cursor += 1;
     }
-    cells.push({ text: seg.label, attrs: seg.onClick ? clickableLabelAttrs : labelAttrs });
+    const labelAttr = seg.onClick
+      ? seg.urgent
+        ? urgentLabelAttrs
+        : clickableLabelAttrs
+      : labelAttrs;
+    cells.push({ text: seg.label, attrs: labelAttr });
     cursor += textCols(seg.label);
     if (seg.onClick) {
       ranges.push({ startCol: start, endCol: cursor - 1, onClick: seg.onClick });

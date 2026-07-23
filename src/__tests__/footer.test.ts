@@ -12,20 +12,20 @@ function flatten(cells: { text: string }[]): string {
 describe("buildFooter", () => {
   test("right side is just the version segment when there's no snapshot chip", () => {
     const model = buildFooter({ snapshotChip: null, version: "1.2.3", updateAvailable: null });
-    expect(model.right).toEqual([{ label: "v1.2.3", onClick: "changelog" }]);
+    expect(model.right).toEqual([{ label: "v1.2.3", onClick: "changelog", urgent: false }]);
   });
 
   test("right side puts the snapshot chip before the version segment", () => {
     const model = buildFooter({ snapshotChip: "snapshot stale", version: "1.2.3", updateAvailable: null });
     expect(model.right).toEqual([
       { label: "snapshot stale" },
-      { label: "v1.2.3", onClick: "changelog" },
+      { label: "v1.2.3", onClick: "changelog", urgent: false },
     ]);
   });
 
   test("the version segment renders the update-available text when present", () => {
     const model = buildFooter({ snapshotChip: null, version: "1.2.3", updateAvailable: "v1.3.0 avail" });
-    expect(model.right).toEqual([{ label: "v1.3.0 avail", onClick: "changelog" }]);
+    expect(model.right).toEqual([{ label: "v1.3.0 avail", onClick: "changelog", urgent: true }]);
   });
 
   test("left side is the fixed keybind hint set, in priority order", () => {
@@ -186,5 +186,35 @@ describe("layoutFooter — fills exactly `cols` columns", () => {
     const cols = 80;
     const { cells } = layoutFooter(model, cols);
     expect(flatten(cells).length).toBe(cols);
+  });
+});
+
+describe("layoutFooter — version segment urgency colour", () => {
+  test("when updateAvailable is null, the version segment renders in accentMuted", () => {
+    const model = buildFooter({ snapshotChip: null, version: "1.2.3", updateAvailable: null });
+    const { cells } = layoutFooter(model, 80);
+    const flat = flatten(cells);
+    const versionText = "v1.2.3";
+    const versionIdx = flat.indexOf(versionText);
+    expect(versionIdx).toBeGreaterThanOrEqual(0);
+    // The version segment's text cell is in the cells array; find it
+    const versionCell = cells.find((c) => c.text === versionText);
+    expect(versionCell).toBeDefined();
+    expect(versionCell!.attrs?.fg).toBe(tokens.accentMuted.fg);
+    expect(versionCell!.attrs?.fgMode).toBe(tokens.accentMuted.fgMode);
+  });
+
+  test("when updateAvailable is non-null, the version segment renders in attention", () => {
+    const model = buildFooter({ snapshotChip: null, version: "1.2.3", updateAvailable: "v1.3.0 avail" });
+    const { cells } = layoutFooter(model, 80);
+    const flat = flatten(cells);
+    const versionText = "v1.3.0 avail";
+    const versionIdx = flat.indexOf(versionText);
+    expect(versionIdx).toBeGreaterThanOrEqual(0);
+    // Find the cell with the update-available text
+    const versionCell = cells.find((c) => c.text === versionText);
+    expect(versionCell).toBeDefined();
+    expect(versionCell!.attrs?.fg).toBe(tokens.attention.fg);
+    expect(versionCell!.attrs?.fgMode).toBe(tokens.attention.fgMode);
   });
 });
