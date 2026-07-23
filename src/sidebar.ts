@@ -4,6 +4,7 @@ import { createGrid, writeString, truncateToCols, type CellAttrs } from "./cell-
 import type { SessionContext } from "./adapters/types";
 import { buildSessionView, buildSessionRow3 } from "./session-view";
 import { theme } from "./theme";
+import { tokens, frame } from "./chrome-tokens";
 
 export interface PinnedPaneEntry {
   paneId: string;
@@ -31,16 +32,22 @@ const ACCENT_ATTRS: CellAttrs = {
 // terminals that don't answer the OSC 11 query are visually unchanged. Both are
 // reassigned by rebuildSidebarColors() once a background is detected.
 let ACTIVE_BG = theme.selected;
+// The selection rail is the single jmux accent (focus), not a state colour —
+// it must read distinctly from a running agent's green dot next to it.
 const ACTIVE_MARKER_ATTRS: CellAttrs = {
-  fg: 2,
-  fgMode: ColorMode.Palette,
+  fg: tokens.accent.fg,
+  fgMode: tokens.accent.fgMode,
   bold: true,
   bg: ACTIVE_BG,
   bgMode: ColorMode.RGB,
 };
+// "activity" means tmux saw output with no agent-state opinion — it is
+// explicitly NOT an agent state, so it takes the neutral/receded tertiary
+// tone rather than the running state's green.
 const ACTIVITY_ATTRS: CellAttrs = {
-  fg: 2,
-  fgMode: ColorMode.Palette,
+  fg: tokens.textTertiary.fg,
+  fgMode: tokens.textTertiary.fgMode,
+  dim: tokens.textTertiary.dim,
 };
 // Style emphasis per state is fixed and meaningful (waiting bold = needs you,
 // complete dim = receded); only the hue is user-configurable.
@@ -86,9 +93,12 @@ const MODE_ACCEPT_EDITS_ATTRS: CellAttrs = {
   fgMode: ColorMode.Palette,
 };
 const MODE_COMPACTION_ATTRS: CellAttrs = { dim: true };
+// The selected row's name is white-bold (textPrimary), not green — green is
+// reserved for the running state; a selected running session was previously
+// green-on-green with its own indicator dot.
 const ACTIVE_NAME_ATTRS: CellAttrs = {
-  fg: 2,
-  fgMode: ColorMode.Palette,
+  fg: tokens.textPrimary.fg,
+  fgMode: tokens.textPrimary.fgMode,
   bold: true,
   bg: ACTIVE_BG,
   bgMode: ColorMode.RGB,
@@ -133,11 +143,42 @@ export function rebuildSidebarColors(): void {
   ACTIVE_MARKER_ATTRS.bg = ACTIVE_BG;
   ACTIVE_NAME_ATTRS.bg = ACTIVE_BG;
   ACTIVE_DETAIL_ATTRS.bg = ACTIVE_BG;
+
+  // Token-derived colours are likewise captured by value at module load, so
+  // they must be re-patched from tokens.* here to track a re-theme (e.g. a
+  // light-mode re-detection). tokens.* itself must already be fresh — i.e.
+  // rebuildChromeTokens() must run before this — otherwise these read stale
+  // values; see the caller in main.ts's OSC 11 re-detection handler.
+  ACTIVE_MARKER_ATTRS.fg = tokens.accent.fg;
+  ACTIVE_MARKER_ATTRS.fgMode = tokens.accent.fgMode;
+
+  ACTIVE_NAME_ATTRS.fg = tokens.textPrimary.fg;
+  ACTIVE_NAME_ATTRS.fgMode = tokens.textPrimary.fgMode;
+
+  ACTIVITY_ATTRS.fg = tokens.textTertiary.fg;
+  ACTIVITY_ATTRS.fgMode = tokens.textTertiary.fgMode;
+  ACTIVITY_ATTRS.dim = tokens.textTertiary.dim;
+
+  GROUP_HEADER_ATTRS.fg = tokens.textSecondary.fg;
+  GROUP_HEADER_ATTRS.fgMode = tokens.textSecondary.fgMode;
+
+  GROUP_HAIRLINE_ATTRS.fg = tokens.ruleHairline.fg;
+  GROUP_HAIRLINE_ATTRS.fgMode = tokens.ruleHairline.fgMode;
+  GROUP_HAIRLINE_ATTRS.dim = tokens.ruleHairline.dim;
 }
+// Group-header label tone — textSecondary, not the old bold palette-8. (The
+// Command Center header, which shares this const, re-adds bold explicitly at
+// its own render site.)
 const GROUP_HEADER_ATTRS: CellAttrs = {
-  fg: 8,
-  fgMode: ColorMode.Palette,
-  bold: true,
+  fg: tokens.textSecondary.fg,
+  fgMode: tokens.textSecondary.fgMode,
+};
+// The hairline fill tone that trails a group-header label out to the
+// sidebar's inner edge, replacing the old disclosure-triangle form.
+const GROUP_HAIRLINE_ATTRS: CellAttrs = {
+  fg: tokens.ruleHairline.fg,
+  fgMode: tokens.ruleHairline.fgMode,
+  dim: tokens.ruleHairline.dim,
 };
 
 // Singleton empty OTEL state for promoted sessions that have no OTEL data
@@ -674,29 +715,48 @@ export class Sidebar {
           }
         }
       } else if (item.type === "group-header") {
+        // "label ────": the label in textSecondary, then a hairline fill in
+        // ruleHairline out to the sidebar's inner edge — replaces the old
+        // "\u25be label" disclosure form. Collapse behaviour is unchanged
+        // (rebuildPlan/toggleGroup); a collapsed group shows a small
+        // right-aligned count cue overlaid on the hairline's tail instead of
+        // a right-pointing chevron.
         const isHovered = this.hoveredRow === screenRow;
+        const bgPatch: CellAttrs = isHovered ? { bg: HOVER_BG, bgMode: ColorMode.RGB } : {};
         if (isHovered) {
-          const bgFill = " ".repeat(this.width);
-          writeString(grid, screenRow, 0, bgFill, { bg: HOVER_BG, bgMode: ColorMode.RGB });
+          writeString(grid, screenRow, 0, " ".repeat(this.width), bgPatch);
         }
-        const headerAttrs: CellAttrs = isHovered
-          ? { ...GROUP_HEADER_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
-          : GROUP_HEADER_ATTRS;
-        const countAttrs: CellAttrs = isHovered
-          ? { ...DIM_ATTRS, bg: HOVER_BG, bgMode: ColorMode.RGB }
-          : DIM_ATTRS;
-        const chevron = item.collapsed ? "\u25b8" : "\u25be"; // ▸ or ▾
-        writeString(grid, screenRow, 1, chevron, headerAttrs);
-        const labelStart = 3;
+        const labelAttrs: CellAttrs = { ...GROUP_HEADER_ATTRS, ...bgPatch };
+        const hairlineAttrs: CellAttrs = { ...GROUP_HAIRLINE_ATTRS, ...bgPatch };
+        const countAttrs: CellAttrs = { ...DIM_ATTRS, ...bgPatch };
+
+        const labelStart = 1;
+        const innerEdge = this.width - 1; // last usable column (matches the right margin used elsewhere, e.g. linearIdCol)
+        // Reserve the label + a 1-space gap + at least 1 hairline char.
+        const maxLabelLen = innerEdge - labelStart + 1 - 2;
         let label = item.label;
-        const countSuffix = item.collapsed ? ` (${item.sessionCount})` : "";
-        const maxLabelLen = this.width - labelStart - countSuffix.length - 1;
         if (label.length > maxLabelLen) {
-          label = label.slice(0, maxLabelLen - 1) + "\u2026";
+          label = label.slice(0, Math.max(0, maxLabelLen - 1)) + "\u2026";
         }
-        writeString(grid, screenRow, labelStart, label, headerAttrs);
-        if (countSuffix) {
-          writeString(grid, screenRow, labelStart + label.length, countSuffix, countAttrs);
+        writeString(grid, screenRow, labelStart, label, labelAttrs);
+
+        const fillStart = labelStart + label.length + 1; // one blank column gap before the fill
+        if (fillStart <= innerEdge) {
+          writeString(
+            grid,
+            screenRow,
+            fillStart,
+            frame.ruleLight.repeat(innerEdge - fillStart + 1),
+            hairlineAttrs,
+          );
+        }
+
+        if (item.collapsed) {
+          const countSuffix = ` (${item.sessionCount})`;
+          const countCol = innerEdge - countSuffix.length + 1;
+          if (countCol > fillStart) {
+            writeString(grid, screenRow, countCol, countSuffix, countAttrs);
+          }
         }
         this.rowToGroupLabel.set(screenRow, item.label);
       } else if (item.type === "spacer") {

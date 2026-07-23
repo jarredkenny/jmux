@@ -4,6 +4,7 @@ import type { PinnedPaneEntry } from "../sidebar";
 import type { SessionInfo } from "../types";
 import { makeSessionOtelState } from "../types";
 import type { SessionContext, PipelineStatus } from "../adapters/types";
+import { tokens, frame } from "../chrome-tokens";
 
 const SIDEBAR_WIDTH = 24;
 const makeBlankOtelState = makeSessionOtelState;
@@ -136,7 +137,7 @@ describe("Sidebar", () => {
     expect(detailRow).toContain("dev");
   });
 
-  test("highlights active session with green marker", () => {
+  test("highlights active session with an accent marker", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(
       makeSessions([{ name: "main" }, { name: "dev" }]),
@@ -144,14 +145,36 @@ describe("Sidebar", () => {
     sidebar.setActiveSession("$0");
     const grid = sidebar.getGrid();
     // Find the active session's name row and check for marker
-    let foundMarker = false;
+    let marker: (typeof grid.cells)[number][number] | null = null;
     for (let r = 2; r < 20; r++) {
       if (grid.cells[r][0].char === "▎") {
-        foundMarker = true;
+        marker = grid.cells[r][0];
         break;
       }
     }
-    expect(foundMarker).toBe(true);
+    expect(marker).not.toBeNull();
+    // The rail is the accent, not palette-2 green.
+    expect(marker!.fg).toBe(tokens.accent.fg!);
+    expect(marker!.fgMode).toBe(tokens.accent.fgMode!);
+    expect(marker!.fg).not.toBe(2);
+  });
+
+  test("selected row's name renders textPrimary bold, not palette-2 green", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    // Ungrouped sessions render alphabetically ("alpha" before "bravo"), so
+    // "alpha" (id $0) is the first session row.
+    sidebar.updateSessions(
+      makeSessions([{ name: "alpha" }, { name: "bravo" }]),
+    );
+    sidebar.setActiveSession("$0");
+    const grid = sidebar.getGrid();
+    // Row 4: first session's name row; name text starts at col 3.
+    const cell = grid.cells[4][3];
+    expect(cell.char).toBe("a"); // sanity: this is "alpha"'s name row
+    expect(cell.fg).toBe(tokens.textPrimary.fg!);
+    expect(cell.fgMode).toBe(tokens.textPrimary.fgMode!);
+    expect(cell.fg).not.toBe(2);
+    expect(cell.bold).toBe(true);
   });
 
   test("shows activity indicator", () => {
@@ -167,6 +190,25 @@ describe("Sidebar", () => {
       }
     }
     expect(foundDot).toBe(true);
+  });
+
+  test("activity indicator is neutral (tokens.textTertiary), not green", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "main" }]));
+    sidebar.setActivity("$0", true);
+    const grid = sidebar.getGrid();
+    let cell: (typeof grid.cells)[number][number] | null = null;
+    for (let r = 2; r < 20; r++) {
+      if (grid.cells[r][1].char === "●") {
+        cell = grid.cells[r][1];
+        break;
+      }
+    }
+    expect(cell).not.toBeNull();
+    expect(cell!.fg).toBe(tokens.textTertiary.fg!);
+    expect(cell!.fgMode).toBe(tokens.textTertiary.fgMode!);
+    expect(cell!.fg).not.toBe(2);
+    expect(cell!.dim).toBe(tokens.textTertiary.dim!);
   });
 
   test("shows waiting glyph when agent state is waiting", () => {
@@ -485,7 +527,7 @@ describe("Sidebar", () => {
     expect(ids).toEqual(["$0", "$1"]);
   });
 
-  test("expanded group header shows down chevron", () => {
+  test("expanded group header renders 'label ────' hairline, not a chevron", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(
       makeSessions([
@@ -494,11 +536,23 @@ describe("Sidebar", () => {
       ]),
     );
     const grid = sidebar.getGrid();
-    // Row 2: overview, Row 3: spacer, Row 4: group header — chevron at col 1
-    expect(grid.cells[4][1].char).toBe("▾"); // ▾
+    // Row 2: overview, Row 3: spacer, Row 4: group header.
+    const row = grid.cells[4];
+    // Label starts at col 1 in tokens.textSecondary — no disclosure chevron.
+    const label = Array.from({ length: "Code/work".length }, (_, i) => row[1 + i].char).join("");
+    expect(label).toBe("Code/work");
+    expect(row[1].fg).toBe(tokens.textSecondary.fg!);
+    expect(row[1].fgMode).toBe(tokens.textSecondary.fgMode!);
+    expect(row.some((c) => c.char === "▾" || c.char === "▸")).toBe(false);
+    // After the label + a one-space gap, the rest of the row fills with the
+    // hairline rule glyph in the hairline tone, out to the inner edge.
+    const fillStart = 1 + label.length + 1;
+    expect(row[fillStart].char).toBe(frame.ruleLight);
+    expect(row[fillStart].fg).toBe(tokens.ruleHairline.fg!);
+    expect(row[SIDEBAR_WIDTH - 1].char).toBe(frame.ruleLight);
   });
 
-  test("collapsed group header shows right chevron and session count", () => {
+  test("collapsed group header keeps the hairline and shows a small count cue", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(
       makeSessions([
@@ -509,12 +563,17 @@ describe("Sidebar", () => {
     sidebar.toggleGroup("Code/work");
     const grid = sidebar.getGrid();
     // Row 2: overview, Row 3: spacer, Row 4: group header
-    expect(grid.cells[4][1].char).toBe("▸"); // ▸
+    const row = grid.cells[4];
     const headerText = Array.from(
       { length: SIDEBAR_WIDTH },
-      (_, i) => grid.cells[4][i].char,
+      (_, i) => row[i].char,
     ).join("");
+    expect(headerText).toContain("Code/work");
     expect(headerText).toContain("(2)");
+    expect(headerText).not.toContain("▸");
+    expect(headerText).not.toContain("▾");
+    // The hairline is still present between the label and the count cue.
+    expect(headerText).toContain(frame.ruleLight);
   });
 
   test("getGroupByRow returns group label for header rows", () => {
