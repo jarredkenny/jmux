@@ -1,7 +1,8 @@
 import type { CellGrid } from "./types";
 import { ColorMode } from "./types";
 import { createGrid, writeString, type CellAttrs } from "./cell-grid";
-import { theme, accentFor, neutralFg } from "./theme";
+import { theme, neutralFg } from "./theme";
+import { tokens, space, frame } from "./chrome-tokens";
 
 // --- Setting definitions ---
 
@@ -33,40 +34,50 @@ export interface SettingsCategory {
 
 // --- Rendering constants ---
 
-// Warm accent (peach on dark themes, darkened for legibility on light). The
-// attr objects below are re-themed in place by rebuildSettingsColors(): every
-// PEACH-role object gets accentFor(PEACH_BASE), every neutral-text object gets
-// the terminal default fg once a theme is detected, and the edit-field surfaces
-// track theme.hover / theme.selected. They start on the dark defaults.
-const PEACH_BASE = (0xFB << 16) | (0xD4 << 8) | 0xB8;
+// The single jmux accent (see chrome-tokens.ts) marks focus: the title, the
+// active category/label, the row cursor and edit caret. The attr objects
+// below are re-themed in place by rebuildSettingsColors(): every ACCENT-role
+// object is re-patched from tokens.accent, HAIRLINE_ROLE from
+// tokens.ruleHairline, every neutral-text object from the terminal default
+// fg once a theme is detected, and the edit-field surfaces track
+// theme.hover / theme.selected. They start on the dark defaults.
 
-const HEADER_ATTRS: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB, bold: true };
-const CATEGORY_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, bold: true };
-const CATEGORY_ACTIVE: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB, bold: true };
+const HEADER_ATTRS: CellAttrs = { fg: tokens.accent.fg, fgMode: tokens.accent.fgMode, bold: true };
+const CATEGORY_ATTRS: CellAttrs = { fg: tokens.textSecondary.fg, fgMode: tokens.textSecondary.fgMode };
+const CATEGORY_ACTIVE: CellAttrs = { fg: tokens.accent.fg, fgMode: tokens.accent.fgMode, bold: true };
+const HAIRLINE_ATTRS: CellAttrs = { fg: tokens.ruleHairline.fg, fgMode: tokens.ruleHairline.fgMode, dim: tokens.ruleHairline.dim };
 const LABEL_ATTRS: CellAttrs = { fg: 7, fgMode: ColorMode.Palette };
-const LABEL_ACTIVE: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB, bold: true };
+const LABEL_ACTIVE: CellAttrs = { fg: tokens.accent.fg, fgMode: tokens.accent.fgMode, bold: true };
 const VALUE_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette };
 const VALUE_ACTIVE: CellAttrs = { fg: 7, fgMode: ColorMode.Palette };
 const DIM_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
 const HINT_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette, dim: true };
-const CURSOR_ATTRS: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB };
+const HINT_KEY_ATTRS: CellAttrs = { fg: tokens.accentMuted.fg, fgMode: tokens.accentMuted.fgMode };
+const HINT_LABEL_ATTRS: CellAttrs = { fg: tokens.textSecondary.fg, fgMode: tokens.textSecondary.fgMode };
+const HINT_SEP_ATTRS: CellAttrs = { fg: tokens.ruleHairline.fg, fgMode: tokens.ruleHairline.fgMode, dim: tokens.ruleHairline.dim };
+const CURSOR_ATTRS: CellAttrs = { fg: tokens.accent.fg, fgMode: tokens.accent.fgMode };
 const EDIT_BG: CellAttrs = { bg: theme.hover, bgMode: ColorMode.RGB };
 const EDIT_TEXT: CellAttrs = { fg: 7, fgMode: ColorMode.Palette, bg: theme.hover, bgMode: ColorMode.RGB };
-const EDIT_CURSOR: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB, bg: theme.selected, bgMode: ColorMode.RGB };
+const EDIT_CURSOR: CellAttrs = { fg: tokens.accent.fg, fgMode: tokens.accent.fgMode, bg: theme.selected, bgMode: ColorMode.RGB };
 const MAP_KEY_ATTRS: CellAttrs = { fg: 5, fgMode: ColorMode.Palette };
 const MAP_VAL_ATTRS: CellAttrs = { fg: 8, fgMode: ColorMode.Palette };
-const MAP_KEY_ACTIVE: CellAttrs = { fg: PEACH_BASE, fgMode: ColorMode.RGB };
+const MAP_KEY_ACTIVE: CellAttrs = { fg: tokens.accent.fg, fgMode: tokens.accent.fgMode };
 const MAP_ADD_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const ON_ATTRS: CellAttrs = { fg: 2, fgMode: ColorMode.Palette };
 const OFF_ATTRS: CellAttrs = { fg: 1, fgMode: ColorMode.Palette };
 
-// Objects whose foreground is the warm accent vs. neutral text — patched by role.
-const PEACH_ROLE: CellAttrs[] = [HEADER_ATTRS, CATEGORY_ACTIVE, LABEL_ACTIVE, CURSOR_ATTRS, EDIT_CURSOR, MAP_KEY_ACTIVE];
+// Objects whose foreground tracks the accent / neutral-text / hairline tokens — patched by role.
+const ACCENT_ROLE: CellAttrs[] = [HEADER_ATTRS, CATEGORY_ACTIVE, LABEL_ACTIVE, CURSOR_ATTRS, EDIT_CURSOR, MAP_KEY_ACTIVE];
 const NEUTRAL_ROLE: CellAttrs[] = [LABEL_ATTRS, VALUE_ACTIVE, EDIT_TEXT];
+const TEXT_SECONDARY_ROLE: CellAttrs[] = [CATEGORY_ATTRS, HINT_LABEL_ATTRS];
+const HAIRLINE_ROLE: CellAttrs[] = [HAIRLINE_ATTRS, HINT_SEP_ATTRS];
 
 export function rebuildSettingsColors(): void {
-  const peach = accentFor(PEACH_BASE);
-  for (const a of PEACH_ROLE) { a.fg = peach; a.fgMode = ColorMode.RGB; }
+  for (const a of ACCENT_ROLE) { a.fg = tokens.accent.fg; a.fgMode = tokens.accent.fgMode; }
+  for (const a of TEXT_SECONDARY_ROLE) { a.fg = tokens.textSecondary.fg; a.fgMode = tokens.textSecondary.fgMode; }
+  for (const a of HAIRLINE_ROLE) { a.fg = tokens.ruleHairline.fg; a.fgMode = tokens.ruleHairline.fgMode; a.dim = tokens.ruleHairline.dim; }
+  HINT_KEY_ATTRS.fg = tokens.accentMuted.fg;
+  HINT_KEY_ATTRS.fgMode = tokens.accentMuted.fgMode;
   const n = neutralFg(7);
   for (const a of NEUTRAL_ROLE) { a.fg = n.fg; a.fgMode = n.fgMode; }
   EDIT_BG.bg = theme.hover;
@@ -95,6 +106,27 @@ export type SettingsAction =
   | { type: "none" }
   | { type: "map-add"; settingId: string }
   | { type: "map-edit"; settingId: string; key: string };
+
+// --- Visual-row plan ---
+//
+// `buildNodes()` produces the list of *setting indices* — the only things
+// `selectedIndex`/navigation ever address. `buildRowPlan()` wraps that list
+// into the *rendered rows*: it inserts a blank spacer row before every
+// category header except the first, purely for visual breathing room
+// between sections. Blank rows carry no nodeIndex, so they can never be
+// the render-time target of `isSelected`, and moveUp()/moveDown() never
+// touch the row plan at all — they walk `nodes` directly, so the cursor
+// can only ever land on a real node. The row plan's only jobs are (a)
+// deciding what appears on which screen row and (b) letting scrolling
+// account for the extra blank rows consuming vertical space.
+type RenderRow =
+  | { kind: "blank" }
+  | { kind: "node"; nodeIndex: number; node: SettingsNode };
+
+// Row 0 is the "Settings" title, row 1 is a blank breathing row; content
+// starts at row 2. Shared between render() and ensureVisible() so the two
+// can't drift apart.
+const CONTENT_START_ROW = 2;
 
 export class SettingsScreen {
   private categories: SettingsCategory[] = [];
@@ -176,66 +208,132 @@ export class SettingsScreen {
     }
 
     const grid = createGrid(cols, rows);
-    const nodes = this.buildNodes();
     const pad = 2;
 
+    // Content is capped at space.measure and centred within the render
+    // area (which is already the main rect, excluding the sidebar) rather
+    // than laid out edge-to-edge — the dot leaders used to fill the whole
+    // terminal width, so the layout got worse the wider the terminal.
+    const measureWidth = Math.min(cols, space.measure);
+    const left = pad + Math.max(0, Math.floor((cols - space.measure) / 2));
+    const right = left + measureWidth;
+
+    const nodes = this.buildNodes();
+    const rowPlan = this.buildRowPlan(nodes);
+
     // Header
-    writeString(grid, 0, pad, "Settings", HEADER_ATTRS);
-    const hint = this.editState
-      ? "Enter to confirm  ·  Esc to cancel"
-      : "Enter to edit  ·  Esc to close  ·  ↑↓ navigate";
-    writeString(grid, 1, pad, hint, HINT_ATTRS);
+    writeString(grid, 0, left, "Settings", HEADER_ATTRS);
 
-    const startRow = 3;
+    // The hint line is its own bottom row — settings is a frameless
+    // full-screen takeover (no shared footer), so it keeps one hint line
+    // of its own, reserved at the bottom of the content band.
+    const hintRow = rows - 1;
 
-    for (let i = 0; i < nodes.length; i++) {
-      const row = startRow + i - this.scrollOffset;
-      if (row < startRow || row >= rows) continue;
+    for (let r = 0; r < rowPlan.length; r++) {
+      const row = CONTENT_START_ROW + r - this.scrollOffset;
+      if (row < CONTENT_START_ROW || row >= hintRow) continue;
 
-      const node = nodes[i];
-      const isSelected = i === this.selectedIndex;
+      const entry = rowPlan[r];
+      if (entry.kind === "blank") continue;
+
+      const node = entry.node;
+      const isSelected = entry.nodeIndex === this.selectedIndex;
 
       if (node.kind === "category") {
-        this.renderCategory(grid, row, cols, pad, node, isSelected);
+        this.renderCategory(grid, row, left, right, node, isSelected);
       } else if (node.kind === "setting") {
-        this.renderSetting(grid, row, cols, pad, node.setting, isSelected);
+        this.renderSetting(grid, row, left, right, node.setting, isSelected);
       } else if (node.kind === "map-entry") {
-        this.renderMapEntry(grid, row, cols, pad, node, isSelected);
+        this.renderMapEntry(grid, row, left, right, node, isSelected);
       } else if (node.kind === "map-add") {
-        const indent = pad + 4;
+        const indent = left + 4;
         writeString(grid, row, indent, "+ Add mapping", isSelected ? MAP_KEY_ACTIVE : MAP_ADD_ATTRS);
         if (isSelected) writeString(grid, row, indent - 2, "▸", CURSOR_ATTRS);
       }
     }
 
+    this.renderHint(grid, hintRow, left);
+
     return grid;
+  }
+
+  private renderHint(grid: CellGrid, row: number, left: number): void {
+    const groups: Array<{ key: string; label: string }> = this.editState
+      ? [{ key: "↵", label: "confirm" }, { key: "esc", label: "cancel" }]
+      : [{ key: "↵", label: "edit" }, { key: "esc", label: "close" }, { key: "↑↓", label: "navigate" }];
+
+    let col = left;
+    groups.forEach((group, i) => {
+      if (i > 0) {
+        writeString(grid, row, col, "  ", HINT_SEP_ATTRS);
+        col += 2;
+        writeString(grid, row, col, "·", HINT_SEP_ATTRS);
+        col += 1;
+        writeString(grid, row, col, "  ", HINT_SEP_ATTRS);
+        col += 2;
+      }
+      writeString(grid, row, col, group.key, HINT_KEY_ATTRS);
+      col += group.key.length;
+      writeString(grid, row, col, " " + group.label, HINT_LABEL_ATTRS);
+      col += group.label.length + 1;
+    });
+  }
+
+  // --- Private: visual-row plan ---
+
+  private buildRowPlan(nodes: SettingsNode[]): RenderRow[] {
+    const plan: RenderRow[] = [];
+    nodes.forEach((node, nodeIndex) => {
+      if (node.kind === "category" && plan.length > 0) {
+        plan.push({ kind: "blank" });
+      }
+      plan.push({ kind: "node", nodeIndex, node });
+    });
+    return plan;
   }
 
   // --- Private: rendering helpers ---
 
-  private renderCategory(grid: CellGrid, row: number, cols: number, pad: number, node: Extract<SettingsNode, { kind: "category" }>, selected: boolean): void {
-    const chevron = node.collapsed ? "▸" : "▾";
-    const label = `${chevron} ${node.label} (${node.count})`;
-    writeString(grid, row, pad, label, selected ? CATEGORY_ACTIVE : CATEGORY_ATTRS);
-    if (selected) writeString(grid, row, pad - 1, "▸", CURSOR_ATTRS);
+  // Section header as a "label ────" hairline (replacing the old
+  // "▸/▸ label (count)" chevron form): the label, a space, then a
+  // ruleHairline-toned fill of frame.ruleLight to the right edge of the
+  // measure. Collapse still toggles via Enter (handleEnter()) and still
+  // hides the category's settings (buildNodes()) — only the *display* of
+  // collapse changed, from a count on every header to "n hidden" shown
+  // only when collapsed.
+  private renderCategory(grid: CellGrid, row: number, left: number, right: number, node: Extract<SettingsNode, { kind: "category" }>, selected: boolean): void {
+    const label = node.label;
+    writeString(grid, row, left, label, selected ? CATEGORY_ACTIVE : CATEGORY_ATTRS);
+    if (selected) writeString(grid, row, left - 1, "▸", CURSOR_ATTRS);
+
+    const hiddenLabel = node.collapsed ? `${node.count} hidden` : "";
+    const hairlineStart = left + label.length + 1;
+    const hairlineEnd = hiddenLabel ? right - hiddenLabel.length - 1 : right;
+    const fillLen = Math.max(0, hairlineEnd - hairlineStart);
+    if (fillLen > 0) {
+      writeString(grid, row, hairlineStart, frame.ruleLight.repeat(fillLen), HAIRLINE_ATTRS);
+    }
+    if (hiddenLabel && right - hiddenLabel.length >= hairlineStart) {
+      writeString(grid, row, right - hiddenLabel.length, hiddenLabel, CATEGORY_ATTRS);
+    }
   }
 
-  private renderSetting(grid: CellGrid, row: number, cols: number, pad: number, setting: SettingDef, selected: boolean): void {
-    const indent = pad + 2;
+  private renderSetting(grid: CellGrid, row: number, left: number, right: number, setting: SettingDef, selected: boolean): void {
+    const indent = left + 2;
 
     // Check if this setting is being edited
     if (this.editState?.settingId === setting.id) {
       if (this.editState.mode === "text") {
-        this.renderTextEdit(grid, row, cols, pad, setting, this.editState);
+        this.renderTextEdit(grid, row, left, right, setting, this.editState);
         return;
       }
       if (this.editState.mode === "list") {
-        this.renderListEdit(grid, row, cols, pad, setting, this.editState);
+        this.renderListEdit(grid, row, left, setting, this.editState);
         return;
       }
     }
 
-    const maxLabelLen = Math.floor((cols - indent - 2) * 0.5);
+    const maxLabelLen = Math.max(1, Math.floor((right - indent - 2) * 0.5));
     const displayLabel = setting.label.length > maxLabelLen
       ? setting.label.slice(0, maxLabelLen - 1) + "\u2026"
       : setting.label;
@@ -250,17 +348,19 @@ export class SettingsScreen {
       ? (this.expandedMaps.has(setting.id) ? "▾" : `▸ ${value}`)
       : value.length > 25 ? value.slice(0, 24) + "\u2026" : value;
 
-    const valueCol = cols - valueStr.length - pad;
-    if (valueCol > indent + displayLabel.length + 1) {
-      // Dotted leader
-      const leaderStart = indent + displayLabel.length + 1;
-      const leaderEnd = valueCol - 1;
-      if (leaderEnd > leaderStart && !isMap) {
-        const maxDots = Math.min(leaderEnd - leaderStart - 1, 20);
-        if (maxDots > 0) {
+    // Dot leader computed within the measure: label, leader, value — the
+    // leader fills exactly the space between them (measureWidth - label -
+    // value - the flanking padding), never past `right`.
+    const valueCol = right - valueStr.length;
+    const labelEnd = indent + displayLabel.length;
+    if (valueCol > labelEnd + 1) {
+      if (!isMap) {
+        const leaderStart = labelEnd + 1;
+        const leaderEnd = valueCol - 1;
+        const maxDots = leaderEnd - leaderStart - 1; // reserve one flanking space each side
+        if (maxDots >= 2) {
           const dots = " " + "·".repeat(maxDots) + " ";
-          const dotsStart = Math.max(leaderStart, valueCol - dots.length);
-          writeString(grid, row, dotsStart, dots, DIM_ATTRS);
+          writeString(grid, row, leaderStart, dots, HAIRLINE_ATTRS);
         }
       }
 
@@ -276,11 +376,11 @@ export class SettingsScreen {
     if (selected) writeString(grid, row, indent - 2, "▸", CURSOR_ATTRS);
   }
 
-  private renderTextEdit(grid: CellGrid, row: number, cols: number, pad: number, setting: SettingDef, state: Extract<EditState, { mode: "text" }>): void {
-    const indent = pad + 2;
+  private renderTextEdit(grid: CellGrid, row: number, left: number, right: number, setting: SettingDef, state: Extract<EditState, { mode: "text" }>): void {
+    const indent = left + 2;
     writeString(grid, row, indent, setting.label + ": ", LABEL_ACTIVE);
     const fieldStart = indent + setting.label.length + 2;
-    const fieldWidth = cols - fieldStart - pad;
+    const fieldWidth = Math.max(0, right - fieldStart);
 
     // Background for edit field
     const bg = " ".repeat(fieldWidth);
@@ -299,8 +399,8 @@ export class SettingsScreen {
     writeString(grid, row, cursorCol, cursorChar, EDIT_CURSOR);
   }
 
-  private renderListEdit(grid: CellGrid, row: number, cols: number, pad: number, setting: SettingDef, state: Extract<EditState, { mode: "list" }>): void {
-    const indent = pad + 2;
+  private renderListEdit(grid: CellGrid, row: number, left: number, setting: SettingDef, state: Extract<EditState, { mode: "list" }>): void {
+    const indent = left + 2;
     writeString(grid, row, indent, setting.label + ": ", LABEL_ACTIVE);
     const fieldStart = indent + setting.label.length + 2;
 
@@ -309,8 +409,8 @@ export class SettingsScreen {
     writeString(grid, row, fieldStart, `◂ ${option} ▸`, CURSOR_ATTRS);
   }
 
-  private renderMapEntry(grid: CellGrid, row: number, cols: number, pad: number, node: Extract<SettingsNode, { kind: "map-entry" }>, selected: boolean): void {
-    const indent = pad + 4;
+  private renderMapEntry(grid: CellGrid, row: number, left: number, right: number, node: Extract<SettingsNode, { kind: "map-entry" }>, selected: boolean): void {
+    const indent = left + 4;
     const keyStr = node.key;
     const valStr = node.value.length > 30 ? node.value.slice(0, 29) + "\u2026" : node.value;
 
@@ -321,7 +421,7 @@ export class SettingsScreen {
     if (selected) {
       writeString(grid, row, indent - 2, "▸", CURSOR_ATTRS);
       // Hint for delete
-      const hintCol = cols - 10;
+      const hintCol = right - 10;
       if (hintCol > indent + keyStr.length + valStr.length + 5) {
         writeString(grid, row, hintCol, "[d] remove", HINT_ATTRS);
       }
@@ -664,13 +764,25 @@ export class SettingsScreen {
     return grid;
   }
 
+  // scrollOffset is measured in row-plan positions (rowPlan indices), not
+  // node indices, since the plan's blank spacer rows consume screen space
+  // too. Convert the selected node index to its row-plan position before
+  // clamping — this keeps the selected setting on-screen without ever
+  // being able to land scroll on a blank row itself (selectedIndex only
+  // ever addresses "node" entries).
   private ensureVisible(): void {
-    const visibleCount = this.lastRenderRows - 3;
-    const relativeIdx = this.selectedIndex - this.scrollOffset;
+    const rowPlan = this.buildRowPlan(this.buildNodes());
+    const rowPos = rowPlan.findIndex((r) => r.kind === "node" && r.nodeIndex === this.selectedIndex);
+    if (rowPos < 0) return;
+
+    // Reserve CONTENT_START_ROW rows above the content and 1 row for the
+    // hint line at the bottom.
+    const visibleCount = Math.max(1, this.lastRenderRows - CONTENT_START_ROW - 1);
+    const relativeIdx = rowPos - this.scrollOffset;
     if (relativeIdx < 0) {
-      this.scrollOffset = this.selectedIndex;
+      this.scrollOffset = rowPos;
     } else if (relativeIdx >= visibleCount) {
-      this.scrollOffset = this.selectedIndex - visibleCount + 1;
+      this.scrollOffset = rowPos - visibleCount + 1;
     }
   }
 }
