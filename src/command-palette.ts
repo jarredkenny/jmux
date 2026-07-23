@@ -7,6 +7,7 @@ import {
   MATCH_ATTRS, SELECTED_MATCH_ATTRS, CATEGORY_ATTRS, SELECTED_CATEGORY_ATTRS,
   CURRENT_TAG_ATTRS, SELECTED_CURRENT_TAG_ATTRS,
   BREADCRUMB_ATTRS, NO_MATCHES_ATTRS, BG_ATTRS, SELECTED_BG_ATTRS,
+  modalContentRect, drawModalChrome, type ModalChrome,
 } from "./modal";
 
 export { fuzzyMatch, type FuzzyResult } from "./fuzzy";
@@ -34,6 +35,14 @@ export class CommandPalette {
   private sublistParent: PaletteCommand | null = null;
   private savedQuery = "";
   private savedIndex = 0;
+
+  // The width of the last grid getGrid() built — getCursorPosition() has no
+  // width parameter of its own (see the Modal interface), but needs it to
+  // ask modalContentRect the same question getGrid() just did. The renderer
+  // always calls getGrid() immediately before getCursorPosition() in the
+  // same frame (see main.ts's computeModalOverlay), so this is never stale
+  // in practice; the fallback only matters before the first render.
+  private lastWidth = 40;
 
   open(commands: PaletteCommand[]): void {
     this._open = true;
@@ -91,7 +100,13 @@ export class CommandPalette {
   }
 
   getCursorPosition(): { row: number; col: number } | null {
-    return { row: 0, col: this.getCursorCol() };
+    return { row: this.getInputRow(), col: this.getCursorCol() };
+  }
+
+  /** Row of the input/breadcrumb line — right below the chrome title. */
+  private getInputRow(): number {
+    const rect = modalContentRect(this.buildChrome(), { cols: this.lastWidth, rows: this.getHeight() });
+    return rect.top - 2; // title(1) + hairline(1) sit between the title row and this one
   }
 
   preferredWidth(termCols: number): number {
@@ -226,11 +241,37 @@ export class CommandPalette {
     return CONSUMED;
   }
 
+  /** Visible result rows — 1 ("No matches") when the filter is empty. */
+  private getResultsRows(): number {
+    return Math.min(this.filtered.length || 1, MAX_VISIBLE_RESULTS);
+  }
+
+  /**
+   * The palette's ModalChrome: a "Commands" title, the live result count,
+   * and the flagship hint footer (↑↓ move · ↵ run · esc close) in the
+   * shared dialect. A hairline separates the input line from the results.
+   */
+  private buildChrome(): ModalChrome {
+    const n = this.filtered.length;
+    return {
+      title: "Commands",
+      count: `${n} result${n === 1 ? "" : "s"}`,
+      hints: [
+        { key: "↑↓", label: "move" },
+        { key: "↵", label: "run" },
+        { key: "esc", label: "close" },
+      ],
+      hairlineAfterInput: true,
+    };
+  }
+
   getHeight(): number {
-    return 1 + Math.min(this.filtered.length || 1, MAX_VISIBLE_RESULTS);
+    // title(1) + input(1) + hairline(1) + hint(1) + results.
+    return 4 + this.getResultsRows();
   }
 
   getGrid(width: number): CellGrid {
+    this.lastWidth = width;
     const height = this.getHeight();
     const grid = createGrid(width, height);
 
@@ -239,24 +280,28 @@ export class CommandPalette {
       writeString(grid, r, 0, " ".repeat(width), BG_ATTRS);
     }
 
-    // Row 0: input line
+    const chrome = this.buildChrome();
+    const rect = modalContentRect(chrome, { cols: width, rows: height });
+    const inputRow = rect.top - 2; // title + hairline sit between the title row and this one
+
+    // Input line, directly under the title.
     if (this.sublistParent) {
       const breadcrumb = this.sublistParent.label + " › ";
-      writeString(grid, 0, 0, breadcrumb, BREADCRUMB_ATTRS);
-      writeString(grid, 0, breadcrumb.length, this.query, INPUT_ATTRS);
+      writeString(grid, inputRow, 0, breadcrumb, BREADCRUMB_ATTRS);
+      writeString(grid, inputRow, breadcrumb.length, this.query, INPUT_ATTRS);
     } else {
-      writeString(grid, 0, 0, "▷", PROMPT_ATTRS);
-      writeString(grid, 0, 2, this.query, INPUT_ATTRS);
+      writeString(grid, inputRow, 0, "▷", PROMPT_ATTRS);
+      writeString(grid, inputRow, 2, this.query, INPUT_ATTRS);
     }
 
-    // Rows 1..N: results (scrolled)
-    const visibleCount = Math.min(this.filtered.length, MAX_VISIBLE_RESULTS);
+    // Results (scrolled), inside the chrome-reserved content rect.
+    const visibleCount = Math.min(this.filtered.length, rect.rows);
     if (this.filtered.length === 0) {
-      writeString(grid, 1, 3, "No matches", NO_MATCHES_ATTRS);
+      writeString(grid, rect.top, 3, "No matches", NO_MATCHES_ATTRS);
     } else {
       for (let vi = 0; vi < visibleCount; vi++) {
         const i = this.scrollOffset + vi;
-        const row = vi + 1;
+        const row = rect.top + vi;
         const item = this.filtered[i];
         if (!item) break;
         const isSelected = i === this.selectedIndex;
@@ -304,6 +349,8 @@ export class CommandPalette {
         }
       }
     }
+
+    drawModalChrome(grid, chrome);
 
     return grid;
   }

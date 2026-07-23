@@ -248,23 +248,30 @@ describe("CommandPalette", () => {
   });
 });
 
+// Chrome-reserved rows (Task 6): title(0), input(1), hairline(2), then
+// results starting at row 3, with a hint footer on the last row.
+const TITLE_ROW = 0;
+const INPUT_ROW = 1;
+const HAIRLINE_ROW = 2;
+const RESULTS_TOP_ROW = 3;
+
 describe("CommandPalette rendering", () => {
-  test("getHeight returns input row + result rows", () => {
+  test("getHeight reserves title + input + hairline + hint, plus result rows", () => {
     const palette = new CommandPalette();
     palette.open(testCommands);
-    // 1 input row + 4 results = 5
-    expect(palette.getHeight()).toBe(5);
+    // 4 chrome rows + 4 results = 8
+    expect(palette.getHeight()).toBe(8);
   });
 
-  test("getHeight caps at MAX_VISIBLE_RESULTS + 1", () => {
+  test("getHeight caps results at MAX_VISIBLE_RESULTS", () => {
     const manyCommands: PaletteCommand[] = [];
     for (let i = 0; i < 20; i++) {
       manyCommands.push({ id: `cmd-${i}`, label: `Command ${i}`, category: "other" });
     }
     const palette = new CommandPalette();
     palette.open(manyCommands);
-    // 1 input + 16 visible = 17
-    expect(palette.getHeight()).toBe(17);
+    // 4 chrome rows + 16 visible = 20
+    expect(palette.getHeight()).toBe(20);
   });
 
   test("getGrid returns grid with correct dimensions", () => {
@@ -275,24 +282,51 @@ describe("CommandPalette rendering", () => {
     expect(grid.rows).toBe(palette.getHeight());
   });
 
+  test("getGrid paints the chrome title and a live result count", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    const grid = palette.getGrid(60);
+    const titleRow = grid.cells[TITLE_ROW].map((c) => c.char).join("");
+    expect(titleRow).toContain("Commands");
+    expect(titleRow).toContain(`${testCommands.length} results`);
+  });
+
+  test("getGrid paints a hairline row under the input", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    const grid = palette.getGrid(60);
+    const hairline = grid.cells[HAIRLINE_ROW].map((c) => c.char).join("");
+    expect(new Set(hairline.split(""))).toEqual(new Set(["─"]));
+  });
+
+  test("getGrid paints a hint footer on the last row", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    const grid = palette.getGrid(60);
+    const lastRow = grid.cells[palette.getHeight() - 1].map((c) => c.char).join("");
+    expect(lastRow).toContain("move");
+    expect(lastRow).toContain("run");
+    expect(lastRow).toContain("close");
+  });
+
   test("getGrid input row shows prompt and query", () => {
     const palette = new CommandPalette();
     palette.open(testCommands);
     palette.handleInput("s");
     palette.handleInput("p");
     const grid = palette.getGrid(60);
-    // Row 0: "▷ sp" — prompt at col 0, space at col 1, query starts at col 2
-    expect(grid.cells[0][0].char).toBe("▷");
-    expect(grid.cells[0][2].char).toBe("s");
-    expect(grid.cells[0][3].char).toBe("p");
+    // "▷ sp" — prompt at col 0, space at col 1, query starts at col 2
+    expect(grid.cells[INPUT_ROW][0].char).toBe("▷");
+    expect(grid.cells[INPUT_ROW][2].char).toBe("s");
+    expect(grid.cells[INPUT_ROW][3].char).toBe("p");
   });
 
   test("getGrid shows selected row indicator", () => {
     const palette = new CommandPalette();
     palette.open(testCommands);
     const grid = palette.getGrid(60);
-    // Row 1 (first result) should have "▸" at col 1
-    expect(grid.cells[1][1].char).toBe("▸");
+    // First result row should have "▸" at col 1
+    expect(grid.cells[RESULTS_TOP_ROW][1].char).toBe("▸");
   });
 
   test("getGrid shows category tags right-aligned", () => {
@@ -301,10 +335,10 @@ describe("CommandPalette rendering", () => {
     const grid = palette.getGrid(60);
     // First result is "Split horizontal" category "pane"
     // "pane" is 4 chars, right-aligned with 1 col padding = col 60-4-1 = 55
-    expect(grid.cells[1][55].char).toBe("p");
-    expect(grid.cells[1][56].char).toBe("a");
-    expect(grid.cells[1][57].char).toBe("n");
-    expect(grid.cells[1][58].char).toBe("e");
+    expect(grid.cells[RESULTS_TOP_ROW][55].char).toBe("p");
+    expect(grid.cells[RESULTS_TOP_ROW][56].char).toBe("a");
+    expect(grid.cells[RESULTS_TOP_ROW][57].char).toBe("n");
+    expect(grid.cells[RESULTS_TOP_ROW][58].char).toBe("e");
   });
 
   test("getGrid sublist shows breadcrumb in input row", () => {
@@ -317,8 +351,8 @@ describe("CommandPalette rendering", () => {
     palette.handleInput("\r");
     const grid = palette.getGrid(60);
     // Input row should show "Sidebar width › "
-    expect(grid.cells[0][0].char).toBe("S");
-    expect(grid.cells[0][1].char).toBe("i");
+    expect(grid.cells[INPUT_ROW][0].char).toBe("S");
+    expect(grid.cells[INPUT_ROW][1].char).toBe("i");
   });
 
   test("getGrid shows no matches message", () => {
@@ -328,11 +362,10 @@ describe("CommandPalette rendering", () => {
     palette.handleInput("z");
     palette.handleInput("z");
     const grid = palette.getGrid(60);
-    // Should show "No matches" in results area — height is input + 1 result row = 2
-    expect(palette.getHeight()).toBe(2);
-    // Row 1 should contain "No matches"
-    const row1text = grid.cells[1].map(c => c.char).join("").trim();
-    expect(row1text).toContain("No matches");
+    // Should show "No matches" in results area — height is 4 chrome rows + 1 result row = 5
+    expect(palette.getHeight()).toBe(5);
+    const resultRowText = grid.cells[RESULTS_TOP_ROW].map(c => c.char).join("").trim();
+    expect(resultRowText).toContain("No matches");
   });
 
   test("getCursorCol returns correct position", () => {
@@ -342,6 +375,14 @@ describe("CommandPalette rendering", () => {
     palette.handleInput("a");
     palette.handleInput("b");
     expect(palette.getCursorCol()).toBe(4); // "▷ ab" = 4
+  });
+
+  test("getCursorPosition places the cursor on the input row, under the title", () => {
+    const palette = new CommandPalette();
+    palette.open(testCommands);
+    palette.getGrid(60); // populates lastWidth, as the renderer always does first
+    const pos = palette.getCursorPosition();
+    expect(pos).toEqual({ row: INPUT_ROW, col: 2 });
   });
 });
 
@@ -367,8 +408,8 @@ describe("disabled palette rows", () => {
       disabled: true, hint: "auto-pinned; disable auto-pin",
     }]);
     const grid = p.getGrid(80);
-    // Row 1 is the first result row; read its text back.
-    const row = grid.cells[1].map((c) => c.char).join("");
+    // The first result row now sits below the chrome (title/input/hairline).
+    const row = grid.cells[RESULTS_TOP_ROW].map((c) => c.char).join("");
     expect(row).toContain("Unpin tile — auto-pinned; disable auto-pin");
   });
 });
