@@ -22,6 +22,7 @@ import type { CellAttrs } from "./cell-grid";
 import { createGrid } from "./cell-grid";
 import type { Modal } from "./modal";
 import { rebuildModalAttrs } from "./modal";
+import { rebuildChromeTokens } from "./chrome-tokens";
 import {
   theme,
   neutralFg,
@@ -699,6 +700,11 @@ const stdinGate = new StdinGate({
     if (packed === lastDetectedBg) return;
     lastDetectedBg = packed;
     setTheme(deriveTheme(rgb));
+    // Must run FIRST: the chrome tokens (accent, neutral ramp, rules) are
+    // derived from the freshly-detected theme, and rebuildSidebarColors/
+    // rebuildModalAttrs/etc. below read tokens.* — so a stale token here would
+    // leave every chrome surface on the dark defaults over a light terminal.
+    rebuildChromeTokens();
     rebuildModalAttrs();
     rebuildSidebarColors();
     rebuildInfoPanelColors();
