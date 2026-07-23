@@ -1,6 +1,6 @@
 import type { SessionOtelState, CellGrid, SessionInfo, AgentState, AgentStateRecord } from "./types";
 import { ColorMode, makeSessionOtelState } from "./types";
-import { createGrid, writeString, truncateToCols, type CellAttrs } from "./cell-grid";
+import { createGrid, writeString, textCols, truncateToCols, type CellAttrs } from "./cell-grid";
 import type { SessionContext } from "./adapters/types";
 import { buildSessionView, buildSessionRow3 } from "./session-view";
 import { theme } from "./theme";
@@ -674,6 +674,37 @@ export class Sidebar {
     }
   }
 
+  /**
+   * Right-aligned agent-state tally on the header row: `3⏵ 2! 1✓`, one segment
+   * per state that has at least one session, in the row indicators' own glyphs
+   * and colours (running green, waiting yellow-bold, complete dim-neutral). Only
+   * promoted sessions carry a state, so this counts exactly what the dots below
+   * would show. Skipped entirely when nothing is promoted, or when the sidebar
+   * is too narrow to fit the tally without touching the "Sessions" label.
+   */
+  private renderHeaderRollup(grid: CellGrid): void {
+    const counts: Record<AgentState, number> = { running: 0, waiting: 0, complete: 0 };
+    for (const rec of this.agentStateRecords.values()) counts[rec.state]++;
+
+    const GLYPH: Record<AgentState, string> = { running: "⏵", waiting: "!", complete: "✓" };
+    const order: AgentState[] = ["running", "waiting", "complete"];
+    const segments = order
+      .filter((s) => counts[s] > 0)
+      .map((s) => ({ text: `${counts[s]}${GLYPH[s]}`, attrs: this.stateAttrs[s] }));
+    if (segments.length === 0) return;
+
+    // One space between segments; one column of right margin.
+    const total = segments.reduce((w, s) => w + textCols(s.text), 0) + (segments.length - 1);
+    let col = this.width - 1 - total;
+    // "Sessions" occupies cols 1..8; leave a gap before it or don't render.
+    if (col < 10) return;
+
+    for (const seg of segments) {
+      writeString(grid, 0, col, seg.text, seg.attrs);
+      col += textCols(seg.text) + 1;
+    }
+  }
+
   private footerRows(): number {
     return this.currentVersion ? 1 : 0;
   }
@@ -707,8 +738,10 @@ export class Sidebar {
     this.rowToGroupLabel.clear();
     this.rowToSelection.clear();
 
-    // Header
+    // Header \u2014 label on the left, a live agent-state rollup on the right so
+    // "how many agents need me" is legible even when the list is scrolled.
     writeString(grid, 0, 1, "Sessions", { ...ACCENT_ATTRS, bold: true });
+    this.renderHeaderRollup(grid);
     writeString(grid, 1, 0, "\u2500".repeat(this.width), DIM_ATTRS);
 
     const vpHeight = this.viewportHeight();

@@ -37,6 +37,41 @@ describe("Sidebar", () => {
     expect(headerText).toBe("Sessions");
   });
 
+  test("header shows a right-aligned agent-state rollup", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([
+      { name: "a" }, { name: "b" }, { name: "c" }, { name: "d" },
+    ]));
+    const now = Date.now();
+    sidebar.setAgentStateRecord("$0", { state: "running", since: now });
+    sidebar.setAgentStateRecord("$1", { state: "running", since: now });
+    sidebar.setAgentStateRecord("$2", { state: "waiting", since: now });
+    sidebar.setAgentStateRecord("$3", { state: "complete", since: now });
+    const grid = sidebar.getGrid();
+    const header = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[0][i].char).join("");
+    // running / waiting / complete counts with the row indicators' glyphs.
+    expect(header).toContain("2⏵");
+    expect(header).toContain("1!");
+    expect(header).toContain("1✓");
+    // The label is untouched on the left.
+    expect(header).toContain("Sessions");
+  });
+
+  test("header rollup omits states with no sessions, and vanishes when none are promoted", () => {
+    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    sidebar.updateSessions(makeSessions([{ name: "a" }, { name: "b" }]));
+    // Nothing promoted → no rollup, just the label.
+    let header = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => sidebar.getGrid().cells[0][i].char).join("");
+    expect(header.trim()).toBe("Sessions");
+
+    // Only running present → only the running segment appears.
+    sidebar.setAgentStateRecord("$0", { state: "running", since: Date.now() });
+    header = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => sidebar.getGrid().cells[0][i].char).join("");
+    expect(header).toContain("1⏵");
+    expect(header).not.toContain("!");
+    expect(header).not.toContain("✓");
+  });
+
   test("renders ungrouped sessions without a group header", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(
