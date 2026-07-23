@@ -401,7 +401,10 @@ let layout: FrameLayout = computeFrameLayout({
   toolbarRows: toolbarHeight,
   diffState: "off",
   requestedPanelCols: 0,
-  frameRulesEnabled: false,
+  // Matches relayout()'s `base` (below) — the top rule is on from first
+  // paint, not just after the first relayout(). The footer stays off until
+  // its own rendering task lands.
+  frameRulesEnabled: true,
   footerEnabled: false,
 });
 let mainCols = layout.main.w;
@@ -1080,10 +1083,10 @@ function relayout(): void {
     sidebarWidth,
     borderWidth: BORDER_WIDTH,
     toolbarRows: toolbarHeight,
-    // Chrome (rule rows + footer) is implemented in frame-layout.ts but not
-    // yet turned on anywhere in production; both flags stay false until the
-    // rendering tasks that actually draw this chrome land.
-    frameRulesEnabled: false,
+    // The top rule (+ junctions + tab underline) is now on — compositeGrids
+    // paints it (renderer.ts). The footer row is still a future task; its
+    // flag stays false until that task's rendering lands.
+    frameRulesEnabled: true,
     footerEnabled: false,
   };
   const probe = computeFrameLayout({ ...base, diffState: "off", requestedPanelCols: 0 });

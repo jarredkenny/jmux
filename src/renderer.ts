@@ -1,9 +1,10 @@
 import type { Cell, CellGrid, CursorPosition, WindowTab } from "./types";
 import { ColorMode } from "./types";
-import { createGrid, DEFAULT_CELL, blit, textCols, writeStyledLine, drawBox, truncateToCols, type CellAttrs, type StyledSegment } from "./cell-grid";
+import { createGrid, DEFAULT_CELL, blit, textCols, writeCell, writeStyledLine, drawBox, truncateToCols, type CellAttrs, type StyledSegment } from "./cell-grid";
 import { packChips, type PlacedChip } from "./band-layout";
-import { theme, neutralFg, accentFor } from "./theme";
+import { theme, neutralFg } from "./theme";
 import type { FrameLayout } from "./frame-layout";
+import { tokens, frame } from "./chrome-tokens";
 
 export const BORDER_CHAR = "\u2502"; // │
 
@@ -194,6 +195,76 @@ function renderWindowBranchRow(
   }
 }
 
+// The tab-underline colour table (Task 5 of the chrome-frame plan): weight
+// signals active, hue signals bell/hover/idle. Checked in this order because
+// a bell on the active tab is still the active tab (heavy, accent) — bell
+// only changes hue for a tab that isn't already active or hovered.
+function tabUnderlineGlyphAndAttrs(tab: WindowTab, isHovered: boolean): { glyph: string; attrs: CellAttrs } {
+  if (tab.active) return { glyph: frame.ruleHeavy, attrs: tokens.accent };
+  if (isHovered) return { glyph: frame.ruleLight, attrs: tokens.accentMuted };
+  if (tab.bell) return { glyph: frame.ruleLight, attrs: tokens.attention };
+  return { glyph: frame.ruleLight, attrs: tokens.ruleFrame };
+}
+
+// Paints the rule row under the toolbar: a light rule spanning the main
+// (and, when docked, panel) area, crossing the sidebar border and split
+// divider with a ┼ junction, with the window-tab underline and (when a
+// panel is docked) the panel-focus underline painted over top. The
+// sidebar's own header rule (drawn into its own grid, see sidebar.ts's
+// HEADER_ROWS) is what makes this read as one continuous line across the
+// divider — this function only owns the main/panel side of it.
+function paintTopRuleRow(
+  grid: CellGrid,
+  row: number,
+  layout: FrameLayout,
+  borderCol: number,
+  toolbar: ToolbarConfig | null,
+  toolbarLayout: ToolbarLayout | null,
+  diffPanel?: { mode: "split" | "full"; focused: boolean },
+): void {
+  const totalCols = grid.cols;
+  const mainStart = layout.main.x;
+
+  // Base rule across the main (+ panel) span.
+  for (let x = mainStart; x < totalCols; x++) {
+    writeCell(grid, row, x, frame.ruleLight, tokens.ruleFrame);
+  }
+
+  // Junction where the rule crosses the sidebar border.
+  writeCell(grid, row, borderCol, frame.crossDown, tokens.ruleFrame);
+
+  if (diffPanel?.mode === "split" && layout.divider !== null) {
+    // Junction where the rule crosses the split divider.
+    writeCell(grid, row, layout.divider, frame.crossDown, tokens.ruleFrame);
+
+    // The split divider itself goes neutral (see the divider paint below in
+    // compositeGrids) — so the panel's own focus cue lives here instead:
+    // the rule segment over the panel's tab bar is accent when the panel
+    // has focus, muted otherwise. This is painted across the whole panel
+    // span rather than per-tab — the panel's tab bar is an externally
+    // rendered grid (diffPanel.tabBar) whose own column layout isn't ours
+    // to read.
+    const panelStart = layout.panel!.x;
+    const panelAttrs = diffPanel.focused ? tokens.accent : tokens.accentMuted;
+    for (let x = panelStart; x < totalCols; x++) {
+      writeCell(grid, row, x, frame.ruleLight, panelAttrs);
+    }
+  }
+
+  // Window-tab underline — the rule segment under each tab reflects its
+  // state per tabUnderlineGlyphAndAttrs.
+  if (toolbar && toolbarLayout) {
+    for (const { x, width, tab } of toolbarLayout.tabs) {
+      const isHovered = !tab.active && toolbar.hoveredTabId === tab.windowId;
+      const { glyph, attrs } = tabUnderlineGlyphAndAttrs(tab, isHovered);
+      const startCol = borderCol + 1 + x;
+      for (let i = 0; i < width; i++) {
+        writeCell(grid, row, startCol + i, glyph, attrs);
+      }
+    }
+  }
+}
+
 export function compositeGrids(
   layout: FrameLayout,
   main: CellGrid,
@@ -222,7 +293,7 @@ export function compositeGrids(
   const mainCols = toolbar ? toolbar.mainCols : main.cols;
   const totalCols = layout.termCols;
   const toolbarRows = toolbar ? layout.toolbarRows : 0;
-  const totalRows = main.rows + toolbarRows;
+  const totalRows = layout.termRows;
   const grid = createGrid(totalCols, totalRows);
 
   // Placed once per frame; row 0 (tabs/buttons/status chip) and row 1 (the
@@ -252,7 +323,6 @@ export function compositeGrids(
       const activeBg = theme.selected;
 
       // Render window tabs (left side)
-      const peachFg = accentFor((0xfb << 16) | (0xd4 << 8) | 0xb8);
       const tabs = toolbarLayout!.tabs;
       for (let ti = 0; ti < tabs.length; ti++) {
         const { x, width, tab } = tabs[ti];
@@ -262,8 +332,8 @@ export function compositeGrids(
         const bg = isActive ? activeBg : hoverBg;
         const label = ` ${tab.name}${tab.zoomed ? " ⤢" : ""} `;
         const attrs: CellAttrs = {
-          fg: tab.bell ? 3 : isActive ? peachFg : 8,
-          fgMode: tab.bell ? ColorMode.Palette : isActive ? ColorMode.RGB : ColorMode.Palette,
+          fg: tab.bell ? 3 : isActive ? tokens.accent.fg! : 8,
+          fgMode: tab.bell ? ColorMode.Palette : isActive ? (tokens.accent.fgMode ?? ColorMode.RGB) : ColorMode.Palette,
           bold: isActive || tab.bell,
           bg: hasBg ? bg : 0,
           bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
@@ -310,9 +380,15 @@ export function compositeGrids(
         writeStyledLine(grid, 0, borderCol + 1 + chip.x, [{ text: label, attrs }], chip.width);
       }
       }
+    } else if (layout.topRuleRow !== null && y === layout.topRuleRow) {
+      // The rule row under the toolbar — continues the sidebar's own
+      // header rule (sidebar.ts's HEADER_ROWS) across the divider, with a
+      // junction glyph, and carries the window-tab / panel-focus underline.
+      paintTopRuleRow(grid, y, layout, borderCol, toolbar ?? null, toolbarLayout, diffPanel);
     } else {
-      // Main content — offset by toolbar rows
-      const mainY = toolbar ? y - toolbarRows : y;
+      // Main content — offset by the content band's top row (below the
+      // toolbar, and below the rule row when it's shown).
+      const mainY = y - layout.contentTop;
       if (mainY >= 0) {
         // Copy main grid at layout.main.x. In full mode the diff panel
         // below is painted at layout.panel.x, which equals layout.main.x —
@@ -324,14 +400,11 @@ export function compositeGrids(
 
         if (diffPanel) {
           if (diffPanel.mode === "split") {
+            // Neutral — the split divider no longer encodes panel focus.
+            // The focus cue moved to the rule row's panel-underline (see
+            // paintTopRuleRow) so focus is never left without a cue.
             const dividerCol = layout.divider!;
-            const focusColor = accentFor((0x58 << 16) | (0xa6 << 8) | 0xff);
-            grid.cells[y][dividerCol] = {
-              ...DEFAULT_CELL,
-              char: "│",
-              fg: diffPanel.focused ? focusColor : 8,
-              fgMode: diffPanel.focused ? ColorMode.RGB : ColorMode.Palette,
-            };
+            writeCell(grid, y, dividerCol, frame.divider, tokens.ruleFrame);
           }
           const panelCol = layout.panel!.x;
           if (mainY < diffPanel.grid.rows) {
@@ -549,8 +622,11 @@ export class Renderer {
 
     this.prevGrid = grid;
 
-    // Reset attributes, position cursor
-    const cursorRowOffset = toolbar ? 1 : 0;
+    // Reset attributes, position cursor. Matches compositeGrids's content
+    // offset exactly (layout.contentTop, not a hardcoded toolbar row count)
+    // so the real cursor tracks the content band even when the rule row
+    // shifts it down an extra row.
+    const cursorRowOffset = toolbar ? layout.contentTop : 0;
     buf.push("\x1b[0m");
     if (modalCursor != null) {
       // Modal cursor is in absolute grid coordinates

@@ -4,6 +4,7 @@ import { createGrid, writeString, textCols } from "../cell-grid";
 import { ColorMode } from "../types";
 import type { Cell } from "../types";
 import type { FrameLayout, PanelMode, Span } from "../frame-layout";
+import { tokens, frame } from "../chrome-tokens";
 
 // Hand-rolled FrameLayout fixtures for compositeGrids unit tests. These tests
 // use small grid sizes well below frame-layout's SIDEBAR_MIN_TERM_COLS gate
@@ -17,8 +18,10 @@ function makeLayout(opts: {
   toolbarRows?: number;
   panel?: { cols: number; mode: "split" | "full" } | null;
   termRows: number;
+  /** Turns on the top rule row (Task 5) — footer stays out of scope here. */
+  frameRulesEnabled?: boolean;
 }): FrameLayout {
-  const { sidebarCols = null, mainCols, toolbarRows = 0, panel = null, termRows } = opts;
+  const { sidebarCols = null, mainCols, toolbarRows = 0, panel = null, termRows, frameRulesEnabled = false } = opts;
   const sidebar: Span | null = sidebarCols != null ? { x: 0, w: sidebarCols } : null;
   const borderCol = sidebar ? sidebar.w : null;
   const mainX = sidebar ? sidebar.w + 1 : 0;
@@ -45,23 +48,26 @@ function makeLayout(opts: {
     ? sidebar.w + 1 + mainCols + (mode === "split" ? 1 + (panelSpan?.w ?? 0) : 0)
     : mainCols;
 
-  // These fixtures bypass computeFrameLayout, so there's no frameRulesEnabled
-  // / footerEnabled input to resolve chrome from — they always represent the
-  // pre-chrome case (both flags off): no rule or footer rows, and the
-  // content band fills everything below the toolbar.
-  const contentRows = termRows - toolbarRows;
+  // These fixtures bypass computeFrameLayout, so there's no footerEnabled
+  // input to resolve chrome from — footer stays permanently out of scope
+  // here (both footerRuleRow/footerRow are always null). frameRulesEnabled
+  // pushes the content band down one row for the top rule, exactly as
+  // computeFrameLayout's own resolveChrome does.
+  const topRuleRow = frameRulesEnabled ? toolbarRows : null;
+  const contentTop = toolbarRows + (frameRulesEnabled ? 1 : 0);
+  const contentRows = termRows - contentTop;
   return {
     termCols,
     termRows,
     sidebar,
     borderCol,
     toolbarRows,
-    topRuleRow: null,
-    contentTop: toolbarRows,
+    topRuleRow,
+    contentTop,
     contentRows,
     footerRuleRow: null,
     footerRow: null,
-    chrome: { toolbar: toolbarRows > 0, topRule: false, footerRule: false, footer: false },
+    chrome: { toolbar: toolbarRows > 0, topRule: frameRulesEnabled, footerRule: false, footer: false },
     ptyRows: contentRows,
     mode,
     main,
@@ -556,15 +562,16 @@ describe("compositeGrids with diff panel", () => {
 
     // Divider column at position 25 (4+1+20)
     expect(result.cells[1][25].char).toBe("│");
-    // Divider should be dim when diff panel is not focused
-    expect(result.cells[1][25].fg).toBe(8);
-    expect(result.cells[1][25].fgMode).toBe(ColorMode.Palette);
+    // Divider is neutral (ruleFrame) — it no longer encodes panel focus
+    // (Task 5: the focus cue moved to the rule row's panel underline).
+    expect(result.cells[1][25].fg).toBe(tokens.ruleFrame.fg!);
+    expect(result.cells[1][25].fgMode).toBe(tokens.ruleFrame.fgMode!);
 
     // Diff content starts at col 26
     expect(result.cells[1][26].char).toBe("d");
   });
 
-  test("split mode: divider is bright when diff panel is focused", () => {
+  test("split mode: divider stays neutral (ruleFrame) regardless of diffPanel.focused", () => {
     const sidebar = createGrid(4, 3);
     const main = createGrid(20, 3);
     const diffGrid = createGrid(10, 3);
@@ -581,9 +588,10 @@ describe("compositeGrids with diff panel", () => {
     });
 
     const dividerCol = 4 + 1 + 20;
-    const focusColor = (0x58 << 16) | (0xa6 << 8) | 0xff;
-    expect(result.cells[1][dividerCol].fg).toBe(focusColor);
-    expect(result.cells[1][dividerCol].fgMode).toBe(ColorMode.RGB);
+    // No more blue-when-focused — the divider is neutral either way now.
+    expect(result.cells[1][dividerCol].char).toBe("│");
+    expect(result.cells[1][dividerCol].fg).toBe(tokens.ruleFrame.fg!);
+    expect(result.cells[1][dividerCol].fgMode).toBe(tokens.ruleFrame.fgMode!);
   });
 
   test("full mode: sidebar + diff panel only, no main", () => {
@@ -701,5 +709,198 @@ describe("compositeGrids with panel tab bar", () => {
       (_, i) => result.cells[0][panelStart + 1 + i].char,
     ).join("");
     expect(tabBarText).toBe("Diff");
+  });
+});
+
+describe("compositeGrids top rule, junctions, and tab underline", () => {
+  const tab = (over: Record<string, unknown> = {}) => ({
+    windowId: "@1", index: 0, name: "win", active: false, bell: false, zoomed: false, ...over,
+  });
+
+  test("content is painted at contentTop, not at toolbarRows, when the rule is enabled", () => {
+    const sidebar = createGrid(6, 8);
+    const main = createGrid(20, 6);
+    writeString(main, 0, 0, "ROWZERO");
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 8, frameRulesEnabled: true,
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+
+    expect(layout.topRuleRow).toBe(1);
+    expect(layout.contentTop).toBe(2);
+    expect(result.rows).toBe(8); // layout.termRows, not main.rows + toolbarRows
+
+    const contentRow = result.cells[2].map((c) => c.char).join("");
+    expect(contentRow).toContain("ROWZERO");
+    // The rule row (1) carries no main content.
+    const ruleRow = result.cells[1].map((c) => c.char).join("");
+    expect(ruleRow).not.toContain("ROWZERO");
+  });
+
+  test("top rule row is a light ruleFrame line across the main area, crossing at the border with ┼", () => {
+    const sidebar = createGrid(6, 8);
+    const main = createGrid(20, 6);
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 8, frameRulesEnabled: true,
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+
+    const row = layout.topRuleRow!;
+    const borderCol = layout.borderCol!;
+    for (let x = layout.main.x; x < layout.termCols; x++) {
+      expect(result.cells[row][x].char).toBe(frame.ruleLight);
+      expect(result.cells[row][x].fg).toBe(tokens.ruleFrame.fg!);
+      expect(result.cells[row][x].fgMode).toBe(tokens.ruleFrame.fgMode!);
+    }
+    expect(result.cells[row][borderCol].char).toBe(frame.crossDown);
+    expect(result.cells[row][borderCol].fg).toBe(tokens.ruleFrame.fg!);
+    expect(result.cells[row][borderCol].fgMode).toBe(tokens.ruleFrame.fgMode!);
+  });
+
+  test("active tab's underline range is heavy and accent-coloured", () => {
+    const sidebar = createGrid(6, 8);
+    const main = createGrid(20, 6);
+    const toolbar = {
+      buttons: [], mainCols: 20,
+      tabs: [tab({ windowId: "@1", name: "active", active: true })],
+    };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 8, frameRulesEnabled: true,
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const ranges = getToolbarTabRanges(toolbar);
+    const borderCol = layout.borderCol!;
+    const row = layout.topRuleRow!;
+    const { startCol, endCol } = ranges[0];
+
+    for (let x = borderCol + 1 + startCol; x <= borderCol + 1 + endCol; x++) {
+      expect(result.cells[row][x].char).toBe(frame.ruleHeavy);
+      expect(result.cells[row][x].fg).toBe(tokens.accent.fg!);
+      expect(result.cells[row][x].fgMode).toBe(tokens.accent.fgMode!);
+    }
+  });
+
+  test("inactive tab's underline range is light and ruleFrame-coloured", () => {
+    const sidebar = createGrid(6, 8);
+    const main = createGrid(20, 6);
+    const toolbar = {
+      buttons: [], mainCols: 20,
+      tabs: [
+        tab({ windowId: "@1", name: "active", active: true }),
+        tab({ windowId: "@2", name: "idle", active: false }),
+      ],
+    };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 8, frameRulesEnabled: true,
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const ranges = getToolbarTabRanges(toolbar);
+    const borderCol = layout.borderCol!;
+    const row = layout.topRuleRow!;
+    const idle = ranges.find((r) => r.id === "@2")!;
+
+    for (let x = borderCol + 1 + idle.startCol; x <= borderCol + 1 + idle.endCol; x++) {
+      expect(result.cells[row][x].char).toBe(frame.ruleLight);
+      expect(result.cells[row][x].fg).toBe(tokens.ruleFrame.fg!);
+      expect(result.cells[row][x].fgMode).toBe(tokens.ruleFrame.fgMode!);
+    }
+  });
+
+  test("hovered inactive tab's underline is light and accentMuted-coloured", () => {
+    const sidebar = createGrid(6, 8);
+    const main = createGrid(30, 6);
+    const toolbar = {
+      buttons: [], mainCols: 30,
+      tabs: [
+        tab({ windowId: "@1", name: "active", active: true }),
+        tab({ windowId: "@2", name: "hovered", active: false }),
+      ],
+      hoveredTabId: "@2",
+    };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 30, toolbarRows: 1, termRows: 8, frameRulesEnabled: true,
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const ranges = getToolbarTabRanges(toolbar);
+    const borderCol = layout.borderCol!;
+    const row = layout.topRuleRow!;
+    const hovered = ranges.find((r) => r.id === "@2")!;
+
+    for (let x = borderCol + 1 + hovered.startCol; x <= borderCol + 1 + hovered.endCol; x++) {
+      expect(result.cells[row][x].char).toBe(frame.ruleLight);
+      expect(result.cells[row][x].fg).toBe(tokens.accentMuted.fg!);
+      expect(result.cells[row][x].fgMode).toBe(tokens.accentMuted.fgMode!);
+    }
+  });
+
+  test("bell tab (not active) underline is light and attention-coloured — never heavy", () => {
+    const sidebar = createGrid(6, 8);
+    const main = createGrid(20, 6);
+    const toolbar = {
+      buttons: [], mainCols: 20,
+      tabs: [
+        tab({ windowId: "@1", name: "active", active: true }),
+        tab({ windowId: "@2", name: "bell", active: false, bell: true }),
+      ],
+    };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 8, frameRulesEnabled: true,
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const ranges = getToolbarTabRanges(toolbar);
+    const borderCol = layout.borderCol!;
+    const row = layout.topRuleRow!;
+    const bell = ranges.find((r) => r.id === "@2")!;
+
+    for (let x = borderCol + 1 + bell.startCol; x <= borderCol + 1 + bell.endCol; x++) {
+      expect(result.cells[row][x].char).toBe(frame.ruleLight);
+      expect(result.cells[row][x].char).not.toBe(frame.ruleHeavy);
+      expect(result.cells[row][x].fg).toBe(tokens.attention.fg!);
+      expect(result.cells[row][x].fgMode).toBe(tokens.attention.fgMode!);
+    }
+  });
+
+  test("split mode: rule crosses the divider with ┼, divider stays ruleFrame, panel underline carries focus", () => {
+    const sidebar = createGrid(4, 8);
+    const main = createGrid(20, 6);
+    const diffGrid = createGrid(10, 6);
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const layout = makeLayout({
+      sidebarCols: 4, mainCols: 20, toolbarRows: 1, termRows: 8,
+      panel: { cols: 10, mode: "split" }, frameRulesEnabled: true,
+    });
+
+    const focused = compositeGrids(layout, main, sidebar, toolbar, null, {
+      grid: diffGrid, mode: "split", focused: true,
+    });
+    const unfocused = compositeGrids(layout, main, sidebar, toolbar, null, {
+      grid: diffGrid, mode: "split", focused: false,
+    });
+
+    const row = layout.topRuleRow!;
+    const dividerCol = layout.divider!;
+    const panelStart = layout.panel!.x;
+
+    // Divider junction on the rule row is neutral crossDown, focused or not.
+    for (const result of [focused, unfocused]) {
+      expect(result.cells[row][dividerCol].char).toBe(frame.crossDown);
+      expect(result.cells[row][dividerCol].fg).toBe(tokens.ruleFrame.fg!);
+      expect(result.cells[row][dividerCol].fgMode).toBe(tokens.ruleFrame.fgMode!);
+    }
+
+    // The split divider itself (content rows) is neutral regardless of focus.
+    const contentRow = layout.contentTop;
+    for (const result of [focused, unfocused]) {
+      expect(result.cells[contentRow][dividerCol].fg).toBe(tokens.ruleFrame.fg!);
+      expect(result.cells[contentRow][dividerCol].fgMode).toBe(tokens.ruleFrame.fgMode!);
+    }
+
+    // Panel underline carries the focus cue the divider gave up.
+    expect(focused.cells[row][panelStart].fg).toBe(tokens.accent.fg!);
+    expect(focused.cells[row][panelStart].fgMode).toBe(tokens.accent.fgMode!);
+    expect(unfocused.cells[row][panelStart].fg).toBe(tokens.accentMuted.fg!);
+    expect(unfocused.cells[row][panelStart].fgMode).toBe(tokens.accentMuted.fgMode!);
   });
 });
