@@ -35,7 +35,7 @@ export function translateMouse(
 
 export interface InputRouterOptions {
   onPtyData: (data: string) => void;
-  onSidebarClick: (row: number) => void;
+  onSidebarClick: (row: number, col: number) => void;
   onSidebarScroll?: (delta: number) => void;
   onToolbarClick?: (col: number) => void;
   // Chrome footer row — see classifyRow. col is the 0-indexed absolute grid
@@ -48,6 +48,8 @@ export interface InputRouterOptions {
   onNewSession?: () => void;
   onSettings?: () => void;
   onSettingsScreen?: () => void;  // Ctrl-a I (uppercase) — full settings screen
+  onSortCycle?: () => void;       // Ctrl-a s — cycle sidebar sort mode
+  onFilterCycle?: () => void;     // Ctrl-a f — cycle sidebar filter mode
   onSessionPrev?: () => void;
   onSessionNext?: () => void;
   // Pane-of-glass (Overview) additions
@@ -217,6 +219,8 @@ export class InputRouter {
           if (data === "n") { this.opts.onNewSession?.(); return; }
           if (data === "i") { this.opts.onSettings?.(); return; }
           if (data === "I") { this.opts.onSettingsScreen?.(); return; }
+          if (data === "s") { this.opts.onSortCycle?.(); return; }
+          if (data === "f") { this.opts.onFilterCycle?.(); return; }
           // Not a jmux chord — flush the buffered prefix, then the key, to the tile.
           if (deferred) this.opts.onPtyData("\x01");
           this.opts.onPtyData(data);
@@ -238,6 +242,14 @@ export class InputRouter {
         }
         if (data === "I") {
           this.opts.onSettingsScreen?.();
+          return;
+        }
+        if (data === "s") {
+          this.opts.onSortCycle?.();
+          return;
+        }
+        if (data === "f") {
+          this.opts.onFilterCycle?.();
           return;
         }
         if (data === "g") {
@@ -350,9 +362,10 @@ export class InputRouter {
           this.opts.onSidebarScroll?.(delta);
           return;
         }
-        // Click in sidebar region (ignore drags/motion)
+        // Click in sidebar region (ignore drags/motion). Both are 0-indexed
+        // grid coordinates within the sidebar (col 0 is its left edge).
         if (!mouse.release && !isMotion) {
-          this.opts.onSidebarClick(gridY); // 0-indexed row
+          this.opts.onSidebarClick(gridY, gridX);
         }
         return; // Consume sidebar mouse events
       }

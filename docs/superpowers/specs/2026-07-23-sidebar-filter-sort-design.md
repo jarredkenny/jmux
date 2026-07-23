@@ -96,13 +96,21 @@ The Sidebar derives each session's `SessionSortInfo` from its own maps:
 - `setSortMode` / `cycleSortMode` / `setFilterMode` / `cycleFilterMode` — each
   rebuilds the plan and re-clamps scroll; `cycle*` return the new mode so the
   caller can persist/report it.
-- **Header** shows the active mode: default `Sessions`; sort non-default shows
-  the sort label (`By status`); an active filter appends ` · <filter>`. The
-  state rollup stays on the right. When the sidebar is too narrow, the mode
-  label wins and the rollup drops (the mode is the more actionable fact).
+- **Header** reads `Sessions  ⇅ <Mode>  <rollup>`: a static `Sessions` label, a
+  clickable `⇅ <Mode>` control (`Project`/`Status`/`Activity`/`Name`) in
+  accent-muted, and an active filter as a dim ` · <Filter>` suffix. The state
+  rollup stays right-aligned, degrading to the waiting-count alone, then
+  dropping, as width tightens (the mode control always wins — it is the more
+  actionable fact). **Clicking the `⇅ <Mode>` control cycles the sort** (the
+  icon or the mode name), so sort has a mouse affordance, not just a keybind.
+  This needs the click *column*, so `onSidebarClick` gains a `col` arg and the
+  sidebar exposes `headerSortToggleHit(row, col)`.
 - **input-router**: `Ctrl-a s` → `onSortCycle`, `Ctrl-a f` → `onFilterCycle`,
   added alongside the existing `p`/`n`/`i` chords (both glass and non-glass
   paths).
+- Switching sort/filter resets the scroll to the top — the point of sorting by
+  status is to see what rose, not to chase the active session (and it avoids a
+  stale scroll offset bleeding a row up into the header separator).
 - **palette**: `buildPaletteCommands` gains a `Sort by…` command whose `sublist`
   is the four sort modes, and a `Filter…` command whose sublist is the three
   filters; `handlePaletteAction` routes the chosen id to the setters.

@@ -56,6 +56,8 @@ export interface JmuxConfig {
   snapshot?: SnapshotConfig;
   /** Per-state indicator colors (ANSI color names). */
   stateColors?: StateColorConfig;
+  /** Sidebar sort mode. Persists across restarts (filter deliberately does not). */
+  sidebarSort?: "project" | "status" | "activity" | "name";
   /** Ordered Command Center tab registry; index 0 is the protected default. */
   commandCenterTabs?: TabEntry[];
 }

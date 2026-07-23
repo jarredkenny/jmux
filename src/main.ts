@@ -4,6 +4,10 @@ import { ScreenBridge } from "./screen-bridge";
 import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition, buildToolbarButtons, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
 import { Sidebar, rebuildSidebarColors, type PinnedPaneEntry } from "./sidebar";
+import {
+  SORT_MODES, FILTER_MODES, sortModeLabel, filterModeLabel,
+  type SortMode, type FilterMode,
+} from "./sidebar-sort";
 import { buildFooter, layoutFooter, type FooterModel } from "./footer";
 import { CommandPalette } from "./command-palette";
 import { InputModal } from "./input-modal";
@@ -775,6 +779,20 @@ const bridge = new ScreenBridge(mainCols, layout.ptyRows);
 const renderer = new Renderer();
 const sidebar = new Sidebar(sidebarWidth, sidebarBottomRow(layout));
 sidebar.setStateColors(resolveStateColors(configStore.config.stateColors));
+// Restore the persisted sort mode (filter is deliberately ephemeral — a
+// persisted filter that hides sessions is the "where did they go?" trap).
+{
+  const saved = configStore.config.sidebarSort;
+  if (saved && (SORT_MODES as readonly string[]).includes(saved)) {
+    sidebar.setSortMode(saved);
+  }
+}
+
+/** Set the sidebar sort mode and persist it, so it survives restart. */
+function applySidebarSort(mode: SortMode): void {
+  sidebar.setSortMode(mode);
+  configStore.set("sidebarSort", mode);
+}
 const agentStateTracker = new AgentStateTracker();
 agentStateTracker.onChange((sessionId) => {
   const record = agentStateTracker.getRecord(sessionId);
@@ -1616,7 +1634,12 @@ const inputRouter = new InputRouter(
       pty.write(data);
       clearSessionIndicators();
     },
-    onSidebarClick: (row) => {
+    onSidebarClick: (row, col) => {
+      if (sidebar.headerSortToggleHit(row, col)) {
+        applySidebarSort(sidebar.cycleSortMode());
+        scheduleRender();
+        return;
+      }
       if (sidebar.isVersionRow(row)) {
         void showVersionInfo();
         return;
@@ -1724,6 +1747,8 @@ const inputRouter = new InputRouter(
     onNewSession: () => handlePaletteAction({ commandId: "new-session" }),
     onSettings: () => handleToolbarAction("settings"),
     onSettingsScreen: () => toggleSettingsScreen(),
+    onSortCycle: () => { applySidebarSort(sidebar.cycleSortMode()); scheduleRender(); },
+    onFilterCycle: () => { sidebar.cycleFilterMode(); scheduleRender(); },
     onModalInput: (data) => {
       // Settings screen consumes input when open
       if (settingsScreen.isOpen) {
@@ -2556,6 +2581,18 @@ function buildPaletteCommands(): PaletteCommand[] {
     );
   }
 
+  // Sidebar sort / filter — submenus mirroring the Ctrl-a s / Ctrl-a f cycles.
+  const activeSort = sidebar.getSortMode();
+  const activeFilter = sidebar.getFilterMode();
+  commands.push({
+    id: "sidebar-sort", label: "Sort sessions…", category: "session",
+    sublist: SORT_MODES.map((m) => ({ id: m, label: sortModeLabel(m), current: m === activeSort })),
+  });
+  commands.push({
+    id: "sidebar-filter", label: "Filter sessions…", category: "session",
+    sublist: FILTER_MODES.map((f) => ({ id: f, label: filterModeLabel(f), current: f === activeFilter })),
+  });
+
   return commands;
 }
 
@@ -3075,6 +3112,17 @@ async function handlePaletteAction(result: PaletteResult): Promise<void> {
     if (!paneId) return;
     for (const cmd of buildPinCommands("unpin", paneId)) glassRunner.run(cmd.args);
     refreshPinnedPanes();
+    return;
+  }
+
+  if (commandId === "sidebar-sort" && sublistOptionId) {
+    applySidebarSort(sublistOptionId as SortMode);
+    scheduleRender();
+    return;
+  }
+  if (commandId === "sidebar-filter" && sublistOptionId) {
+    sidebar.setFilterMode(sublistOptionId as FilterMode);
+    scheduleRender();
     return;
   }
 

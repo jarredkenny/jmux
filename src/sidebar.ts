@@ -6,6 +6,18 @@ import { buildSessionView, buildSessionRow3 } from "./session-view";
 import { theme } from "./theme";
 import { tokens, frame } from "./chrome-tokens";
 import { stateAttrs, type StateColor } from "./state-colors";
+import {
+  matchesFilter,
+  sortIndices,
+  cycleSort,
+  cycleFilter,
+  sortModeShort,
+  filterModeShort,
+  type SortMode,
+  type FilterMode,
+  type SessionStatus,
+  type SessionSortInfo,
+} from "./sidebar-sort";
 
 export interface PinnedPaneEntry {
   paneId: string;
@@ -277,6 +289,9 @@ function buildRenderPlan(
   collapsedGroups: Set<string>,
   pinnedNames: Set<string>,
   pinnedPanes: PinnedPaneEntry[],
+  sortInfos: SessionSortInfo[],
+  sortMode: SortMode,
+  filterMode: FilterMode,
 ): {
   items: RenderItem[];
   displayOrder: number[];
@@ -295,7 +310,14 @@ function buildRenderPlan(
   }
 
   for (let i = 0; i < sessions.length; i++) {
-    if (pinnedNames.has(sessions[i].name)) {
+    // Filter first — a filtered-out session never buckets, so empty groups and
+    // the Pinned group simply don't emit.
+    if (!matchesFilter(sortInfos[i]!.status, filterMode)) continue;
+
+    // In a flat sort mode, pins do not float (a pinned running session must not
+    // sit above a waiting one), so the Pinned group is skipped and pinned
+    // sessions fall through to the flat list like any other.
+    if (sortMode === "project" && pinnedNames.has(sessions[i].name)) {
       pinnedIndices.push(i);
       continue;
     }
@@ -335,6 +357,25 @@ function buildRenderPlan(
   // Command Center block first — always present (header + counts only).
   items.push({ type: "overview", paneCount: pinnedPanes.length });
   items.push({ type: "spacer" });
+
+  // Flat sort modes (status / activity / name) dissolve project grouping: one
+  // ordered list of every (filtered) session, no group headers, no Pinned
+  // group — so a waiting agent rises to the very top regardless of project.
+  if (sortMode !== "project") {
+    const all = [...pinnedIndices, ...[...groupMap.values()].flat(), ...ungrouped];
+    const ordered = sortIndices(all, (i) => sortInfos[i]!, sortMode);
+    for (const idx of ordered) {
+      items.push({
+        type: "session",
+        sessionIndex: idx,
+        grouped: false,
+        pinnedCount: pinnedPaneCountBySession.get(sessions[idx].name),
+      });
+      displayOrder.push(idx);
+      items.push({ type: "spacer" });
+    }
+    return { items, displayOrder };
+  }
 
   // Pinned sessions group
   if (pinnedIndices.length > 0) {
@@ -511,12 +552,74 @@ export class Sidebar {
     this.rebuildPlan();
   }
 
+  private sortMode: SortMode = "project";
+  private filterMode: FilterMode = "all";
+
+  /** A session's status for ordering/filtering — the same distinction the row
+   * dots make: a promoted agent state, else "activity" if tmux saw output,
+   * else "idle". */
+  private statusOf(session: SessionInfo): SessionStatus {
+    const rec = this.agentStateRecords.get(session.id);
+    if (rec) return rec.state;
+    if (this.activitySet.has(session.id)) return "activity";
+    return "idle";
+  }
+
+  /** Newest signal of life across the sources we track, for activity sort and
+   * the status tie-break. */
+  private lastActivityOf(session: SessionInfo): number {
+    const rec = this.agentStateRecords.get(session.id);
+    const otel = this.otelStates.get(session.id);
+    return Math.max(
+      rec?.since ?? 0,
+      otel?.lastRequestTime ?? 0,
+      session.activity ?? 0,
+    );
+  }
+
+  private buildSortInfos(): SessionSortInfo[] {
+    return this.sessions.map((s) => ({
+      name: s.name,
+      status: this.statusOf(s),
+      lastActivity: this.lastActivityOf(s),
+    }));
+  }
+
+  getSortMode(): SortMode { return this.sortMode; }
+  getFilterMode(): FilterMode { return this.filterMode; }
+
+  setSortMode(mode: SortMode): void {
+    this.sortMode = mode;
+    // Show the TOP of the re-ordered list — the whole point of sorting by
+    // status is to see what rose to the top, not to chase the active session.
+    this.scrollOffset = 0;
+    this.rebuildPlan();
+  }
+  setFilterMode(mode: FilterMode): void {
+    this.filterMode = mode;
+    this.scrollOffset = 0;
+    this.rebuildPlan();
+  }
+
+  /** Cycle sort/filter and return the new mode (so the caller can persist/report it). */
+  cycleSortMode(): SortMode {
+    this.setSortMode(cycleSort(this.sortMode));
+    return this.sortMode;
+  }
+  cycleFilterMode(): FilterMode {
+    this.setFilterMode(cycleFilter(this.filterMode));
+    return this.filterMode;
+  }
+
   private rebuildPlan(): void {
     const { items, displayOrder } = buildRenderPlan(
       this.sessions,
       this.collapsedGroups,
       this.pinnedSessions,
       this.pinnedPanes,
+      this.buildSortInfos(),
+      this.sortMode,
+      this.filterMode,
     );
     this.items = items;
     this.displayOrder = displayOrder;
@@ -674,34 +777,87 @@ export class Sidebar {
     }
   }
 
+  /** Column range (inclusive, 0-indexed) of the clickable "⇅ <Sort>" control on
+   * the header row, recomputed each render; [-1,-1] when it isn't drawn. */
+  private sortToggleStart = -1;
+  private sortToggleEnd = -1;
+
+  /**
+   * Header row: a static `Sessions` label, then a clickable `⇅ <Sort>` control
+   * naming the current sort mode, then (when filtered) a dim `· <Filter>`
+   * suffix, then the right-aligned state rollup. The control cycles the sort
+   * mode on click (headerSortToggleHit); the ⇅ glyph and the accent-muted mode
+   * name are its affordance.
+   */
+  private renderHeader(grid: CellGrid): void {
+    const label = "Sessions";
+    writeString(grid, 0, 1, label, { ...ACCENT_ATTRS, bold: true });
+
+    const control = `⇅ ${sortModeShort(this.sortMode)}`;
+    const controlCol = 1 + textCols(label) + 2; // gap after the label
+    // The control is the sort-cycle click target — icon + mode name.
+    this.sortToggleStart = controlCol;
+    this.sortToggleEnd = controlCol + textCols(control) - 1;
+    writeString(grid, 0, controlCol, control, {
+      fg: tokens.accentMuted.fg,
+      fgMode: tokens.accentMuted.fgMode,
+    });
+
+    let after = controlCol + textCols(control);
+    if (this.filterMode !== "all") {
+      const suffix = ` · ${filterModeShort(this.filterMode)}`;
+      if (after + textCols(suffix) < this.width - 1) {
+        writeString(grid, 0, after, suffix, { ...DIM_ATTRS });
+        after += textCols(suffix);
+      }
+    }
+    // Rollup fills the right, yielding to the header-left it must not overprint.
+    this.renderHeaderRollup(grid, after);
+  }
+
+  /** True when a click at (row, col) lands on the header sort-toggle control. */
+  headerSortToggleHit(row: number, col: number): boolean {
+    return row === 0 && col >= this.sortToggleStart && col <= this.sortToggleEnd;
+  }
+
   /**
    * Right-aligned agent-state tally on the header row: `3⏵ 2! 1✓`, one segment
    * per state that has at least one session, in the row indicators' own glyphs
    * and colours (running green, waiting yellow-bold, complete dim-neutral). Only
    * promoted sessions carry a state, so this counts exactly what the dots below
-   * would show. Skipped entirely when nothing is promoted, or when the sidebar
-   * is too narrow to fit the tally without touching the "Sessions" label.
+   * would show. `leftEnd` is the last column the header-left content occupies;
+   * the rollup is dropped rather than overprint it.
    */
-  private renderHeaderRollup(grid: CellGrid): void {
+  private renderHeaderRollup(grid: CellGrid, leftEnd: number): void {
     const counts: Record<AgentState, number> = { running: 0, waiting: 0, complete: 0 };
     for (const rec of this.agentStateRecords.values()) counts[rec.state]++;
 
     const GLYPH: Record<AgentState, string> = { running: "⏵", waiting: "!", complete: "✓" };
     const order: AgentState[] = ["running", "waiting", "complete"];
-    const segments = order
-      .filter((s) => counts[s] > 0)
-      .map((s) => ({ text: `${counts[s]}${GLYPH[s]}`, attrs: this.stateAttrs[s] }));
-    if (segments.length === 0) return;
+    const seg = (s: AgentState) => ({ text: `${counts[s]}${GLYPH[s]}`, attrs: this.stateAttrs[s] });
+    const full = order.filter((s) => counts[s] > 0).map(seg);
+    if (full.length === 0) return;
 
-    // One space between segments; one column of right margin.
-    const total = segments.reduce((w, s) => w + textCols(s.text), 0) + (segments.length - 1);
-    let col = this.width - 1 - total;
-    // "Sessions" occupies cols 1..8; leave a gap before it or don't render.
-    if (col < 10) return;
+    const width = (segs: { text: string }[]) =>
+      segs.reduce((w, s) => w + textCols(s.text), 0) + Math.max(0, segs.length - 1);
+    // `leftEnd` is the first free column past the header-left content; the
+    // rollup needs its start column strictly beyond it (a ≥1-column gap).
+    const fits = (segs: { text: string }[]) => this.width - 1 - width(segs) > leftEnd;
 
-    for (const seg of segments) {
-      writeString(grid, 0, col, seg.text, seg.attrs);
-      col += textCols(seg.text) + 1;
+    // Prefer the full tally; when the sort control leaves no room, fall back to
+    // just the waiting count — the one that actually demands action — before
+    // giving up entirely. So a narrow sidebar still shows "2!" if not "2⏵ 2! 1✓".
+    const segments = fits(full)
+      ? full
+      : counts.waiting > 0 && fits([seg("waiting")])
+        ? [seg("waiting")]
+        : null;
+    if (!segments) return;
+
+    let col = this.width - 1 - width(segments);
+    for (const s of segments) {
+      writeString(grid, 0, col, s.text, s.attrs);
+      col += textCols(s.text) + 1;
     }
   }
 
@@ -738,10 +894,12 @@ export class Sidebar {
     this.rowToGroupLabel.clear();
     this.rowToSelection.clear();
 
-    // Header \u2014 label on the left, a live agent-state rollup on the right so
-    // "how many agents need me" is legible even when the list is scrolled.
-    writeString(grid, 0, 1, "Sessions", { ...ACCENT_ATTRS, bold: true });
-    this.renderHeaderRollup(grid);
+    // Header \u2014 a title on the left, a live agent-state rollup on the right so
+    // "how many agents need me" is legible even when the list is scrolled. The
+    // title names the active sort/filter when either is non-default, so the
+    // list order/membership is never a mystery: "Sessions" by default,
+    // "By status" when sorted, with " \u00b7 needs you" appended when filtered.
+    this.renderHeader(grid);
     writeString(grid, 1, 0, "\u2500".repeat(this.width), DIM_ATTRS);
 
     const vpHeight = this.viewportHeight();

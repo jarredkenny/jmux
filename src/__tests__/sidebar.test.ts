@@ -38,7 +38,8 @@ describe("Sidebar", () => {
   });
 
   test("header shows a right-aligned agent-state rollup", () => {
-    const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
+    // Wide enough for the label + sort control + the full three-segment tally.
+    const sidebar = new Sidebar(40, 30);
     sidebar.updateSessions(makeSessions([
       { name: "a" }, { name: "b" }, { name: "c" }, { name: "d" },
     ]));
@@ -48,7 +49,7 @@ describe("Sidebar", () => {
     sidebar.setAgentStateRecord("$2", { state: "waiting", since: now });
     sidebar.setAgentStateRecord("$3", { state: "complete", since: now });
     const grid = sidebar.getGrid();
-    const header = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => grid.cells[0][i].char).join("");
+    const header = Array.from({ length: 40 }, (_, i) => grid.cells[0][i].char).join("");
     // running / waiting / complete counts with the row indicators' glyphs.
     expect(header).toContain("2⏵");
     expect(header).toContain("1!");
@@ -60,9 +61,12 @@ describe("Sidebar", () => {
   test("header rollup omits states with no sessions, and vanishes when none are promoted", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
     sidebar.updateSessions(makeSessions([{ name: "a" }, { name: "b" }]));
-    // Nothing promoted → no rollup, just the label.
+    // Nothing promoted → no rollup; header is the label plus the ⇅ sort icon.
     let header = Array.from({ length: SIDEBAR_WIDTH }, (_, i) => sidebar.getGrid().cells[0][i].char).join("");
-    expect(header.trim()).toBe("Sessions");
+    expect(header).toContain("Sessions");
+    expect(header).toContain("⇅");
+    expect(header).not.toContain("⏵"); // no rollup counts
+    expect(header).not.toContain("✓");
 
     // Only running present → only the running segment appears.
     sidebar.setAgentStateRecord("$0", { state: "running", since: Date.now() });
@@ -1682,5 +1686,143 @@ describe("Overview entry", () => {
     ).join("");
     expect(row2).toContain("2");
     expect(row2).toContain("Command Center");
+  });
+});
+
+describe("Sidebar — sort & filter", () => {
+  const WIDTH = 30;
+
+  // Two projects, mixed statuses, so we can prove flat status sort crosses
+  // project boundaries and pulls waiting to the very top.
+  function seeded(): Sidebar {
+    const sb = new Sidebar(WIDTH, 40);
+    sb.updateSessions(makeSessions([
+      { name: "alpha", project: "proj-a" },   // $0 running
+      { name: "bravo", project: "proj-a" },    // $1 waiting
+      { name: "charlie", project: "proj-b" },  // $2 idle
+      { name: "delta", project: "proj-b" },    // $3 waiting
+    ]));
+    const now = Date.now();
+    sb.setAgentStateRecord("$0", { state: "running", since: now });
+    sb.setAgentStateRecord("$1", { state: "waiting", since: now });
+    sb.setAgentStateRecord("$3", { state: "waiting", since: now });
+    return sb;
+  }
+
+  const linesWith = (sb: Sidebar, needle: string): number => {
+    const g = sb.getGrid();
+    let row = -1;
+    for (let r = 0; r < g.rows; r++) {
+      const t = Array.from({ length: WIDTH }, (_, i) => g.cells[r][i].char).join("");
+      if (t.includes(needle)) { row = r; break; }
+    }
+    return row;
+  };
+
+  test("status sort pulls waiting to the top across projects, dropping group headers", () => {
+    const sb = seeded();
+    sb.setSortMode("status");
+    const g = sb.getGrid();
+    const all = Array.from({ length: g.rows }, (_, r) =>
+      Array.from({ length: WIDTH }, (_, i) => g.cells[r][i].char).join("")).join("\n");
+    // No project group headers in a flat mode.
+    expect(all).not.toContain("proj-a");
+    expect(all).not.toContain("proj-b");
+    // Both waiting sessions appear above both non-waiting ones.
+    const bravo = linesWith(sb, "bravo");   // waiting
+    const delta = linesWith(sb, "delta");   // waiting
+    const alpha = linesWith(sb, "alpha");   // running
+    const charlie = linesWith(sb, "charlie"); // idle
+    expect(Math.max(bravo, delta)).toBeLessThan(Math.min(alpha, charlie));
+  });
+
+  test("attention filter hides non-waiting sessions; Command Center stays", () => {
+    const sb = seeded();
+    sb.setFilterMode("attention");
+    const g = sb.getGrid();
+    const all = Array.from({ length: g.rows }, (_, r) =>
+      Array.from({ length: WIDTH }, (_, i) => g.cells[r][i].char).join("")).join("\n");
+    expect(all).toContain("Command Center");
+    expect(all).toContain("bravo");   // waiting → shown
+    expect(all).toContain("delta");   // waiting → shown
+    expect(all).not.toContain("alpha");   // running → hidden
+    expect(all).not.toContain("charlie"); // idle → hidden
+  });
+
+  test("project mode + attention filter hides a fully-filtered group", () => {
+    const sb = seeded();
+    // proj-b: charlie (idle, hidden) + delta (waiting, shown) → group stays.
+    // Make a third project entirely non-waiting to prove it vanishes.
+    sb.updateSessions(makeSessions([
+      { name: "alpha", project: "proj-a" },
+      { name: "bravo", project: "proj-a" },
+      { name: "solo", project: "proj-c" },
+    ]));
+    sb.setAgentStateRecord("$1", { state: "waiting", since: Date.now() });
+    // proj-c/solo has no waiting → whole group hidden under attention filter.
+    sb.setFilterMode("attention");
+    const g = sb.getGrid();
+    const all = Array.from({ length: g.rows }, (_, r) =>
+      Array.from({ length: WIDTH }, (_, i) => g.cells[r][i].char).join("")).join("\n");
+    expect(all).toContain("proj-a");    // has a waiting session
+    expect(all).toContain("bravo");
+    expect(all).not.toContain("proj-c"); // fully filtered → header gone
+    expect(all).not.toContain("solo");
+  });
+
+  test("header names the active sort and filter", () => {
+    const sb = new Sidebar(40, 40); // wide enough for label + control + filter
+    sb.updateSessions(makeSessions([{ name: "alpha" }]));
+    sb.setAgentStateRecord("$0", { state: "waiting", since: Date.now() });
+    const header = () => Array.from({ length: 40 }, (_, i) => sb.getGrid().cells[0][i].char).join("");
+    expect(header()).toContain("Sessions");
+    expect(header()).toContain("⇅ Project");
+    sb.setSortMode("status");
+    expect(header()).toContain("⇅ Status");
+    sb.setFilterMode("attention");
+    expect(header()).toContain("· Needs you");
+  });
+
+  test("cycle helpers return and apply the next mode", () => {
+    const sb = seeded();
+    expect(sb.getSortMode()).toBe("project");
+    expect(sb.cycleSortMode()).toBe("status");
+    expect(sb.getSortMode()).toBe("status");
+    expect(sb.cycleFilterMode()).toBe("attention");
+    expect(sb.getFilterMode()).toBe("attention");
+  });
+
+  test("header shows Sessions + a clickable ⇅ sort control naming the mode", () => {
+    const sb = seeded();
+    const header = () => Array.from({ length: WIDTH }, (_, i) => sb.getGrid().cells[0][i].char).join("");
+    sb.getGrid();
+    expect(header()).toContain("Sessions");
+    expect(header()).toContain("⇅ Project"); // icon + current mode name
+    sb.setSortMode("status");
+    expect(header()).toContain("⇅ Status");
+
+    // The control's own columns are the click target; the label and separator
+    // rows are not. Find the ⇅ column and assert the hit-test brackets it.
+    const row0 = header();
+    const iconCol = [...row0].findIndex((c) => c === "⇅");
+    expect(sb.headerSortToggleHit(0, iconCol)).toBe(true);         // the icon
+    expect(sb.headerSortToggleHit(0, iconCol + 2)).toBe(true);     // the mode name
+    expect(sb.headerSortToggleHit(0, 1)).toBe(false);              // "Sessions" label
+    expect(sb.headerSortToggleHit(1, iconCol)).toBe(false);        // separator row
+    expect(sb.headerSortToggleHit(4, iconCol)).toBe(false);        // a session row
+  });
+
+  test("switching sort resets the scroll to the top (no bleed into the header)", () => {
+    const sb = new Sidebar(WIDTH, 12); // short viewport so the list overflows
+    sb.updateSessions(makeSessions(
+      Array.from({ length: 12 }, (_, i) => ({ name: `s${i}`, project: "p" })),
+    ));
+    sb.setAgentStateRecord("$11", { state: "waiting", since: Date.now() });
+    sb.scrollBy(20); // scroll far down
+    sb.setSortMode("status");
+    // Row 1 is the header separator — it must be only rule chars, never a
+    // session name bled up from a stale scroll offset.
+    const sep = Array.from({ length: WIDTH }, (_, i) => sb.getGrid().cells[1][i].char).join("");
+    expect(sep.replace(/[─\s]/g, "")).toBe("");
   });
 });
