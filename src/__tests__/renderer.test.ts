@@ -779,6 +779,16 @@ describe("compositeGrids top rule, junctions, and tab underline", () => {
       expect(result.cells[row][x].char).toBe(frame.ruleHeavy);
       expect(result.cells[row][x].fg).toBe(tokens.accent.fg!);
       expect(result.cells[row][x].fgMode).toBe(tokens.accent.fgMode!);
+      // The active underline must be full intensity, not inherit the base
+      // ruleFrame fill's dim (see chrome-tokens.ts's ruleFrame: dim: true).
+      expect(result.cells[row][x].dim).toBeFalsy();
+    }
+
+    // The active tab's label (row 0) uses the same accent colour — pin the
+    // label/underline colour match so a future change can't drift them apart.
+    for (let x = borderCol + 1 + startCol; x <= borderCol + 1 + endCol; x++) {
+      expect(result.cells[0][x].fg).toBe(tokens.accent.fg!);
+      expect(result.cells[0][x].fgMode).toBe(tokens.accent.fgMode!);
     }
   });
 
@@ -805,6 +815,8 @@ describe("compositeGrids top rule, junctions, and tab underline", () => {
       expect(result.cells[row][x].char).toBe(frame.ruleLight);
       expect(result.cells[row][x].fg).toBe(tokens.ruleFrame.fg!);
       expect(result.cells[row][x].fgMode).toBe(tokens.ruleFrame.fgMode!);
+      // Idle segments inherit ruleFrame's dim — only active/focus cues are bright.
+      expect(result.cells[row][x].dim).toBe(true);
     }
   });
 
@@ -832,6 +844,7 @@ describe("compositeGrids top rule, junctions, and tab underline", () => {
       expect(result.cells[row][x].char).toBe(frame.ruleLight);
       expect(result.cells[row][x].fg).toBe(tokens.accentMuted.fg!);
       expect(result.cells[row][x].fgMode).toBe(tokens.accentMuted.fgMode!);
+      expect(result.cells[row][x].dim).toBeFalsy();
     }
   });
 
@@ -859,6 +872,7 @@ describe("compositeGrids top rule, junctions, and tab underline", () => {
       expect(result.cells[row][x].char).not.toBe(frame.ruleHeavy);
       expect(result.cells[row][x].fg).toBe(tokens.attention.fg!);
       expect(result.cells[row][x].fgMode).toBe(tokens.attention.fgMode!);
+      expect(result.cells[row][x].dim).toBeFalsy();
     }
   });
 
@@ -902,5 +916,10 @@ describe("compositeGrids top rule, junctions, and tab underline", () => {
     expect(focused.cells[row][panelStart].fgMode).toBe(tokens.accent.fgMode!);
     expect(unfocused.cells[row][panelStart].fg).toBe(tokens.accentMuted.fg!);
     expect(unfocused.cells[row][panelStart].fgMode).toBe(tokens.accentMuted.fgMode!);
+
+    // Both the focused and muted panel-focus underlines are cues, not the
+    // idle rule — neither should be dim.
+    expect(focused.cells[row][panelStart].dim).toBeFalsy();
+    expect(unfocused.cells[row][panelStart].dim).toBeFalsy();
   });
 });

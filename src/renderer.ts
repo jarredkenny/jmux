@@ -200,9 +200,13 @@ function renderWindowBranchRow(
 // a bell on the active tab is still the active tab (heavy, accent) — bell
 // only changes hue for a tab that isn't already active or hovered.
 function tabUnderlineGlyphAndAttrs(tab: WindowTab, isHovered: boolean): { glyph: string; attrs: CellAttrs } {
-  if (tab.active) return { glyph: frame.ruleHeavy, attrs: tokens.accent };
-  if (isHovered) return { glyph: frame.ruleLight, attrs: tokens.accentMuted };
-  if (tab.bell) return { glyph: frame.ruleLight, attrs: tokens.attention };
+  // Non-idle cues must be full intensity: writeCell only assigns `dim` when
+  // the incoming attrs define it, so without an explicit `dim: false` here
+  // these would silently inherit whatever dim the base ruleFrame fill left
+  // behind underneath. Only the idle (ruleFrame) case is meant to stay dim.
+  if (tab.active) return { glyph: frame.ruleHeavy, attrs: { ...tokens.accent, dim: false } };
+  if (isHovered) return { glyph: frame.ruleLight, attrs: { ...tokens.accentMuted, dim: false } };
+  if (tab.bell) return { glyph: frame.ruleLight, attrs: { ...tokens.attention, dim: false } };
   return { glyph: frame.ruleLight, attrs: tokens.ruleFrame };
 }
 
@@ -245,7 +249,11 @@ function paintTopRuleRow(
     // rendered grid (diffPanel.tabBar) whose own column layout isn't ours
     // to read.
     const panelStart = layout.panel!.x;
-    const panelAttrs = diffPanel.focused ? tokens.accent : tokens.accentMuted;
+    // Same dim-clearing rationale as tabUnderlineGlyphAndAttrs above — this
+    // is always a focus cue (accent or accentMuted), never the idle rule.
+    const panelAttrs = diffPanel.focused
+      ? { ...tokens.accent, dim: false }
+      : { ...tokens.accentMuted, dim: false };
     for (let x = panelStart; x < totalCols; x++) {
       writeCell(grid, row, x, frame.ruleLight, panelAttrs);
     }
