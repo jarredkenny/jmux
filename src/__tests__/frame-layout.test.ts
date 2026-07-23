@@ -354,3 +354,44 @@ describe("sidebarBottomRow", () => {
     expect(sidebarBottomRow(layout)).toBe(layout.contentTop + layout.contentRows);
   });
 });
+
+// The settings screen and Command Center (glass) are full-screen takeovers
+// with no window tabs, so main.ts renders them through a dedicated
+// toolbarRows: 0 layout instead of the shared toolbar-ful one — see
+// docs/superpowers/plans/2026-07-23-chrome-surfaces.md Task 1. This locks in
+// the invariant that layout depends on: toolbarRows: 0 collapses the whole
+// chrome ladder (resolveChrome's NONE branch) regardless of the rule/footer
+// flags, so passing the *same* frameRulesEnabled/footerEnabled: true main.ts
+// uses for the shared layout still yields a chrome-less, full-height band —
+// the caller doesn't need to also flip those flags to get frameless content.
+describe("computeFrameLayout — toolbarRows: 0 (settings/glass frameless layout)", () => {
+  test("no chrome rows survive even with rule/footer flags on; content is full height", () => {
+    const layout = computeFrameLayout(
+      chromeInput({ toolbarRows: 0, termRows: 50, frameRulesEnabled: true, footerEnabled: true }),
+    );
+    expect(layout.toolbarRows).toBe(0);
+    expect(layout.topRuleRow).toBeNull();
+    expect(layout.footerRuleRow).toBeNull();
+    expect(layout.footerRow).toBeNull();
+    expect(layout.contentTop).toBe(0);
+    expect(layout.contentRows).toBe(layout.termRows);
+    expect(layout.ptyRows).toBe(layout.termRows);
+    // The sidebar gets the full terminal height back too, since there's no
+    // footer band carving rows off its bottom.
+    expect(sidebarBottomRow(layout)).toBe(layout.termRows);
+  });
+
+  test("contrasts with the shared toolbar-ful layout at the same term size — this is the bug main.ts had", () => {
+    // Before the fix, main.ts rendered settings/glass through the *shared*
+    // layout (toolbarRows > 0), which reserves a blank toolbar row above the
+    // content and a footer band below it.
+    const shared = computeFrameLayout(chromeInput({ termRows: 50 }));
+    expect(shared.contentTop).toBe(2); // toolbar row + top rule
+    expect(shared.contentRows).toBeLessThan(shared.termRows);
+
+    // After the fix, the dedicated frameless layout has neither.
+    const frameless = computeFrameLayout(chromeInput({ toolbarRows: 0, termRows: 50 }));
+    expect(frameless.contentTop).toBe(0);
+    expect(frameless.contentRows).toBe(frameless.termRows);
+  });
+});

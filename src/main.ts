@@ -408,6 +408,29 @@ let layout: FrameLayout = computeFrameLayout({
 });
 let mainCols = layout.main.w;
 
+// The settings screen and Command Center (glass) are full-screen takeovers
+// with no window tabs — they pass toolbar: null — so they render through
+// this dedicated chrome-less layout instead of the shared toolbar-ful
+// `layout` above: toolbarRows: 0 collapses resolveChrome's whole ladder to
+// NONE (see frame-layout.ts), so there's no blank toolbar-row strip above
+// them and no footer band clipping their bottom. Column geometry (sidebar
+// span, borderCol, main.x) is identical to `layout` — only the row bands
+// differ — so this is recomputed alongside `layout` everywhere `layout`
+// changes (relayout()) and applied via applyChromeLayout() whenever the
+// settings/glass mode itself is entered or left (those transitions don't
+// go through relayout()).
+let fullScreenLayout: FrameLayout = computeFrameLayout({
+  termCols: cols,
+  termRows: rows,
+  sidebarWidth,
+  borderWidth: BORDER_WIDTH,
+  toolbarRows: 0,
+  diffState: "off",
+  requestedPanelCols: 0,
+  frameRulesEnabled: false,
+  footerEnabled: false,
+});
+
 // Toolbar buttons and window tabs
 let hoveredToolbarButton: string | null = null;
 let currentWindows: WindowTab[] = [];
@@ -1109,6 +1132,23 @@ function relayout(): void {
     requestedPanelCols,
   });
 
+  // Recomputed alongside `layout` on every geometry change so the settings
+  // screen / Command Center's frameless render always has an up-to-date
+  // fullScreenLayout for the current terminal size, even though neither of
+  // those modes affects diffState/requestedPanelCols (both are always "off"/0
+  // here — they're full-screen takeovers with no diff panel of their own).
+  fullScreenLayout = computeFrameLayout({
+    termCols,
+    termRows,
+    sidebarWidth,
+    borderWidth: BORDER_WIDTH,
+    toolbarRows: 0,
+    diffState: "off",
+    requestedPanelCols: 0,
+    frameRulesEnabled: false,
+    footerEnabled: false,
+  });
+
   mainCols = layout.main.w;
   sidebarShown = layout.sidebar !== null;
 
@@ -1120,11 +1160,40 @@ function relayout(): void {
     diffBridge.resize(layout.panel.w, layout.ptyRows);
   }
 
-  inputRouter.setLayout(layout);
-
-  sidebar.resize(sidebarWidth, sidebarBottomRow(layout));
+  applyChromeLayout();
 
   scheduleRender();
+}
+
+/**
+ * The layout that should currently govern the sidebar's height and the
+ * input router's row classification: the frameless full-screen layout while
+ * the settings screen or Command Center (glass) is the active view — both
+ * render via `fullScreenLayout` in renderFrame() — the shared toolbar-ful
+ * `layout` otherwise. Column geometry is identical between the two; only
+ * which row bands (toolbar/rules/footer) exist differs.
+ */
+function activeChromeLayout(): FrameLayout {
+  return settingsScreen.isOpen || inGlass ? fullScreenLayout : layout;
+}
+
+/**
+ * Applies activeChromeLayout() to the sidebar (its rendered height must
+ * match whichever layout is compositing it, or blit clips its bottom rows —
+ * see frame-layout.ts's sidebarBottomRow) and the input router (so mouse row
+ * classification — toolbar/rule/footer/content — matches what's actually
+ * painted, rather than swallowing clicks on newly-frameless content as if
+ * they'd landed on chrome rows that no longer exist there).
+ *
+ * Called from relayout() (geometry changed) and from every settings/glass
+ * entry/exit point (mode changed without a geometry change) — those
+ * transitions don't go through relayout(), so without this the sidebar/input
+ * router would keep the previous mode's layout until the next resize.
+ */
+function applyChromeLayout(): void {
+  const active = activeChromeLayout();
+  inputRouter.setLayout(active);
+  sidebar.resize(sidebarWidth, sidebarBottomRow(active));
 }
 
 async function toggleDiffPanel(): Promise<void> {
@@ -1314,14 +1383,19 @@ function renderFrame(): void {
   // is active below.
   const footerCells = layoutFooter(makeFooter(), layout.termCols).cells;
 
-  // Settings screen replaces main content
+  // Settings screen replaces main content. It's a frameless full-screen
+  // takeover — no window tabs, so no toolbar — rendered through
+  // fullScreenLayout (toolbarRows: 0) rather than the shared toolbar-ful
+  // `layout`: no blank toolbar-row strip above it, no footer band clipping
+  // its bottom, and the sidebar beside it (resized to fullScreenLayout's
+  // full-terminal height by applyChromeLayout()) fills its full height too.
   if (settingsScreen.isOpen) {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
-    const totalCols = layout.termCols;
-    const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
-    const settingsGrid = settingsScreen.render(contentCols, layout.contentRows);
+    const totalCols = fullScreenLayout.termCols;
+    const contentCols = sidebarShown ? totalCols - fullScreenLayout.main.x : totalCols;
+    const settingsGrid = settingsScreen.render(contentCols, fullScreenLayout.contentRows);
     renderer.render(
-      layout,
+      fullScreenLayout,
       settingsGrid,
       { x: 0, y: 0 },
       sidebarGrid,
@@ -1329,20 +1403,21 @@ function renderFrame(): void {
       null, // no modal
       null, // no modal cursor
       undefined, // no diff panel
-      footerCells,
+      undefined, // no footer — frameless full-screen view
     );
     return;
   }
 
   // Pane-of-glass (Overview) replaces main content; toolbar hidden. Modals
   // (e.g. the command palette) still composite on top — otherwise they open
-  // invisibly while the Command Center is up.
+  // invisibly while the Command Center is up. Frameless full-screen takeover
+  // like settings above — rendered through fullScreenLayout, no footer.
   if (inGlass && glassView) {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
     const overlay = computeModalOverlay();
     const stripVisible = stripVisibleFor(commandCenterTabs);
-    const totalCols = layout.termCols;
-    const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
+    const totalCols = fullScreenLayout.termCols;
+    const contentCols = sidebarShown ? totalCols - fullScreenLayout.main.x : totalCols;
 
     let content = glassView.getGrid();
     let cursor = glassView.getFocusedCursor() ?? { x: 0, y: 0 };
@@ -1352,7 +1427,7 @@ function renderFrame(): void {
       const stripInput = { tabs: commandCenterTabs, activeTabId, summaryByTab, width: contentCols, palette };
       currentStripChips = layoutStrip(stripInput);
       const strip = renderStrip(stripInput, currentStripChips);
-      const combined = createGrid(contentCols, layout.contentRows);
+      const combined = createGrid(contentCols, fullScreenLayout.contentRows);
       // Blit strip on top rows, glass content below.
       for (let r = 0; r < STRIP_ROWS && r < combined.rows; r++)
         for (let c = 0; c < contentCols; c++) combined.cells[r][c] = strip.cells[r][c];
@@ -1364,7 +1439,7 @@ function renderFrame(): void {
       currentStripChips = [];
     }
 
-    renderer.render(layout, content, cursor, sidebarGrid, null, overlay?.grid ?? null, overlay?.cursor ?? null, undefined, footerCells);
+    renderer.render(fullScreenLayout, content, cursor, sidebarGrid, null, overlay?.grid ?? null, overlay?.cursor ?? null, undefined, undefined);
     return;
   }
 
@@ -2679,6 +2754,10 @@ function toggleSettingsScreen(): void {
     settingsScreen.open(buildSettingsCategories());
     inputRouter.setModalOpen(true);
   }
+  // Settings is a frameless full-screen takeover (see fullScreenLayout) —
+  // entering/leaving it changes which layout the sidebar/input router
+  // should use even though the terminal geometry itself hasn't changed.
+  applyChromeLayout();
   scheduleRender();
 }
 
@@ -4117,16 +4196,21 @@ function ensureGlassView(): GlassView {
 
 function resizeGlass(): void {
   if (!glassView) return;
-  const totalCols = layout.termCols;
-  const contentCols = sidebarShown ? totalCols - layout.main.x : totalCols;
+  // Command Center is a frameless full-screen takeover — size its tiles
+  // (and the real mirrored PTYs behind them) against fullScreenLayout's
+  // content band, not the shared toolbar-ful layout's smaller one, or the
+  // tiles would leave a gap where the toolbar/footer chrome used to be.
+  const totalCols = fullScreenLayout.termCols;
+  const contentCols = sidebarShown ? totalCols - fullScreenLayout.main.x : totalCols;
   const stripRows = stripVisibleFor(commandCenterTabs) ? STRIP_ROWS : 0;
-  const contentRows = Math.max(1, layout.contentRows - stripRows);
+  const contentRows = Math.max(1, fullScreenLayout.contentRows - stripRows);
   glassView.resize(contentCols, contentRows);
 }
 
 async function enterGlass(): Promise<void> {
   ensureGlassView();
   inGlass = true;
+  applyChromeLayout(); // frameless layout now governs the sidebar/input router
   // Restore last-active tab; fall back to default if it no longer exists.
   activeTabId = commandCenterTabs.some((t) => t.id === lastActiveTabId)
     ? lastActiveTabId
@@ -4234,6 +4318,7 @@ function tryDeleteActiveTab(): void {
 function exitGlass(): void {
   if (!inGlass) return;
   inGlass = false;
+  applyChromeLayout(); // back to the shared toolbar-ful layout
   glassView?.teardown();
   sidebar.setOverviewActive(false);
 }
