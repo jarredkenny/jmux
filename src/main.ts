@@ -4,6 +4,7 @@ import { ScreenBridge } from "./screen-bridge";
 import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
 import { Sidebar, rebuildSidebarColors, type PinnedPaneEntry } from "./sidebar";
+import { buildFooter, layoutFooter, type FooterModel } from "./footer";
 import { CommandPalette } from "./command-palette";
 import { InputModal } from "./input-modal";
 import { ListModal, type ListItem } from "./list-modal";
@@ -401,11 +402,10 @@ let layout: FrameLayout = computeFrameLayout({
   toolbarRows: toolbarHeight,
   diffState: "off",
   requestedPanelCols: 0,
-  // Matches relayout()'s `base` (below) — the top rule is on from first
-  // paint, not just after the first relayout(). The footer stays off until
-  // its own rendering task lands.
+  // Matches relayout()'s `base` (below) — the top rule and footer are both
+  // on from first paint, not just after the first relayout().
   frameRulesEnabled: true,
-  footerEnabled: false,
+  footerEnabled: true,
 });
 let mainCols = layout.main.w;
 
@@ -466,6 +466,20 @@ function makeToolbar(): ToolbarConfig {
     hoveredTabId,
     statusChip: snapshotChip,
   };
+}
+
+/**
+ * Builds the footer's model from live state — the snapshot health chip
+ * (shared with the toolbar's own chip until Task 7 removes it there) and the
+ * version indicator, which moved off the sidebar's last row to the footer's
+ * right side (see sidebar.ts's getVersion/getLatestVersion/hasUpdate).
+ */
+function makeFooter(): FooterModel {
+  return buildFooter({
+    snapshotChip: snapshotChipLabel(getSnapshotHealth()),
+    version: sidebar.getVersion(),
+    updateAvailable: sidebar.hasUpdate() ? `v${sidebar.getLatestVersion()} avail` : null,
+  });
 }
 
 // --- Durable-session boot helper ---
@@ -1083,11 +1097,10 @@ function relayout(): void {
     sidebarWidth,
     borderWidth: BORDER_WIDTH,
     toolbarRows: toolbarHeight,
-    // The top rule (+ junctions + tab underline) is now on — compositeGrids
-    // paints it (renderer.ts). The footer row is still a future task; its
-    // flag stays false until that task's rendering lands.
+    // The top rule (+ junctions + tab underline) and the footer row (+ its
+    // own rule) are both on — compositeGrids paints both (renderer.ts).
     frameRulesEnabled: true,
-    footerEnabled: false,
+    footerEnabled: true,
   };
   const probe = computeFrameLayout({ ...base, diffState: "off", requestedPanelCols: 0 });
   const available = probe.main.w;
@@ -1305,6 +1318,11 @@ function computeModalOverlay(): {
 function renderFrame(): void {
   if (writesPending > 0) return;
 
+  // Built once per frame — the footer is persistent chrome, painted the same
+  // way regardless of which content branch (settings screen, glass, normal)
+  // is active below.
+  const footerCells = layoutFooter(makeFooter(), layout.termCols).cells;
+
   // Settings screen replaces main content
   if (settingsScreen.isOpen) {
     const sidebarGrid = sidebarShown ? sidebar.getGrid() : null;
@@ -1321,6 +1339,7 @@ function renderFrame(): void {
       null, // no modal
       null, // no modal cursor
       undefined, // no diff panel
+      footerCells,
     );
     return;
   }
@@ -1355,7 +1374,7 @@ function renderFrame(): void {
       currentStripChips = [];
     }
 
-    renderer.render(layout, content, cursor, sidebarGrid, null, overlay?.grid ?? null, overlay?.cursor ?? null, undefined);
+    renderer.render(layout, content, cursor, sidebarGrid, null, overlay?.grid ?? null, overlay?.cursor ?? null, undefined, footerCells);
     return;
   }
 
@@ -1432,6 +1451,7 @@ function renderFrame(): void {
     modalGrid,
     modalCursorPos,
     diffPanelArg,
+    footerCells,
   );
 }
 
@@ -1528,10 +1548,6 @@ const inputRouter = new InputRouter(
       clearSessionIndicators();
     },
     onSidebarClick: (row) => {
-      if (sidebar.isVersionRow(row)) {
-        showVersionInfo();
-        return;
-      }
       const groupLabel = sidebar.getGroupByRow(row);
       if (groupLabel) {
         sidebar.toggleGroup(groupLabel);
@@ -1569,6 +1585,15 @@ const inputRouter = new InputRouter(
       for (const { id, startCol, endCol } of ranges) {
         if (col >= startCol && col <= endCol) {
           handleToolbarAction(id);
+          return;
+        }
+      }
+    },
+    onFooterClick: (col) => {
+      const { ranges } = layoutFooter(makeFooter(), layout.termCols);
+      for (const { startCol, endCol, onClick } of ranges) {
+        if (col >= startCol && col <= endCol && onClick === "changelog") {
+          void showVersionInfo();
           return;
         }
       }

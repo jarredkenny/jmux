@@ -362,11 +362,6 @@ function itemHeight(item: RenderItem): number {
 
 // --- Sidebar class ---
 
-const UPDATE_AVAILABLE_ATTRS: CellAttrs = {
-  fg: 3,
-  fgMode: ColorMode.Palette,
-};
-
 export class Sidebar {
   private width: number;
   private height: number;
@@ -513,8 +508,16 @@ export class Sidebar {
     return this.latestVersion !== null && this.latestVersion !== this.currentVersion;
   }
 
-  isVersionRow(row: number): boolean {
-    return this.currentVersion !== "" && row === this.height - 1;
+  /** The current jmux version — data the footer reads to build its version
+   * segment. Rendering moved off the sidebar's last row to the footer. */
+  getVersion(): string {
+    return this.currentVersion;
+  }
+
+  /** The latest known release, or null when no update check has completed
+   * (or none is available). Only meaningful together with hasUpdate(). */
+  getLatestVersion(): string | null {
+    return this.latestVersion;
   }
 
   getSessionByRow(row: number): SessionInfo | null {
@@ -585,12 +588,8 @@ export class Sidebar {
     }
   }
 
-  private footerRows(): number {
-    return this.currentVersion ? 1 : 0;
-  }
-
   private viewportHeight(): number {
-    return this.height - HEADER_ROWS - this.footerRows();
+    return this.height - HEADER_ROWS;
   }
 
   private clampScroll(): void {
@@ -715,22 +714,7 @@ export class Sidebar {
       writeString(grid, HEADER_ROWS, this.width - 1, "\u25b2", DIM_ATTRS);
     }
     if (this.scrollOffset + vpHeight < totalRows) {
-      const scrollRow = this.footerRows() ? contentBottom - 1 : this.height - 1;
-      writeString(grid, scrollRow, this.width - 1, "\u25bc", DIM_ATTRS);
-    }
-
-    // Version footer
-    if (this.currentVersion) {
-      const footerRow = this.height - 1;
-      const versionText = `v${this.currentVersion}`;
-      if (this.hasUpdate()) {
-        const updateText = `v${this.latestVersion} avail`;
-        const maxLen = this.width - 2;
-        const display = updateText.length <= maxLen ? updateText : `v${this.latestVersion}`;
-        writeString(grid, footerRow, 1, display, UPDATE_AVAILABLE_ATTRS);
-      } else {
-        writeString(grid, footerRow, 1, versionText, DIM_ATTRS);
-      }
+      writeString(grid, this.height - 1, this.width - 1, "\u25bc", DIM_ATTRS);
     }
 
     return grid;

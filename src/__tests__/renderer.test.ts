@@ -18,10 +18,12 @@ function makeLayout(opts: {
   toolbarRows?: number;
   panel?: { cols: number; mode: "split" | "full" } | null;
   termRows: number;
-  /** Turns on the top rule row (Task 5) — footer stays out of scope here. */
+  /** Turns on the top rule row (Task 5). */
   frameRulesEnabled?: boolean;
+  /** Turns on the footer row + footer rule row (Task 6) — requires frameRulesEnabled. */
+  footerEnabled?: boolean;
 }): FrameLayout {
-  const { sidebarCols = null, mainCols, toolbarRows = 0, panel = null, termRows, frameRulesEnabled = false } = opts;
+  const { sidebarCols = null, mainCols, toolbarRows = 0, panel = null, termRows, frameRulesEnabled = false, footerEnabled = false } = opts;
   const sidebar: Span | null = sidebarCols != null ? { x: 0, w: sidebarCols } : null;
   const borderCol = sidebar ? sidebar.w : null;
   const mainX = sidebar ? sidebar.w + 1 : 0;
@@ -48,14 +50,15 @@ function makeLayout(opts: {
     ? sidebar.w + 1 + mainCols + (mode === "split" ? 1 + (panelSpan?.w ?? 0) : 0)
     : mainCols;
 
-  // These fixtures bypass computeFrameLayout, so there's no footerEnabled
-  // input to resolve chrome from — footer stays permanently out of scope
-  // here (both footerRuleRow/footerRow are always null). frameRulesEnabled
-  // pushes the content band down one row for the top rule, exactly as
-  // computeFrameLayout's own resolveChrome does.
+  // These fixtures bypass computeFrameLayout's degradation ladder — callers
+  // opt into the footer rows directly via footerEnabled rather than via
+  // termRows thresholds, mirroring computeFrameLayout's own arithmetic
+  // (frame-layout.ts's resolveChrome) without that production-only gate.
   const topRuleRow = frameRulesEnabled ? toolbarRows : null;
   const contentTop = toolbarRows + (frameRulesEnabled ? 1 : 0);
-  const contentRows = termRows - contentTop;
+  const footerRuleRow = footerEnabled ? termRows - 2 : null;
+  const footerRow = footerEnabled ? termRows - 1 : null;
+  const contentRows = termRows - contentTop - (footerEnabled ? 2 : 0);
   return {
     termCols,
     termRows,
@@ -65,9 +68,9 @@ function makeLayout(opts: {
     topRuleRow,
     contentTop,
     contentRows,
-    footerRuleRow: null,
-    footerRow: null,
-    chrome: { toolbar: toolbarRows > 0, topRule: frameRulesEnabled, footerRule: false, footer: false },
+    footerRuleRow,
+    footerRow,
+    chrome: { toolbar: toolbarRows > 0, topRule: frameRulesEnabled, footerRule: footerEnabled, footer: footerEnabled },
     ptyRows: contentRows,
     mode,
     main,
@@ -921,5 +924,95 @@ describe("compositeGrids top rule, junctions, and tab underline", () => {
     // idle rule — neither should be dim.
     expect(focused.cells[row][panelStart].dim).toBeFalsy();
     expect(unfocused.cells[row][panelStart].dim).toBeFalsy();
+  });
+});
+
+describe("compositeGrids footer row and footer rule", () => {
+  test("the footer row paints the supplied cells across the full terminal width", () => {
+    const sidebar = createGrid(6, 10);
+    const main = createGrid(20, 6);
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 10,
+      frameRulesEnabled: true, footerEnabled: true,
+    });
+    const footerCells = [{ text: "hello footer" }];
+    const result = compositeGrids(layout, main, sidebar, toolbar, null, undefined, footerCells);
+
+    expect(layout.footerRow).toBe(9);
+    const row = result.cells[layout.footerRow!].map((c) => c.char).join("");
+    expect(row).toContain("hello footer");
+  });
+
+  test("footer row is untouched (no main content) when no footer cells are supplied", () => {
+    const sidebar = createGrid(6, 10);
+    const main = createGrid(20, 6);
+    writeString(main, 0, 0, "SHOULD-NOT-APPEAR-IN-FOOTER");
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 10,
+      frameRulesEnabled: true, footerEnabled: true,
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const row = result.cells[layout.footerRow!].map((c) => c.char).join("");
+    expect(row).not.toContain("SHOULD-NOT-APPEAR-IN-FOOTER");
+  });
+
+  test("the footer rule row is a light ruleFrame line, crossing the border with ┴", () => {
+    const sidebar = createGrid(6, 10);
+    const main = createGrid(20, 6);
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 10,
+      frameRulesEnabled: true, footerEnabled: true,
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+
+    const row = layout.footerRuleRow!;
+    const borderCol = layout.borderCol!;
+    expect(row).toBe(8);
+    for (let x = layout.main.x; x < layout.termCols; x++) {
+      expect(result.cells[row][x].char).toBe(frame.ruleLight);
+      expect(result.cells[row][x].fg).toBe(tokens.ruleFrame.fg!);
+      expect(result.cells[row][x].fgMode).toBe(tokens.ruleFrame.fgMode!);
+    }
+    expect(result.cells[row][borderCol].char).toBe(frame.crossUp);
+    expect(result.cells[row][borderCol].fg).toBe(tokens.ruleFrame.fg!);
+    expect(result.cells[row][borderCol].fgMode).toBe(tokens.ruleFrame.fgMode!);
+  });
+
+  test("in split mode, the footer rule also crosses the divider with ┴", () => {
+    const sidebar = createGrid(6, 12);
+    const main = createGrid(20, 6);
+    const diffGrid = createGrid(10, 6);
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 12,
+      panel: { cols: 10, mode: "split" }, frameRulesEnabled: true, footerEnabled: true,
+    });
+    const result = compositeGrids(layout, main, sidebar, toolbar, null, {
+      grid: diffGrid, mode: "split", focused: false,
+    });
+
+    const row = layout.footerRuleRow!;
+    const dividerCol = layout.divider!;
+    expect(result.cells[row][dividerCol].char).toBe(frame.crossUp);
+    expect(result.cells[row][dividerCol].fg).toBe(tokens.ruleFrame.fg!);
+    expect(result.cells[row][dividerCol].fgMode).toBe(tokens.ruleFrame.fgMode!);
+  });
+
+  test("neither footer row nor footer rule row are painted when both layout fields are null", () => {
+    const sidebar = createGrid(6, 8);
+    const main = createGrid(20, 6);
+    const toolbar = { buttons: [], mainCols: 20, tabs: [] };
+    const layout = makeLayout({
+      sidebarCols: 6, mainCols: 20, toolbarRows: 1, termRows: 8, frameRulesEnabled: true,
+    });
+    expect(layout.footerRow).toBeNull();
+    expect(layout.footerRuleRow).toBeNull();
+    // Passing footer cells is a no-op when the layout has no footer row.
+    const result = compositeGrids(layout, main, sidebar, toolbar, null, undefined, [{ text: "unused" }]);
+    const lastRow = result.cells[layout.termRows - 1].map((c) => c.char).join("");
+    expect(lastRow).not.toContain("unused");
   });
 });

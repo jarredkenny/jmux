@@ -210,13 +210,39 @@ function tabUnderlineGlyphAndAttrs(tab: WindowTab, isHovered: boolean): { glyph:
   return { glyph: frame.ruleLight, attrs: tokens.ruleFrame };
 }
 
-// Paints the rule row under the toolbar: a light rule spanning the main
-// (and, when docked, panel) area, crossing the sidebar border and split
-// divider with a ┼ junction, with the window-tab underline and (when a
-// panel is docked) the panel-focus underline painted over top. The
-// sidebar's own header rule (drawn into its own grid, see sidebar.ts's
-// HEADER_ROWS) is what makes this read as one continuous line across the
-// divider — this function only owns the main/panel side of it.
+// Paints a single frame rule row: a light ruleFrame line spanning the main
+// (and, when docked, panel) area, crossing the sidebar border — and, when a
+// split diff-panel divider is present, the divider too — with `junction`.
+// Shared by the top rule (┼, under the toolbar) and the footer rule (┴,
+// above the footer) — see paintTopRuleRow/paintFooterRuleRow, which layer
+// their own row-specific cues (tab underline, focus cue) on top of this.
+function paintRuleRow(
+  grid: CellGrid,
+  row: number,
+  layout: FrameLayout,
+  borderCol: number,
+  junction: string,
+): void {
+  const totalCols = grid.cols;
+  const mainStart = layout.main.x;
+
+  for (let x = mainStart; x < totalCols; x++) {
+    writeCell(grid, row, x, frame.ruleLight, tokens.ruleFrame);
+  }
+
+  writeCell(grid, row, borderCol, junction, tokens.ruleFrame);
+
+  if (layout.divider !== null) {
+    writeCell(grid, row, layout.divider, junction, tokens.ruleFrame);
+  }
+}
+
+// Paints the rule row under the toolbar: paintRuleRow's base line/junctions
+// (┼), with the window-tab underline and (when a panel is docked) the
+// panel-focus underline painted over top. The sidebar's own header rule
+// (drawn into its own grid, see sidebar.ts's HEADER_ROWS) is what makes this
+// read as one continuous line across the divider — this function only owns
+// the main/panel side of it.
 function paintTopRuleRow(
   grid: CellGrid,
   row: number,
@@ -227,20 +253,10 @@ function paintTopRuleRow(
   diffPanel?: { mode: "split" | "full"; focused: boolean },
 ): void {
   const totalCols = grid.cols;
-  const mainStart = layout.main.x;
 
-  // Base rule across the main (+ panel) span.
-  for (let x = mainStart; x < totalCols; x++) {
-    writeCell(grid, row, x, frame.ruleLight, tokens.ruleFrame);
-  }
-
-  // Junction where the rule crosses the sidebar border.
-  writeCell(grid, row, borderCol, frame.crossDown, tokens.ruleFrame);
+  paintRuleRow(grid, row, layout, borderCol, frame.crossDown);
 
   if (diffPanel?.mode === "split" && layout.divider !== null) {
-    // Junction where the rule crosses the split divider.
-    writeCell(grid, row, layout.divider, frame.crossDown, tokens.ruleFrame);
-
     // The split divider itself goes neutral (see the divider paint below in
     // compositeGrids) — so the panel's own focus cue lives here instead:
     // the rule segment over the panel's tab bar is accent when the panel
@@ -273,6 +289,19 @@ function paintTopRuleRow(
   }
 }
 
+// Paints the rule row above the footer: paintRuleRow's base line/junctions,
+// but with ┴ (crossUp) instead of ┼ — it terminates the sidebar border (and,
+// in split mode, the diff-panel divider) from above rather than continuing
+// them further down, since nothing but the footer sits below this row.
+function paintFooterRuleRow(
+  grid: CellGrid,
+  row: number,
+  layout: FrameLayout,
+  borderCol: number,
+): void {
+  paintRuleRow(grid, row, layout, borderCol, frame.crossUp);
+}
+
 export function compositeGrids(
   layout: FrameLayout,
   main: CellGrid,
@@ -285,6 +314,7 @@ export function compositeGrids(
     focused: boolean;
     tabBar?: CellGrid;
   },
+  footer?: StyledSegment[] | null,
 ): CellGrid {
   if (!sidebar) return main;
 
@@ -393,6 +423,18 @@ export function compositeGrids(
       // header rule (sidebar.ts's HEADER_ROWS) across the divider, with a
       // junction glyph, and carries the window-tab / panel-focus underline.
       paintTopRuleRow(grid, y, layout, borderCol, toolbar ?? null, toolbarLayout, diffPanel);
+    } else if (layout.footerRuleRow !== null && y === layout.footerRuleRow) {
+      // The rule row above the footer — terminates the sidebar border (and,
+      // in split mode, the diff-panel divider) from above with ┴, since
+      // nothing but the footer sits below.
+      paintFooterRuleRow(grid, y, layout, borderCol);
+    } else if (layout.footerRow !== null && y === layout.footerRow) {
+      // The footer row itself: keybind hints (left) and ambient status —
+      // snapshot chip + version (right) — laid out once by footer.ts's
+      // layoutFooter and simply replayed here.
+      if (footer) {
+        writeStyledLine(grid, y, 0, footer, totalCols);
+      }
     } else {
       // Main content — offset by the content band's top row (below the
       // toolbar, and below the rule row when it's shown).
@@ -548,8 +590,9 @@ export class Renderer {
       focused: boolean;
       tabBar?: CellGrid;
     },
+    footer?: StyledSegment[] | null,
   ): void {
-    const grid = compositeGrids(layout, main, sidebar, toolbar, modalOverlay, diffPanel);
+    const grid = compositeGrids(layout, main, sidebar, toolbar, modalOverlay, diffPanel, footer);
     const cursorOffset = layout.main.x;
     const buf: string[] = [];
 
