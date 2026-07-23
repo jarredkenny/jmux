@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { sgrForCell, compositeGrids, getModalPosition, getToolbarTabRanges, BORDER_CHAR } from "../renderer";
+import { sgrForCell, compositeGrids, getModalPosition, getToolbarTabRanges, getToolbarStatusChipRange, buildToolbarButtons, BORDER_CHAR } from "../renderer";
 import { createGrid, writeString, textCols } from "../cell-grid";
 import { ColorMode } from "../types";
 import type { Cell } from "../types";
@@ -282,7 +282,10 @@ describe("compositeGrids window branch row", () => {
     const slotStart = borderCol + 1 + zshRange.startCol;
     const slotEnd = borderCol + 1 + vimRange.startCol; // exclusive
     const zshSlot = row1.slice(slotStart, slotEnd);
-    expect(zshSlot).toBe(" ⎇ main ");
+    // Task 7 dropped the tab separator from 3 cols (" │ ") to 2 (space.groupGutter):
+    // rowWidth = tabWidth(5) + sepWidth(2) = 7; maxLen = 7 - 2 - iconWidth(2) = 3;
+    // truncateToCols("main", 3) = "ma…" (budget 2 + ellipsis).
+    expect(zshSlot).toBe(" ⎇ ma… ");
     expect(zshSlot).not.toBe(" ⎇ … "); // the bare-ellipsis regression this pins
   });
 
@@ -320,9 +323,14 @@ describe("compositeGrids window branch row", () => {
     // Under the pre-fix formula (rowWidth = endCol - startCol + 1 = 3) maxLen
     // is <= 0 and this slot renders nothing; this is the part of the test
     // that fails against the pre-fix arithmetic.
+    //
+    // Task 7 dropped the tab separator from 3 cols to 2 (space.groupGutter):
+    // rowWidth = tabWidth(3) + sepWidth(2) = 5; maxLen = 5 - 2 - iconWidth(2) = 1;
+    // truncateToCols("hi", 1) = "…" (branch no longer fits at all, unlike the
+    // 3-sep "hi" that used to fit exactly).
     const gapSlotStart = borderCol + 1 + ranges[0].startCol;
     const gapSlotEnd = borderCol + 1 + ranges[1].startCol; // exclusive — the borrowed gap
-    expect(row1.slice(gapSlotStart, gapSlotEnd)).toBe(" ⎇ hi ");
+    expect(row1.slice(gapSlotStart, gapSlotEnd)).toBe(" ⎇ … ");
 
     // Last tab "workspace" stays bounded to its own endCol regardless of the
     // fix — the invariant the widening must not disturb, now exercised by a
@@ -360,9 +368,10 @@ describe("compositeGrids window branch row", () => {
     const slotStart = borderCol + 1 + ranges[0].startCol;
     const slotEnd = borderCol + 1 + ranges[1].startCol;
     const zshSlot = result.cells[1].slice(slotStart, slotEnd).map((c) => c.char).join("");
-    // rowWidth = vimRange.startCol - zshRange.startCol = 8; maxLen = 8 - 2 -
-    // iconWidth(2) = 4; truncateToCols(branch, 4) = "fea…" (budget 3 + ellipsis).
-    expect(zshSlot).toBe(" ⎇ fea… ");
+    // Task 7 dropped the tab separator from 3 cols to 2 (space.groupGutter):
+    // rowWidth = vimRange.startCol - zshRange.startCol = 7; maxLen = 7 - 2 -
+    // iconWidth(2) = 3; truncateToCols(branch, 3) = "fe…" (budget 2 + ellipsis).
+    expect(zshSlot).toBe(" ⎇ fe… ");
   });
 });
 
@@ -1014,5 +1023,91 @@ describe("compositeGrids footer row and footer rule", () => {
     const result = compositeGrids(layout, main, sidebar, toolbar, null, undefined, [{ text: "unused" }]);
     const lastRow = result.cells[layout.termRows - 1].map((c) => c.char).join("");
     expect(lastRow).not.toContain("unused");
+  });
+});
+
+// Task 7: corrected toolbar glyphs, a tighter cluster, and the snapshot
+// status chip's relocation to the footer.
+describe("buildToolbarButtons (Task 7 glyph set)", () => {
+  test("returns the six action buttons in order with the corrected glyphs", () => {
+    const buttons = buildToolbarButtons({ panelActive: false });
+    expect(buttons.map((b) => b.label)).toEqual(["◧", "+", "◫", "▤", "λ", "⚙"]);
+    expect(buttons.map((b) => b.id)).toEqual([
+      "panel", "new-window", "split-v", "split-h", "claude", "settings",
+    ]);
+    // The fullwidth ＋ (2 display columns) is gone — the metric fix this task
+    // pins is a 1-column "+".
+    expect(textCols(buttons[1].label)).toBe(1);
+  });
+
+  test("the panel button carries no accent colour when the diff panel is inactive", () => {
+    const [panelBtn] = buildToolbarButtons({ panelActive: false });
+    expect(panelBtn.fg).toBeUndefined();
+    expect(panelBtn.fgMode).toBeUndefined();
+  });
+
+  test("the panel button uses tokens.accent when the diff panel is active", () => {
+    const [panelBtn] = buildToolbarButtons({ panelActive: true });
+    expect(panelBtn.fg).toBe(tokens.accent.fg!);
+    expect(panelBtn.fgMode).toBe(tokens.accent.fgMode!);
+  });
+
+  test("the claude button always uses tokens.accent (the hand-written pink is retired)", () => {
+    const buttons = buildToolbarButtons({ panelActive: false });
+    const claudeBtn = buttons.find((b) => b.id === "claude")!;
+    expect(claudeBtn.fg).toBe(tokens.accent.fg!);
+    expect(claudeBtn.fgMode).toBe(tokens.accent.fgMode!);
+  });
+
+  test("settings stays a plain ⚙ with no VS15 variation selector", () => {
+    const buttons = buildToolbarButtons({ panelActive: false });
+    const settingsBtn = buttons.find((b) => b.id === "settings")!;
+    expect(settingsBtn.label).toBe("⚙");
+    expect(settingsBtn.label.length).toBe(1); // no trailing U+FE0E/U+FE0F
+    expect(textCols(settingsBtn.label)).toBe(1);
+  });
+});
+
+describe("toolbar status chip removed from the live toolbar (Task 7)", () => {
+  test("getToolbarStatusChipRange returns null when the toolbar carries no statusChip", () => {
+    const toolbar = { buttons: buildToolbarButtons({ panelActive: false }), mainCols: 40, tabs: [] };
+    expect(getToolbarStatusChipRange(toolbar)).toBeNull();
+  });
+
+  test("compositeGrids paints no chip text on row 0 when statusChip is absent", () => {
+    const sidebar = createGrid(6, 6);
+    const main = createGrid(40, 4);
+    const toolbar = { buttons: buildToolbarButtons({ panelActive: false }), mainCols: 40, tabs: [] };
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 40, toolbarRows: 1, termRows: 4 });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const row0 = result.cells[0].map((c) => c.char).join("");
+    expect(row0).not.toContain("snapshot");
+  });
+});
+
+describe("toolbar tab separator is blank space, not a │ glyph (Task 7)", () => {
+  test("two non-last tabs have no │ painted in their inter-tab gap", () => {
+    const sidebar = createGrid(6, 6);
+    const main = createGrid(30, 4);
+    const toolbar = {
+      buttons: [], mainCols: 30,
+      tabs: [
+        { windowId: "@1", index: 0, name: "one", active: true, bell: false, zoomed: false },
+        { windowId: "@2", index: 1, name: "two", active: false, bell: false, zoomed: false },
+      ],
+    };
+    const layout = makeLayout({ sidebarCols: 6, mainCols: 30, toolbarRows: 1, termRows: 4 });
+    const result = compositeGrids(layout, main, sidebar, toolbar);
+    const ranges = getToolbarTabRanges(toolbar);
+    const borderCol = layout.borderCol!;
+    // The gap between tab one's end and tab two's start is blank space —
+    // not the old " │ " separator glyph.
+    const gapStart = borderCol + 1 + ranges[0].endCol + 1;
+    const gapEnd = borderCol + 1 + ranges[1].startCol; // exclusive
+    const gap = result.cells[0].slice(gapStart, gapEnd).map((c) => c.char).join("");
+    expect(gap).not.toContain("│");
+    expect(gap.trim()).toBe("");
+    // The gap is exactly space.groupGutter (2) columns wide.
+    expect(gapEnd - gapStart).toBe(2);
   });
 });

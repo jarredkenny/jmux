@@ -4,7 +4,7 @@ import { createGrid, DEFAULT_CELL, blit, textCols, writeCell, writeStyledLine, d
 import { packChips, type PlacedChip } from "./band-layout";
 import { theme, neutralFg } from "./theme";
 import type { FrameLayout } from "./frame-layout";
-import { tokens, frame } from "./chrome-tokens";
+import { tokens, frame, space } from "./chrome-tokens";
 
 export const BORDER_CHAR = "\u2502"; // │
 
@@ -21,8 +21,35 @@ export interface ToolbarConfig {
   hoveredButton?: string | null;
   tabs?: WindowTab[];
   hoveredTabId?: string | null;
-  /** When set, a dim status chip is rendered between tabs and buttons. */
+  /** When set, a dim status chip is rendered between tabs and buttons.
+   * Unused by the live toolbar since Task 7 — the footer owns the snapshot
+   * chip now — but kept for the layout/hit-test plumbing and its tests. */
   statusChip?: string | null;
+}
+
+// Builds the toolbar's fixed action-button set — pure, no live state beyond
+// whether the diff panel is currently active (which accents the panel
+// button to match). main.ts's makeToolbar() wires diffPanel.isActive()
+// through here rather than building the array inline, so the glyph order
+// has a test seam independent of main.ts's un-importable top-level side
+// effects (main.ts spawns tmux at import time, so it can't be imported by a
+// unit test). Colours route through chrome-tokens' `tokens.accent` — the
+// panel-active and claude buttons no longer carry their own hand-written
+// RGB literals.
+export function buildToolbarButtons(opts: { panelActive: boolean }): ToolbarButton[] {
+  return [
+    {
+      label: "◧",
+      id: "panel",
+      fg: opts.panelActive ? tokens.accent.fg : undefined,
+      fgMode: opts.panelActive ? tokens.accent.fgMode : undefined,
+    },
+    { label: "+", id: "new-window" },
+    { label: "◫", id: "split-v" },
+    { label: "▤", id: "split-h" },
+    { label: "λ", id: "claude", fg: tokens.accent.fg, fgMode: tokens.accent.fgMode },
+    { label: "⚙", id: "settings" },
+  ];
 }
 
 export function sgrForCell(cell: Cell): string {
@@ -117,7 +144,9 @@ function layoutToolbar(toolbar: ToolbarConfig): ToolbarLayout {
   }));
   const placedTabs = tabs.length === 0
     ? []
-    : packChips(tabItems, { start: 1, budget: maxCol, align: "left", sepWidth: 3 }); // " │ " separator after non-last tabs
+    // Two blank columns (space.groupGutter) between non-last tabs — the
+    // underline (Task 5) now delimits tabs, so no "│" glyph is painted here.
+    : packChips(tabItems, { start: 1, budget: maxCol, align: "left", sepWidth: space.groupGutter });
 
   const placedToolbarTabs: PlacedToolbarTab[] = placedTabs.map((c) => ({
     ...c,
@@ -377,19 +406,9 @@ export function compositeGrids(
           bgMode: hasBg ? ColorMode.RGB : ColorMode.Default,
         };
         writeStyledLine(grid, 0, borderCol + 1 + x, [{ text: label, attrs }], width);
-
-        if (ti < tabs.length - 1) {
-          const sepCol = borderCol + 1 + x + width + 1;
-          if (sepCol < totalCols) {
-            grid.cells[0][sepCol] = {
-              ...DEFAULT_CELL,
-              char: "│",
-              fg: 8,
-              fgMode: ColorMode.Palette,
-              dim: true,
-            };
-          }
-        }
+        // No separator glyph between tabs — the gap between placements
+        // (space.groupGutter, two blank columns) already reads as a
+        // separator, and the tab underline (Task 5) delimits tabs from below.
       }
 
       // Render action buttons (right side). The icon glyph and its

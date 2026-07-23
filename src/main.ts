@@ -1,7 +1,7 @@
 import { $ } from "bun";
 import { TmuxPty } from "./tmux-pty";
 import { ScreenBridge } from "./screen-bridge";
-import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition, type ToolbarConfig } from "./renderer";
+import { Renderer, getToolbarButtonRanges, getToolbarTabRanges, getModalPosition, buildToolbarButtons, type ToolbarConfig } from "./renderer";
 import { InputRouter } from "./input-router";
 import { Sidebar, rebuildSidebarColors, type PinnedPaneEntry } from "./sidebar";
 import { buildFooter, layoutFooter, type FooterModel } from "./footer";
@@ -29,7 +29,6 @@ import {
   deriveTheme,
   pack,
   toHex,
-  accentFor,
   OSC11_QUERY,
 } from "./theme";
 import { StdinGate } from "./stdin-gate";
@@ -450,29 +449,21 @@ function snapshotChipLabel(h: import("./snapshot").SnapshotHealth): string | nul
 }
 
 function makeToolbar(): ToolbarConfig {
-  const snapshotChip = snapshotChipLabel(getSnapshotHealth());
   return {
-    buttons: [
-      { label: "◈", id: "panel", fg: diffPanel.isActive() ? accentFor((0xF0 << 16) | (0x88 << 8) | 0x3E) : undefined, fgMode: diffPanel.isActive() ? 2 : undefined },
-      { label: "＋", id: "new-window" },
-      { label: "⏸", id: "split-v" },
-      { label: "⏏", id: "split-h" },
-      { label: "λ", id: "claude", fg: accentFor((0xE8 << 16) | (0xA0 << 8) | 0xB4), fgMode: 2 },
-      { label: "⚙", id: "settings" },
-    ],
+    buttons: buildToolbarButtons({ panelActive: diffPanel.isActive() }),
     mainCols,
     hoveredButton: hoveredToolbarButton,
     tabs: currentWindows,
     hoveredTabId,
-    statusChip: snapshotChip,
   };
 }
 
 /**
  * Builds the footer's model from live state — the snapshot health chip
- * (shared with the toolbar's own chip until Task 7 removes it there) and the
- * version indicator, which moved off the sidebar's last row to the footer's
- * right side (see sidebar.ts's getVersion/getLatestVersion/hasUpdate).
+ * (the toolbar had its own copy of this chip until Task 7 removed it there;
+ * the footer is now its sole home) and the version indicator, which moved
+ * off the sidebar's last row to the footer's right side (see sidebar.ts's
+ * getVersion/getLatestVersion/hasUpdate).
  */
 function makeFooter(): FooterModel {
   return buildFooter({
