@@ -5,6 +5,7 @@ import type { SessionInfo } from "../types";
 import { makeSessionOtelState } from "../types";
 import type { SessionContext, PipelineStatus } from "../adapters/types";
 import { tokens, frame } from "../chrome-tokens";
+import { resolveStateColors } from "../state-colors";
 
 const SIDEBAR_WIDTH = 24;
 const makeBlankOtelState = makeSessionOtelState;
@@ -229,7 +230,11 @@ describe("Sidebar", () => {
 
   test("applies configured state color to the waiting indicator, preserving bold", () => {
     const sidebar = new Sidebar(SIDEBAR_WIDTH, 30);
-    sidebar.setStateColors({ running: 6, waiting: 9, complete: 7 });
+    sidebar.setStateColors({
+      running: { kind: "palette", index: 6 },
+      waiting: { kind: "palette", index: 9 },
+      complete: { kind: "palette", index: 7 },
+    });
     sidebar.updateSessions(makeSessions([{ name: "main" }]));
     sidebar.setAgentStateRecord("$0", { state: "waiting", since: Date.now() });
     const grid = sidebar.getGrid();
@@ -1316,6 +1321,19 @@ describe("Sidebar — agent state rendering", () => {
     expect(cell.char).toBe("✓");
     expect(cell.fg).toBe(4);
     expect(cell.dim).toBe(true);
+  });
+
+  test("col-1 glyph for complete resolves to the neutral token tone (not palette 8) via the app's default state colors", () => {
+    // End-to-end through setStateColors(resolveStateColors(...)) — the same
+    // path main.ts drives — rather than the sidebar's raw bootstrap default.
+    const sb = makeSidebarWithAgentState("complete");
+    sb.setStateColors(resolveStateColors(undefined));
+    const grid = sb.getGrid();
+    const cell = grid.cells[4][1];
+    expect(cell.char).toBe("✓");
+    expect(cell.fg).toBe(tokens.textTertiary.fg!);
+    expect(cell.fgMode).toBe(tokens.textTertiary.fgMode!);
+    expect(cell.dim).toBe(true); // complete's fixed emphasis is preserved
   });
 
   test("indicator priority: mcp-down wins over agent-state", () => {

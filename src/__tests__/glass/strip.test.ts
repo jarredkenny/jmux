@@ -5,8 +5,13 @@ import {
 import { chipAtCol } from "../../band-layout";
 import type { TabEntry, AgentState } from "../../glass/tabs";
 import { ColorMode } from "../../types";
+import type { StateColor } from "../../state-colors";
 
-const palette: Record<AgentState, number> = { running: 2, waiting: 3, complete: 4 };
+const palette: Record<AgentState, StateColor> = {
+  running: { kind: "palette", index: 2 },
+  waiting: { kind: "palette", index: 3 },
+  complete: { kind: "palette", index: 4 },
+};
 const tabs: TabEntry[] = [
   { id: "default", name: "Main" },
   { id: "backend", name: "Backend" },
@@ -61,7 +66,7 @@ describe("renderStrip", () => {
     const row = grid.cells[0];
     const dotCell = row.find((c) => c.char === "●");
     expect(dotCell).toBeDefined();
-    expect(dotCell!.fg).toBe(palette.running);
+    expect(dotCell!.fg).toBe(2);
     expect(dotCell!.fgMode).toBe(ColorMode.Palette);
   });
 
@@ -82,7 +87,7 @@ describe("renderStrip", () => {
     const row = grid.cells[0];
     const dotCell = row.find((c) => c.char === "●");
     expect(dotCell).toBeDefined();
-    expect(dotCell!.fg).toBe(palette.running);
+    expect(dotCell!.fg).toBe(2);
     expect(dotCell!.fgMode).toBe(ColorMode.Palette);
     // Verify there is no stray "●" appearing at the wrong offset:
     // chip text is ` 汉字 ● ` → display cols: 1 + 4 + 1 + 1 + 1 + 1 = 9

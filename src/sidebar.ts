@@ -5,6 +5,7 @@ import type { SessionContext } from "./adapters/types";
 import { buildSessionView, buildSessionRow3 } from "./session-view";
 import { theme } from "./theme";
 import { tokens, frame } from "./chrome-tokens";
+import { stateAttrs, type StateColor } from "./state-colors";
 
 export interface PinnedPaneEntry {
   paneId: string;
@@ -56,22 +57,22 @@ const STATE_MODIFIERS: Record<AgentState, { bold?: boolean; dim?: boolean }> = {
   waiting: { bold: true },
   complete: { dim: true },
 };
-const DEFAULT_STATE_PALETTE: Record<AgentState, number> = {
-  running: 2,  // green
-  waiting: 3,  // yellow
-  complete: 4, // blue
+// Bootstrap default, used only until the app calls setStateColors() with the
+// configured/resolved colors (main.ts does this immediately after
+// construction). Expressed as StateColor so it flows through the same
+// stateAttrs() resolver as every other state color.
+const DEFAULT_STATE_PALETTE: Record<AgentState, StateColor> = {
+  running: { kind: "palette", index: 2 },  // green
+  waiting: { kind: "palette", index: 3 },  // yellow
+  complete: { kind: "palette", index: 4 }, // blue
 };
 const STATE_LABEL_TEXT: Record<AgentState, string> = {
   running: "RUNNING",
   waiting: "WAITING",
   complete: "COMPLETE",
 };
-function buildStateAttrs(palette: Record<AgentState, number>): Record<AgentState, CellAttrs> {
-  const make = (state: AgentState): CellAttrs => ({
-    fg: palette[state],
-    fgMode: ColorMode.Palette,
-    ...STATE_MODIFIERS[state],
-  });
+function buildStateAttrs(colors: Record<AgentState, StateColor>): Record<AgentState, CellAttrs> {
+  const make = (state: AgentState): CellAttrs => stateAttrs(colors[state], STATE_MODIFIERS[state]);
   return { running: make("running"), waiting: make("waiting"), complete: make("complete") };
 }
 const ERROR_ATTRS: CellAttrs = {
@@ -433,9 +434,9 @@ export class Sidebar {
     this.height = height;
   }
 
-  /** Set the per-state indicator colors (palette indices). Emphasis is fixed. */
-  setStateColors(palette: Record<AgentState, number>): void {
-    this.stateAttrs = buildStateAttrs(palette);
+  /** Set the per-state indicator colors. Emphasis (bold/dim per state) is fixed. */
+  setStateColors(colors: Record<AgentState, StateColor>): void {
+    this.stateAttrs = buildStateAttrs(colors);
   }
 
   updateSessions(sessions: SessionInfo[]): void {

@@ -3,6 +3,7 @@ import { ColorMode } from "../types";
 import { createGrid, writeString, textCols } from "../cell-grid";
 import { packChips, type PlacedChip } from "../band-layout";
 import type { TabEntry } from "./tabs";
+import { stateAttrs, type StateColor } from "../state-colors";
 
 export const STRIP_ROWS = 1;
 const DOT = "●";
@@ -14,7 +15,7 @@ export interface StripInput {
   activeTabId: string;
   summaryByTab: Map<string, AgentState | null>;
   width: number;
-  palette: Record<AgentState, number>;
+  palette: Record<AgentState, StateColor>;
 }
 
 /** The strip is hidden until there is more than one tab. */
@@ -66,17 +67,20 @@ export function renderStrip(
       dim: !isActive,
     });
 
-    // Recolor the dot cell by the summary state.
+    // Recolor the dot cell by the summary state. Bold reflects the active
+    // tab, not the per-state emphasis (waiting bold / complete dim) the
+    // sidebar uses — this is a single tab-summary dot, not an agent-state row.
     if (hasDot) {
       const dotCol = chip.x + textCols(text.slice(0, text.indexOf(DOT)));
       if (dotCol >= 0 && dotCol < input.width) {
         const cell = grid.cells[0][dotCol];
         cell.char = DOT;
         cell.width = 1;
-        cell.fgMode = ColorMode.Palette;
-        cell.fg = input.palette[summary as AgentState];
-        cell.bold = isActive;
-        cell.dim = false;
+        const attrs = stateAttrs(input.palette[summary as AgentState], { bold: isActive, dim: false });
+        cell.fg = attrs.fg ?? cell.fg;
+        cell.fgMode = attrs.fgMode ?? cell.fgMode;
+        cell.bold = attrs.bold ?? false;
+        cell.dim = attrs.dim ?? false;
       }
     }
   }

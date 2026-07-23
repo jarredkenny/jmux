@@ -5,8 +5,10 @@ import {
   DEFAULT_STATE_COLORS,
   colorNameToPalette,
   resolveStateColors,
-  stateColorToPalette,
+  stateAttrs,
 } from "../state-colors";
+import { ColorMode } from "../types";
+import { tokens } from "../chrome-tokens";
 
 describe("colorNameToPalette", () => {
   test("maps all 16 ANSI names to palette indices 0-15", () => {
@@ -122,13 +124,74 @@ describe("STATE_COLOR_CHOICES", () => {
   });
 });
 
-describe("stateColorToPalette", () => {
-  test("maps neutral to palette 8 (the grey the old dim complete approximated)", () => {
-    expect(stateColorToPalette({ kind: "neutral" })).toBe(8);
+describe("stateAttrs", () => {
+  test("palette kind resolves to a palette fg with no emphasis", () => {
+    expect(stateAttrs({ kind: "palette", index: 2 }, {})).toEqual({
+      fg: 2,
+      fgMode: ColorMode.Palette,
+    });
   });
 
-  test("maps palette kind through unchanged", () => {
-    expect(stateColorToPalette({ kind: "palette", index: 2 })).toBe(2);
-    expect(stateColorToPalette({ kind: "palette", index: 4 })).toBe(4);
+  test("palette kind applies emphasis flags", () => {
+    expect(stateAttrs({ kind: "palette", index: 3 }, { bold: true })).toEqual({
+      fg: 3,
+      fgMode: ColorMode.Palette,
+      bold: true,
+    });
+  });
+
+  test("neutral kind sources fg/fgMode from tokens.textTertiary (not a hardcoded palette 8)", () => {
+    const result = stateAttrs({ kind: "neutral" }, { dim: true });
+    // Reads live from the token object rather than a magic number, so a
+    // re-theme (rebuildChromeTokens) changes this without touching stateAttrs.
+    expect(result.fg).toBe(tokens.textTertiary.fg);
+    expect(result.fgMode).toBe(tokens.textTertiary.fgMode);
+    expect(result.dim).toBe(true);
+  });
+
+  test("neutral kind tracks a live token change rather than a frozen literal", () => {
+    const before = stateAttrs({ kind: "neutral" }, {});
+    const originalFg = tokens.textTertiary.fg;
+    const originalMode = tokens.textTertiary.fgMode;
+    try {
+      // Mutate the token in place, the same way rebuildChromeTokens() does on
+      // a re-theme, and confirm stateAttrs picks up the new value rather than
+      // a value captured once at import time.
+      tokens.textTertiary.fg = 99;
+      tokens.textTertiary.fgMode = ColorMode.RGB;
+      const after = stateAttrs({ kind: "neutral" }, {});
+      expect(after.fg).toBe(99);
+      expect(after.fgMode).toBe(ColorMode.RGB);
+      expect(after.fg).not.toBe(before.fg);
+    } finally {
+      tokens.textTertiary.fg = originalFg;
+      tokens.textTertiary.fgMode = originalMode;
+    }
+  });
+
+  test("neutral kind applies emphasis flags", () => {
+    const result = stateAttrs({ kind: "neutral" }, { bold: true });
+    expect(result.bold).toBe(true);
+    expect(result.fg).toBe(tokens.textTertiary.fg);
+    expect(result.fgMode).toBe(tokens.textTertiary.fgMode);
+  });
+
+  test("no emphasis yields no bold/dim keys set", () => {
+    const result = stateAttrs({ kind: "palette", index: 2 }, {});
+    expect(result.bold).toBeUndefined();
+    expect(result.dim).toBeUndefined();
+  });
+
+  test("is exhaustive over the StateColor union (compile-time via a runtime switch)", () => {
+    // Every branch of the union must produce a result — this loop, combined
+    // with stateAttrs' internal `never` check, catches an unhandled variant
+    // at compile time if the union ever grows.
+    const variants: Array<Parameters<typeof stateAttrs>[0]> = [
+      { kind: "palette", index: 5 },
+      { kind: "neutral" },
+    ];
+    for (const v of variants) {
+      expect(() => stateAttrs(v, {})).not.toThrow();
+    }
   });
 });

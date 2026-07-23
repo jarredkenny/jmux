@@ -1,5 +1,8 @@
 import type { AgentState } from "./types";
+import { ColorMode } from "./types";
 import type { StateColorConfig } from "./config";
+import type { CellAttrs } from "./cell-grid";
+import { tokens } from "./chrome-tokens";
 
 /**
  * The 16 named ANSI colors users may pick for agent-state indicators, mapping
@@ -97,11 +100,23 @@ export function resolveStateColors(cfg?: StateColorConfig): Record<AgentState, S
 }
 
 /**
- * Temporary bridge for callers not yet migrated to the StateColor union
- * (sidebar indicator attrs, glass border palette). Palette 8 (bright-black /
- * grey) is the neutral tone — it's the closest existing palette slot to the
- * dim-blue "complete" look this replaces. Superseded by plan 3's stateAttrs.
+ * Resolve a StateColor + emphasis into concrete drawing attrs — the single
+ * exhaustive mapping from the StateColor union to CellAttrs. `palette` is a
+ * genuine ANSI state colour (the user-configured hue); `neutral` sources its
+ * tone from chrome-tokens' textTertiary rather than a fixed palette number,
+ * so a receded "complete" state tracks the terminal theme like every other
+ * chrome neutral. `emphasis` (bold/dim) is the fixed per-state style — the
+ * hue is configurable, the weight is not.
  */
-export function stateColorToPalette(c: StateColor): number {
-  return c.kind === "neutral" ? 8 : c.index;
+export function stateAttrs(c: StateColor, emphasis: { bold?: boolean; dim?: boolean }): CellAttrs {
+  switch (c.kind) {
+    case "palette":
+      return { fg: c.index, fgMode: ColorMode.Palette, ...emphasis };
+    case "neutral":
+      return { fg: tokens.textTertiary.fg, fgMode: tokens.textTertiary.fgMode, ...emphasis };
+    default: {
+      const exhaustive: never = c;
+      return exhaustive;
+    }
+  }
 }

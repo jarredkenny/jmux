@@ -1,33 +1,36 @@
 import type { CellGrid, AgentState } from "../types";
 import { createGrid, writeString, blit, drawBox, type CellAttrs } from "../cell-grid";
 import { ColorMode } from "../types";
+import { stateAttrs, type StateColor } from "../state-colors";
 
 // Default border palette by agent state — matches the sidebar's defaults
 // (running=green 2, waiting=yellow 3, complete=blue 4). Overridable via config.
-export const DEFAULT_BORDER_PALETTE: Record<AgentState, number> = {
-  running: 2,
-  waiting: 3,
-  complete: 4,
+export const DEFAULT_BORDER_PALETTE: Record<AgentState, StateColor> = {
+  running: { kind: "palette", index: 2 },
+  waiting: { kind: "palette", index: 3 },
+  complete: { kind: "palette", index: 4 },
 };
 
 /**
  * Resolve a tile's border cell attributes from its agent state and focus.
- * State colors come from the configured palette; focus stays legible via
- * bold (focused) / dim (unfocused). Panes with no state fall back to
- * bright-white (focused) / dark-gray (unfocused).
+ * State colors come from the configured palette (via stateAttrs); focus
+ * stays legible via bold (focused) / dim (unfocused). Panes with no state
+ * fall back to bright-white (focused) / dark-gray (unfocused).
  */
 export function borderAttrsForState(
   state: AgentState | null | undefined,
   isFocused: boolean,
-  palette: Record<AgentState, number>,
-): { fg: number; fgMode: ColorMode; bold: boolean; dim: boolean } {
-  const stateFg = state ? palette[state] : undefined;
-  return {
-    fg: stateFg ?? (isFocused ? 15 : 8),
-    fgMode: ColorMode.Palette,
-    bold: stateFg !== undefined && isFocused,
-    dim: stateFg !== undefined && !isFocused,
-  };
+  palette: Record<AgentState, StateColor>,
+): CellAttrs {
+  if (!state) {
+    return {
+      fg: isFocused ? 15 : 8,
+      fgMode: ColorMode.Palette,
+      bold: false,
+      dim: false,
+    };
+  }
+  return stateAttrs(palette[state], { bold: isFocused, dim: !isFocused });
 }
 
 // ─── Tile label chip ─────────────────────────────────────────────────────────
@@ -70,8 +73,8 @@ export interface GlassViewOptions {
   minTileWidth: number;
   minTileHeight: number;
   onFrame: () => void; // call to request a re-render (debounced by caller)
-  /** Per-state border colors (palette indices). Defaults to green/yellow/blue. */
-  stateColors?: Record<AgentState, number>;
+  /** Per-state border colors. Defaults to green/yellow/blue. */
+  stateColors?: Record<AgentState, StateColor>;
 }
 
 // ─── Internal tile state ──────────────────────────────────────────────────────
@@ -98,16 +101,16 @@ export class GlassView {
   private width: number = 80;
   private height: number = 24;
   private scrollRow: number = 0;
-  private stateColors: Record<AgentState, number>;
+  private stateColors: Record<AgentState, StateColor>;
 
   constructor(opts: GlassViewOptions) {
     this.opts = opts;
     this.stateColors = opts.stateColors ?? { ...DEFAULT_BORDER_PALETTE };
   }
 
-  /** Set the per-state border colors (palette indices). */
-  setStateColors(palette: Record<AgentState, number>): void {
-    this.stateColors = palette;
+  /** Set the per-state border colors. */
+  setStateColors(colors: Record<AgentState, StateColor>): void {
+    this.stateColors = colors;
     this.opts.onFrame();
   }
 
