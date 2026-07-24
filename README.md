@@ -86,6 +86,12 @@ Each agent gets its own isolated branch via **[wtm](https://github.com/jarredken
 
 jmux wraps a real tmux process — it doesn't replace it. Your `~/.tmux.conf`, prefix key, plugins, theme, and custom bindings all carry over. Only a small set of core settings are enforced.
 
+jmux paints its own sidebar, toolbar, and rounded window chrome — and it **fully adapts to your terminal's color scheme**. Every glyph and surface is drawn from your terminal's own palette, so jmux inherits whatever theme you already run and looks native in **light or dark**, with no config. Tune the state colors, adapters, and pane widths from the settings modal (`Ctrl-a i`).
+
+![jmux in a dark terminal theme showing the sidebar, window tabs, and a Claude Code session](docs/screenshots/theme-dark.webp)
+
+![jmux in a light terminal theme showing the same session, its chrome adapting to the palette](docs/screenshots/theme-light.webp)
+
 Use any editor. Any Git tool. Any AI agent. Any shell. No Electron. No proprietary runtime. **If it runs tmux, it runs jmux.**
 
 ---
@@ -113,6 +119,7 @@ jmux ships a [Claude Code skill](skills/jmux-control.md) that agents auto-discov
 
 - **Command palette** (`Ctrl-a p`) — fuzzy-search sessions, windows, pane actions, settings, and issue/MR commands. ([screenshot](docs/screenshots/command-palette.webp))
 - **Diff panel zoom** (`Ctrl-a z`) — blow the diff up to full-screen; the sidebar stays for session switching. ([screenshot](docs/screenshots/diff-panel-full.webp))
+- **Settings modal** (`Ctrl-a i`) — themes and state colors, code-host/issue-tracker adapters, and issue workflow, all without editing a config file. ([screenshot](docs/screenshots/settings.webp))
 - **Built with the best** — [hunk](https://github.com/modem-dev/hunk) (diff viewer), [lazygit](https://github.com/jesseduffield/lazygit), [gh](https://cli.github.com/) / [glab](https://gitlab.com/gitlab-org/cli). Run any of them in a pane alongside your agent.
 
 ## Keybinding essentials
