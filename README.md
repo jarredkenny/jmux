@@ -56,8 +56,6 @@ While it works, watch the sidebar. When it finishes, toggle the **integrated dif
 
 Then flip to the **MRs tab** — approve, undraft, or update status without opening a browser. `o` opens anything in your browser, `s` updates an issue's status, `a` approves, `r` undrafts.
 
-![jmux info panel showing GitLab merge requests with pipeline status](docs/screenshots/gitlab-mrs.webp)
-
 <details>
 <summary><b>Setup</b> — Linear + GitLab / GitHub / GitHub Enterprise</summary>
 
