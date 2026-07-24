@@ -19,13 +19,17 @@ bun install -g @jx0/jmux && jmux
 
 </div>
 
-Requires [Bun](https://bun.sh) 1.3.8+ and [tmux](https://github.com/tmux/tmux) 3.2+ — jmux offers to install tmux on first run. New to tmux? Start with the **[Getting Started guide](docs/getting-started.md)**.
+## Get running
 
-> **Just want to look around?** `jmux --demo` runs with mock data — explore every feature, no credentials needed.
+- **Requirements** — [Bun](https://bun.sh) 1.3.8+ and [tmux](https://github.com/tmux/tmux) 3.2+. jmux offers to install tmux on first run.
+- **Just want to look around?** `jmux --demo` runs with mock data — explore every feature, no credentials needed.
+- **New to tmux?** Start with the **[Getting Started guide](docs/getting-started.md)**.
 
 ---
 
-## 1 · Run agents in parallel, never lose track
+## Features
+
+### See every agent at a glance
 
 Kicking off five agents is easy. Keeping track of them is the hard part — which one is still thinking, which one stopped to ask you a question, which one quietly finished ten minutes ago.
 
@@ -38,11 +42,13 @@ jmux answers that at a glance. The **sidebar** lists every session with live ind
 - **Pin any pane** into a named Command Center tab (`Backend`, `Review`, …) — panes stay in their own session, never moved or broken.
 - **Jump between sessions** with `Ctrl-Shift-Up/Down`. Sessions sharing a project are grouped automatically.
 
-`--install-agent-hooks` wires up the orange `!` for Claude Code in one command — [see how](docs/claude-code-integration.md).
+<details>
+<summary><b>Setup</b> — the orange <code>!</code> attention flag for Claude Code</summary>
 
----
+`jmux --install-agent-hooks` writes a `Stop` hook into `~/.claude/settings.json` that flags a session the moment Claude Code finishes a response. [How it works](docs/claude-code-integration.md).
+</details>
 
-## 2 · From ticket to merged, without leaving the terminal
+### From ticket to merged, without leaving the terminal
 
 Connect [Linear](https://linear.app) and [GitLab](https://about.gitlab.com) or [GitHub](https://github.com), open the info panel with `Ctrl-a g`, and the whole loop lives in your terminal:
 
@@ -55,6 +61,8 @@ While it works, watch the sidebar. When it finishes, toggle the **integrated dif
 ![jmux with diff panel in split mode showing code changes alongside Claude Code](docs/screenshots/diff-panel-split.webp)
 
 Then flip to the **MRs tab** — approve, undraft, or update status without opening a browser. `o` opens anything in your browser, `s` updates an issue's status, `a` approves, `r` undrafts.
+
+Each agent gets its own isolated branch via **[wtm](https://github.com/jarredkenny/worktree-manager)** — no stashing, no conflicts, no switching. `Ctrl-a n` → pick a project → **+ new worktree**.
 
 <details>
 <summary><b>Setup</b> — Linear + GitLab / GitHub / GitHub Enterprise</summary>
@@ -76,25 +84,7 @@ Then flip to the **MRs tab** — approve, undraft, or update status without open
 Full guide: [docs/issue-tracking.md](docs/issue-tracking.md).
 </details>
 
-Each agent gets its own isolated branch via **[wtm](https://github.com/jarredkenny/worktree-manager)** — no stashing, no conflicts, no switching. `Ctrl-a n` → pick a project → **+ new worktree**.
-
----
-
-## 3 · It's real tmux. Bring everything.
-
-jmux wraps a real tmux process — it doesn't replace it. Your `~/.tmux.conf`, prefix key, plugins, theme, and custom bindings all carry over. Only a small set of core settings are enforced.
-
-jmux paints its own sidebar, toolbar, and rounded window chrome — and it **fully adapts to your terminal's color scheme**. Every glyph and surface is drawn from your terminal's own palette, so jmux inherits whatever theme you already run and looks native in **light or dark**, with no config. Tune the state colors, adapters, and pane widths from the settings modal (`Ctrl-a i`).
-
-![jmux in a dark terminal theme showing the sidebar, window tabs, and a Claude Code session](docs/screenshots/theme-dark.webp)
-
-![jmux in a light terminal theme showing the same session, its chrome adapting to the palette](docs/screenshots/theme-light.webp)
-
-Use any editor. Any Git tool. Any AI agent. Any shell. No Electron. No proprietary runtime. **If it runs tmux, it runs jmux.**
-
----
-
-## Agents that command agents
+### Agents that command agents
 
 `jmux ctl` is a JSON API that lets an agent manage sibling sessions, windows, and panes — so one agent can dispatch, monitor, and chain others without a human in the loop.
 
@@ -111,16 +101,29 @@ jmux ctl pane send-keys --target %12 "Now add tests for that fix"
 
 jmux ships a [Claude Code skill](skills/jmux-control.md) that agents auto-discover inside jmux sessions — fan out parallel agents, poll for completion, capture output, and chain tasks. Run `jmux ctl --help` for the full command surface.
 
----
+### It's real tmux. Bring everything.
 
-## More features
+jmux wraps a real tmux process — it doesn't replace it. Your `~/.tmux.conf`, prefix key, plugins, theme, and custom bindings all carry over. Only a small set of core settings are enforced.
+
+jmux paints its own sidebar, toolbar, and rounded window chrome — and it **fully adapts to your terminal's color scheme**. Every glyph and surface is drawn from your terminal's own palette, so jmux inherits whatever theme you already run and looks native in **light or dark**, with no config. Tune the state colors, adapters, and pane widths from the settings modal (`Ctrl-a i`).
+
+![jmux in a dark terminal theme showing the sidebar, window tabs, and a Claude Code session](docs/screenshots/theme-dark.webp)
+
+![jmux in a light terminal theme showing the same session, its chrome adapting to the palette](docs/screenshots/theme-light.webp)
+
+Use any editor. Any Git tool. Any AI agent. Any shell. No Electron. No proprietary runtime. **If it runs tmux, it runs jmux.**
+
+### Also included
 
 - **Command palette** (`Ctrl-a p`) — fuzzy-search sessions, windows, pane actions, settings, and issue/MR commands. ([screenshot](docs/screenshots/command-palette.webp))
 - **Diff panel zoom** (`Ctrl-a z`) — blow the diff up to full-screen; the sidebar stays for session switching. ([screenshot](docs/screenshots/diff-panel-full.webp))
 - **Settings modal** (`Ctrl-a i`) — themes and state colors, code-host/issue-tracker adapters, and issue workflow, all without editing a config file. ([screenshot](docs/screenshots/settings.webp))
-- **Built with the best** — [hunk](https://github.com/modem-dev/hunk) (diff viewer), [lazygit](https://github.com/jesseduffield/lazygit), [gh](https://cli.github.com/) / [glab](https://gitlab.com/gitlab-org/cli). Run any of them in a pane alongside your agent.
 
-## Keybinding essentials
+---
+
+## Reference
+
+### Keybinding essentials
 
 | Key | Action |
 |-----|--------|
@@ -133,13 +136,17 @@ jmux ships a [Claude Code skill](skills/jmux-control.md) that agents auto-discov
 
 **Full keybinding reference → [docs/cheat-sheet.md](docs/cheat-sheet.md)**
 
-## Configuration
+### Configuration
 
 jmux layers tmux config in three tiers — jmux defaults, then your `~/.tmux.conf`, then the small set of settings jmux requires. jmux's own settings live in `~/.config/jmux/config.json`. Full guide: **[docs/configuration.md](docs/configuration.md)**.
 
-## Architecture
+### Architecture
 
 jmux drives a real tmux process over two channels (an interactive PTY client and a control-mode client) and composites its own sidebar and toolbar around the output. The full design — the two-channel model, rendering pipeline, and adapters — is in **[docs/architecture.md](docs/architecture.md)**.
+
+### Built with
+
+[hunk](https://github.com/modem-dev/hunk) (diff viewer), [lazygit](https://github.com/jesseduffield/lazygit), [gh](https://cli.github.com/) / [glab](https://gitlab.com/gitlab-org/cli). Run any of them in a pane alongside your agent.
 
 ---
 
