@@ -6,7 +6,8 @@
   <title>jmux — Orchestrate agents without replacing your tools</title>
   <meta name="description" content="Orchestrate Claude Code, Codex, aider, or any terminal agent — with your diff viewer, your worktree manager, your terminal. No bundled IDE. No lock-in.">
   <link rel="canonical" href="https://jmux.build">
-  <meta name="theme-color" content="#0a0a0c">
+  <meta name="theme-color" content="#f6f2ea" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#17130e" media="(prefers-color-scheme: dark)">
   <!-- Open Graph -->
   <meta property="og:title" content="jmux — Orchestrate agents without replacing your tools">
   <meta property="og:description" content="Orchestrate Claude Code, Codex, aider, or any terminal agent — with your diff viewer, your worktree manager, your terminal. No bundled IDE. No lock-in.">
@@ -61,6 +62,21 @@
     }
   }
   </script>
+  <!-- Set theme before paint to avoid a flash -->
+  <script>
+    (function () {
+      try {
+        var q = (location.search.match(/[?&]theme=(light|dark)/) || [])[1];
+        var t = q || localStorage.getItem('jmux-theme');
+        if (t !== 'light' && t !== 'dark') {
+          t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
   <!-- Privacy-friendly analytics by Plausible -->
   <script async src="https://plausible.io/js/pa-HkHsYGuslKCEWM2CA6t6j.js"></script>
   <script>
@@ -70,207 +86,322 @@
   <!-- Web fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400..600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
   *{margin:0;padding:0;box-sizing:border-box;}
+
+  /* ============ THEME TOKENS ============ */
   :root{
-    --ac:#34d399; --ac-deep:#04231a;
-    --page:#0a0a0c; --base:#0f0f13; --surf:#16161b; --elev:#1c1c22;
-    --bd:rgba(255,255,255,.07); --bd2:rgba(255,255,255,.11);
-    --ink:#e7e9ee; --ink2:#9aa0ac; --ink3:#5a606c;
-    --green:#34d399; --amber:#fbbf24; --blue:#60a5fa;
+    /* warm classic light palette — near-monochrome */
+    --page:#f6f2ea; --base:#efe8db; --card:#fffdf8; --elev:#f3eee4;
+    --panel:#221c15;         /* warm espresso dark block */
+    --ink:#241f17; --ink2:#6b6256; --ink3:#98907f;
+    --bd:rgba(40,30,18,.12); --bd2:rgba(40,30,18,.20);
+    --rule:rgba(40,30,18,.22);          /* neutral ticks / hairlines */
+    --tint:rgba(40,30,18,.055);         /* neutral surface tint */
+    --ac-soft:var(--tint);              /* alias: backgrounds stay neutral */
+    --ac-line:rgba(40,30,18,.22);       /* neutral structural lines */
+    --ac:#9c5a45;            /* muted clay — used only on links / prompts */
+    --ac-strong:#894b38;
+    --green:#2f9e63; --amber:#a97a24; --blue:#3a6fb0;
+    --shadow:0 24px 60px rgba(40,28,14,.14);
+    --shadow-sm:0 10px 30px rgba(40,28,14,.10);
   }
+  :root[data-theme="dark"]{
+    --page:#17130e; --base:#1e1a13; --card:#231d15; --elev:#2a2318;
+    --panel:#241d15;
+    --ink:#ece3d4; --ink2:#a89e8c; --ink3:#726957;
+    --bd:rgba(255,247,232,.11); --bd2:rgba(255,247,232,.18);
+    --rule:rgba(255,247,232,.22); --tint:rgba(255,247,232,.06);
+    --ac-soft:var(--tint); --ac-line:rgba(255,247,232,.20);
+    --ac:#c58267; --ac-strong:#d4977e;
+    --green:#4ec488; --amber:#e0a63a; --blue:#6aa0e8;
+    --shadow:0 24px 60px rgba(0,0,0,.5); --shadow-sm:0 10px 30px rgba(0,0,0,.4);
+  }
+  /* no-JS fallback */
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme]){
+      --page:#17130e; --base:#1e1a13; --card:#231d15; --elev:#2a2318;
+      --panel:#241d15;
+      --ink:#ece3d4; --ink2:#a89e8c; --ink3:#726957;
+      --bd:rgba(255,247,232,.11); --bd2:rgba(255,247,232,.18);
+      --rule:rgba(255,247,232,.22); --tint:rgba(255,247,232,.06);
+      --ac-soft:var(--tint); --ac-line:rgba(255,247,232,.20);
+      --ac:#c58267; --ac-strong:#d4977e;
+      --green:#4ec488; --amber:#e0a63a; --blue:#6aa0e8;
+    }
+  }
+
+  /* warm espresso panel — same class names, re-scoped variables (works in both themes) */
+  .panel{
+    --ink:#ece3d4; --ink2:#a59b8a; --ink3:#8a8070;
+    --card:#2a231b; --elev:#342c21;   /* opaque cards on the espresso panel */
+    --bd:rgba(255,247,232,.10); --bd2:rgba(255,247,232,.17);
+    --rule:rgba(255,247,232,.20); --tint:rgba(255,247,232,.06); --ac-soft:var(--tint);
+    --ac:#cf8a6e; --ac-strong:#d99a80; --ac-line:rgba(255,247,232,.18);
+    --green:#4ec488; --amber:#e0a63a; --blue:#6aa0e8;
+    background:var(--panel); color:var(--ink);
+  }
+
   html{ scroll-behavior:smooth; }
-  body{ background:var(--page); color:var(--ink); font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; line-height:1.5; overflow-x:hidden; }
+  body{ background:var(--page); color:var(--ink); font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; line-height:1.55; overflow-x:hidden; transition:background .3s ease, color .3s ease; }
+  .serif{ font-family:'Fraunces',Georgia,serif; font-optical-sizing:auto; }
   .mono{ font-family:'JetBrains Mono',monospace; }
   .wrap{ max-width:1180px; margin:0 auto; padding:0 32px; }
-  .eyebrow{ font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:.2em; text-transform:uppercase; color:var(--ac); margin-bottom:16px; }
-  h2{ font-weight:800; letter-spacing:-.03em; line-height:1.06; font-size:36px; }
-  .lead{ color:var(--ink2); font-size:16px; line-height:1.62; }
-  .sec{ position:relative; border-top:1px solid var(--bd); }
-  .sec.surf{ background:var(--base); }
-  .center{ text-align:center; }
-  .center .lead{ max-width:54ch; margin:0 auto; }
-  .glow{ position:absolute; border-radius:50%; pointer-events:none; filter:blur(80px); z-index:0; }
-  .kbd{ font-family:'JetBrains Mono',monospace; font-size:12px; background:var(--surf); border:1px solid var(--bd2); border-radius:6px; padding:2px 7px; color:var(--ink); white-space:nowrap; }
   a{ color:inherit; text-decoration:none; }
 
-  /* NAV */
-  nav{ position:sticky; top:0; z-index:40; backdrop-filter:blur(14px); background:rgba(10,10,12,.72); border-bottom:1px solid var(--bd); }
-  nav .row{ display:flex; align-items:center; justify-content:space-between; height:62px; }
-  .brand{ display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.01em; font-size:18px; }
-  .brand .v{ font-size:10px; color:var(--ac); background:rgba(52,211,153,.1); padding:2px 7px; border-radius:5px; font-family:'JetBrains Mono'; }
-  .navlinks{ display:flex; align-items:center; gap:26px; color:var(--ink2); font-size:14px; }
-  .navlinks a:hover{ color:var(--ink); }
-  .btn{ background:var(--ac); color:var(--ac-deep); padding:8px 16px; border-radius:9px; font-weight:600; font-size:13.5px; display:inline-block; }
+  /* section shell */
+  .sec{ position:relative; }
+  .sec.base{ background:var(--base); }
+  .center{ text-align:center; }
+  .center .lead{ max-width:56ch; margin-left:auto; margin-right:auto; }
+  .center .eyebrow{ justify-content:center; }
+  .center .eyebrow::before{ margin-left:auto; margin-right:auto; }
+
+  /* eyebrow: short orange tick + spaced mono label */
+  .eyebrow{ font-family:'JetBrains Mono',monospace; font-size:11.5px; letter-spacing:.24em; text-transform:uppercase; color:var(--ink2); font-weight:600; margin-bottom:22px; }
+  .eyebrow::before{ content:""; display:block; width:30px; height:2px; background:var(--rule); margin-bottom:16px; border-radius:2px; }
+
+  /* headings */
+  h1,h2,h3{ font-family:'Fraunces',Georgia,serif; font-optical-sizing:auto; }
+  h2{ font-weight:500; letter-spacing:-.015em; line-height:1.08; font-size:44px; color:var(--ink); }
+  h2 em, h1 em{ font-style:italic; color:var(--ink); font-weight:500; }
+  .lead{ color:var(--ink2); font-size:16.5px; line-height:1.68; font-family:'Inter',sans-serif; }
+  .kbd{ font-family:'JetBrains Mono',monospace; font-size:12px; background:var(--elev); border:1px solid var(--bd2); border-radius:6px; padding:2px 7px; color:var(--ink); white-space:nowrap; }
+
+  /* buttons */
+  .btn{ display:inline-flex; align-items:center; gap:8px; background:var(--ink); color:var(--page); padding:11px 20px; border-radius:999px; font-weight:600; font-size:14px; transition:transform .2s ease, opacity .2s ease; }
+  .btn:hover{ transform:translateY(-1px); opacity:.9; }
   .btn.ghost{ background:transparent; color:var(--ink); border:1px solid var(--bd2); }
+  .btn.ghost:hover{ border-color:var(--ink); opacity:1; }
+  .link-u{ color:var(--ac-strong); font-weight:600; border-bottom:1.5px solid color-mix(in srgb, var(--ac) 42%, transparent); padding-bottom:2px; transition:border-color .2s; }
+  .link-u:hover{ border-color:var(--ac); }
 
-  /* HERO */
-  .hero{ position:relative; padding:90px 0 76px; --mx:64%; --my:42%; overflow:hidden; }
-  .hero .glow{ width:700px; height:700px; top:-200px; right:-180px; background:radial-gradient(circle,rgba(52,211,153,.16),transparent 62%); }
-  /* soft cursor spotlight (no grid) */
-  .hero .fx{ position:absolute; inset:0; z-index:1; pointer-events:none; }
-  .hero .fx .glowspot{ position:absolute; inset:0;
-    background:radial-gradient(480px circle at var(--mx) var(--my), rgba(52,211,153,.12), transparent 60%); }
-  .hero .grid{ position:relative; z-index:2; display:grid; grid-template-columns:.88fr 1.12fr; gap:40px; align-items:center; }
-  .hero h1{ font-weight:900; letter-spacing:-.045em; line-height:1.0; font-size:56px; margin-bottom:24px; }
-  .hero h1 .m{ opacity:.42; }
-  .hero .lead{ font-size:17px; max-width:42ch; margin-bottom:30px; }
-  .pill{ display:inline-flex; align-items:center; gap:11px; padding:13px 18px; border-radius:12px; background:var(--surf); border:1px solid var(--bd2); font-family:'JetBrains Mono',monospace; font-size:14px; color:#cfe9e4; }
+  /* ============ NAV ============ */
+  nav{ position:sticky; top:0; z-index:40; backdrop-filter:blur(14px); background:color-mix(in srgb, var(--page) 82%, transparent); border-bottom:1px solid var(--bd); }
+  nav .row{ display:flex; align-items:center; justify-content:space-between; height:66px; }
+  .brand{ display:flex; align-items:center; gap:11px; font-family:'Fraunces',serif; font-weight:600; letter-spacing:-.01em; font-size:22px; color:var(--ink); }
+  .brand .v{ font-family:'JetBrains Mono'; font-size:10px; color:var(--ink2); background:var(--tint); padding:3px 7px; border-radius:5px; font-weight:600; letter-spacing:.02em; align-self:center; }
+  .navlinks{ display:flex; align-items:center; gap:24px; color:var(--ink2); font-size:14.5px; }
+  .navlinks a:not(.btn):hover{ color:var(--ink); }
+  .navlinks .sep{ width:1px; height:20px; background:var(--bd); }
+  .tt{ background:transparent; border:1px solid var(--bd2); color:var(--ink2); width:36px; height:36px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; transition:color .2s, border-color .2s; }
+  .tt:hover{ color:var(--ink); border-color:var(--ink); }
+  .tt .sun{ display:none; } [data-theme="dark"] .tt .sun{ display:block; } [data-theme="dark"] .tt .moon{ display:none; }
+
+  /* ============ HERO ============ */
+  .hero{ position:relative; padding:96px 0 84px; overflow:hidden; }
+  .hero .grid{ position:relative; z-index:2; display:grid; grid-template-columns:1.02fr 1.1fr; gap:56px; align-items:center; }
+  .badge{ display:inline-flex; align-items:center; gap:.5em; align-self:flex-start; margin-bottom:22px; padding:6px 14px; border:1px solid var(--bd2); border-radius:999px; color:var(--ink2); font-size:12.5px; font-weight:600; background:var(--tint); }
+  .badge:hover{ border-color:var(--ink3); color:var(--ink); }
+  .hero h1{ font-family:'Fraunces',serif; font-weight:400; letter-spacing:-.02em; line-height:1.02; font-size:66px; margin-bottom:26px; color:var(--ink); }
+  .hero h1 .m{ display:block; color:var(--ink); }
+  .hero .lead{ font-size:18px; max-width:44ch; margin-bottom:32px; }
+  .cta-row{ display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+  .pill{ display:inline-flex; align-items:center; gap:11px; padding:12px 16px; border-radius:12px; background:var(--card); border:1px solid var(--bd2); box-shadow:var(--shadow-sm); font-family:'JetBrains Mono',monospace; font-size:14px; color:var(--ink); }
   .pill .d{ color:var(--ac); font-weight:700; }
-  .pill .cp{ margin-left:6px; color:var(--ink3); cursor:pointer; }
-  .proof{ display:flex; align-items:center; gap:12px; margin-top:30px; color:var(--ink3); font-size:13px; }
-  .stars{ color:var(--ac); letter-spacing:1px; }
-  .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
-  .chip{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ink2); background:var(--surf); border:1px solid var(--bd2); border-radius:7px; padding:5px 10px; }
+  .cp{ background:none; border:none; cursor:pointer; color:var(--ink3); display:inline-flex; padding:2px; }
+  .cp:hover{ color:var(--ac); }
+  .cp.ok{ color:var(--ac); }
+  .proof{ display:flex; align-items:center; gap:12px; margin-top:30px; color:var(--ink2); font-size:13.5px; }
+  .stars{ color:var(--ink2); letter-spacing:1px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+  .chip{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ink2); background:var(--card); border:1px solid var(--bd); border-radius:999px; padding:5px 12px; }
+
   .heroshot{ position:relative; }
-  .heroshot img{ width:100%; border-radius:14px; border:1px solid var(--bd2); box-shadow:0 30px 80px rgba(0,0,0,.6); display:block; }
-  /* Cycling stacked screenshot deck */
   .herostack{ position:relative; aspect-ratio:16/10; }
-  .herostack .card{ position:absolute; inset:0; margin:0; border-radius:14px; overflow:hidden; border:1px solid var(--bd2); box-shadow:0 30px 80px rgba(0,0,0,.6); transition:transform .9s cubic-bezier(.2,.7,.2,1), opacity .9s ease, filter .9s ease; will-change:transform,opacity; cursor:pointer; }
-  .herostack .card img{ width:100%; height:100%; object-fit:cover; object-position:top left; display:block; border:0; border-radius:0; box-shadow:none; animation:none; }
+  .herostack .card{ position:absolute; inset:0; margin:0; border-radius:14px; overflow:hidden; border:1px solid var(--bd2); box-shadow:var(--shadow); transition:transform .9s cubic-bezier(.2,.7,.2,1), opacity .9s ease, filter .9s ease; will-change:transform,opacity; cursor:pointer; background:var(--card); }
+  .herostack .card img{ width:100%; height:100%; object-fit:cover; object-position:top left; display:block; }
   .herostack .card[data-pos="0"]{ transform:none; opacity:1; z-index:40; filter:none; }
-  .herostack .card[data-pos="1"]{ transform:translate(9%,10%) scale(.92); opacity:.95; z-index:30; filter:brightness(.84); }
-  .herostack .card[data-pos="2"]{ transform:translate(18%,20%) scale(.84); opacity:.8; z-index:20; filter:brightness(.66); }
-  .herostack .card[data-pos="3"]{ transform:translate(27%,30%) scale(.76); opacity:.6; z-index:10; filter:brightness(.5); }
+  .herostack .card[data-pos="1"]{ transform:translate(8%,9%) scale(.93); opacity:.96; z-index:30; filter:brightness(.9); }
+  .herostack .card[data-pos="2"]{ transform:translate(16%,18%) scale(.86); opacity:.82; z-index:20; filter:brightness(.78); }
+  .herostack .card[data-pos="3"]{ transform:translate(24%,27%) scale(.79); opacity:.62; z-index:10; filter:brightness(.66); }
 
-  /* THESIS / DIAGRAM */
-  .thesis{ padding:96px 0; }
-  .thesis .wrap{ position:relative; z-index:2; }
-  .thesis .glow{ width:760px; height:600px; top:28%; left:50%; transform:translateX(-50%); background:radial-gradient(circle,rgba(52,211,153,.13),transparent 62%); }
-  .diagram{ position:relative; z-index:2; max-width:780px; height:460px; margin:54px auto 0; }
-  .diagram svg{ position:absolute; inset:0; width:100%; height:100%; }
-  .node{ position:absolute; transform:translate(-50%,-50%); background:var(--surf); border:1px solid var(--bd2); border-radius:12px; padding:11px 16px; font-family:'JetBrains Mono',monospace; font-size:13px; white-space:nowrap; z-index:2; box-shadow:0 8px 24px rgba(0,0,0,.4); text-align:center; }
-  .node small{ display:block; font-family:'Inter'; font-size:10.5px; color:var(--ink3); margin-top:3px; }
-  .hub{ background:linear-gradient(180deg,#0f2722,#0b1a17); border-color:rgba(52,211,153,.5); box-shadow:0 0 0 1px rgba(52,211,153,.3),0 0 50px rgba(52,211,153,.25); padding:16px 28px; }
-  .hub b{ color:var(--ac); font-size:21px; font-weight:700; }
+  /* subtle filigree (CTA panel) */
+  .filigree{ position:absolute; inset:0; z-index:0; pointer-events:none; opacity:.5; }
 
-  /* BENTO */
-  .bento{ display:grid; grid-template-columns:repeat(3,1fr); grid-auto-rows:188px; gap:16px; margin-top:50px; }
-  .tile{ background:var(--surf); border:1px solid var(--bd); border-radius:18px; padding:24px; position:relative; overflow:hidden; transition:border-color .25s, transform .25s; }
-  .tile:hover{ border-color:rgba(52,211,153,.35); transform:translateY(-3px); }
-  .tile h3{ font-size:17px; font-weight:700; margin-bottom:8px; }
-  .tile p{ color:var(--ink2); font-size:13.5px; line-height:1.55; }
-  .tile .ico{ width:38px; height:38px; border-radius:10px; background:rgba(52,211,153,.1); display:flex; align-items:center; justify-content:center; color:var(--ac); margin-bottom:14px; font-family:'JetBrains Mono'; font-weight:700; font-size:16px; }
-  .tile.big{ grid-column:span 2; grid-row:span 2; padding:30px; }
+  /* ============ EDITORIAL FEATURE GRID (bento) ============ */
+  .showcase{ padding:104px 0; }
+  .bento{ display:grid; grid-template-columns:repeat(3,1fr); grid-auto-rows:minmax(196px,auto); gap:18px; margin-top:54px; }
+  .tile{ background:var(--card); border:1px solid var(--bd); border-radius:16px; padding:26px; position:relative; overflow:hidden; transition:border-color .25s, transform .25s, box-shadow .25s; }
+  .tile:hover{ border-color:var(--ac-line); transform:translateY(-3px); box-shadow:var(--shadow-sm); }
+  .tile h3{ font-family:'Fraunces',serif; font-size:21px; font-weight:600; margin-bottom:9px; letter-spacing:-.01em; }
+  .tile p{ color:var(--ink2); font-size:13.5px; line-height:1.6; }
+  .tile .ico{ width:40px; height:40px; border-radius:11px; background:var(--tint); border:1px solid var(--bd); display:flex; align-items:center; justify-content:center; color:var(--ink); margin-bottom:15px; font-family:'JetBrains Mono'; font-weight:700; font-size:17px; }
+  .tile.big{ grid-column:span 2; grid-row:span 2; padding:32px; }
   .tile.big h3, .tile.big p{ max-width:48%; position:relative; z-index:1; }
   .tile.big .bigshot{ position:absolute; top:0; right:0; bottom:0; width:44%; height:100%; object-fit:cover; object-position:left top; border-left:1px solid var(--bd); }
   .tile.wide{ grid-column:span 2; }
-  .states{ display:flex; gap:16px; margin-top:6px; }
+  .states{ display:flex; gap:16px; margin-top:8px; }
   .states .st{ display:flex; align-items:center; gap:7px; font-family:'JetBrains Mono'; font-size:12px; color:var(--ink2); }
   .states .g{ font-size:14px; font-weight:700; }
 
-  /* SHOWCASE */
-  .showcase{ padding:96px 0; }
-  .showrow{ display:grid; grid-template-columns:1fr 1.18fr; gap:56px; align-items:center; }
-  .showrow + .showrow{ margin-top:90px; }
-  .showrow.flip{ grid-template-columns:1.18fr 1fr; }
+  /* ============ SHOWCASE ROWS ============ */
+  .showrow{ display:grid; grid-template-columns:0.82fr 1.45fr; gap:52px; align-items:center; }
+  .showrow + .showrow{ margin-top:96px; }
+  .showrow.flip{ grid-template-columns:1.45fr 0.82fr; }
   .showrow.flip .txt{ order:2; }
-  .showrow img{ width:100%; border-radius:13px; border:1px solid var(--bd2); box-shadow:0 30px 80px rgba(0,0,0,.6); display:block; }
-  .showrow img + img{ margin-top:14px; }
-  .showrow h2{ font-size:30px; margin-bottom:16px; }
+  .showrow .frame img{ width:100%; border-radius:13px; border:1px solid var(--bd2); box-shadow:var(--shadow); display:block; background:var(--card); }
+  .showrow .frame img + img{ margin-top:14px; }
+  /* offset overlay pair (themes) — echoes the hero deck */
+  .stackpair{ position:relative; aspect-ratio:16/10.5; }
+  .stackpair figure{ position:absolute; inset:0; margin:0; border-radius:13px; overflow:hidden; border:1px solid var(--bd2); box-shadow:var(--shadow); background:var(--card); }
+  .stackpair figure img{ width:100%; height:100%; object-fit:cover; object-position:top left; display:block; }
+  .stackpair .front{ z-index:3; }
+  .stackpair .mid{ transform:translate(-12%,14%) scale(.9); filter:brightness(.9); z-index:2; }
+  .stackpair .back{ transform:translate(-24%,27%) scale(.8); filter:brightness(.74); z-index:1; }
+  /* screenshot with a popped-out, readable detail card */
+  .shot{ position:relative; }
+  .shot .main{ margin:0; }
+  .shot .main img{ width:100%; border-radius:13px; border:1px solid var(--bd2); box-shadow:var(--shadow); display:block; background:var(--card); }
+  .shot .detail{ position:absolute; width:56%; margin:0; border-radius:10px; overflow:hidden; border:1px solid var(--bd2); box-shadow:0 18px 44px rgba(30,20,10,.32); background:var(--card); z-index:3; }
+  .shot .detail img{ width:100%; display:block; }
+  .shot .detail.dr{ right:3%; bottom:-13%; }
+  .shot .detail.dl{ left:3%; bottom:-13%; }
+
+  /* scannable feature points */
+  .points{ list-style:none; margin-top:4px; display:grid; gap:13px; }
+  .points li{ position:relative; padding-left:22px; color:var(--ink2); font-size:15.5px; line-height:1.5; }
+  .points li::before{ content:""; position:absolute; left:0; top:11px; width:13px; height:1.5px; background:var(--ink3); border-radius:2px; }
+  .points li strong{ color:var(--ink); font-weight:600; }
+
+  /* keep text above an image that bleeds toward it */
+  .showrow .txt{ position:relative; z-index:2; }
+  /* on wide screens, let the feature shots bleed into the outer gutter */
+  @media (min-width:881px){
+    .showrow .frame, .showrow .shot{ --bleed:max(0px, calc((100vw - 1180px) / 2 * 0.5)); width:calc(100% + var(--bleed)); }
+    .showrow:not(.flip) .frame, .showrow:not(.flip) .shot{ justify-self:start; }
+    .showrow.flip .frame, .showrow.flip .shot{ justify-self:end; }
+  }
+  @media (max-width:880px){ .shot .detail{ width:62%; } }
+  .showrow h2{ font-size:36px; margin-bottom:18px; }
   .showrow .lead{ font-size:15.5px; margin-bottom:14px; }
 
-  /* TESTIMONIALS */
-  .tst{ padding:80px 0; }
-  .tgrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:40px; }
-  .tcard{ background:var(--surf); border:1px solid var(--bd); border-radius:16px; padding:22px; }
-  .tcard p{ color:var(--ink); font-size:14.5px; line-height:1.6; margin-bottom:16px; }
-  .tcard .who{ display:flex; align-items:center; gap:10px; }
-  .tcard .av{ width:34px; height:34px; border-radius:50%; background:#1c2530; color:var(--ac); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; overflow:hidden; }
+  /* ============ TESTIMONIALS ============ */
+  .tst{ padding:96px 0; }
+  .tgrid{ display:grid; grid-template-columns:repeat(3,1fr); grid-auto-rows:minmax(158px,auto); gap:18px; margin-top:46px; align-items:stretch; }
+  .tcard{ background:var(--card); border:1px solid var(--bd); border-radius:16px; padding:26px; text-align:left; transition:border-color .25s, transform .25s; display:flex; flex-direction:column; }
+  .tcard .who{ margin-top:auto; padding-top:14px; }
+  a.tcard:hover{ border-color:var(--ac-line); transform:translateY(-3px); }
+  /* bento placement */
+  .tweet{ grid-column:1; grid-row:1 / span 2; }
+  .tcard.c-a{ grid-column:2; grid-row:1; }
+  .tcard.c-b{ grid-column:3; grid-row:1; }
+  .tcard.c-wide{ grid-column:2 / span 2; grid-row:2; }
+  .tcard p{ font-family:'Fraunces',serif; font-weight:400; color:var(--ink); font-size:19px; line-height:1.5; letter-spacing:-.01em; margin-bottom:20px; }
+  .tcard .who{ display:flex; align-items:center; gap:11px; }
+  .tcard .av{ width:36px; height:36px; border-radius:50%; background:var(--tint); color:var(--ink2); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; overflow:hidden; font-family:'Inter'; }
   .tcard .av img{ width:100%; height:100%; object-fit:cover; }
   .tcard .nm{ font-weight:600; font-size:14px; }
   .tcard .hd{ color:var(--ink3); font-size:12px; }
+  /* embedded X / Twitter post */
+  .tweet{ background:var(--card); border:1px solid var(--bd2); border-radius:16px; padding:20px 22px; text-align:left; box-shadow:var(--shadow-sm); font-family:'Inter',sans-serif; display:flex; flex-direction:column; }
+  .tweet .time{ margin-top:auto; }
+  .tweet .th{ display:flex; align-items:center; gap:11px; }
+  .tweet .th img{ width:44px; height:44px; border-radius:50%; object-fit:cover; }
+  .tweet .th .nm{ font-weight:700; font-size:15px; color:var(--ink); display:flex; align-items:center; gap:4px; line-height:1.2; }
+  .tweet .th .hd{ color:var(--ink3); font-size:14px; }
+  .tweet .th .xlogo{ margin-left:auto; color:var(--ink); flex-shrink:0; }
+  .verified{ color:#1d9bf0; flex-shrink:0; }
+  .tweet .body{ font-size:16.5px; line-height:1.5; color:var(--ink); margin:14px 0 12px; }
+  .muxlist{ font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--ink3); line-height:1.85; margin-bottom:14px; }
+  .muxlist .dots{ color:var(--ink3); opacity:.6; }
+  .muxlist a{ color:#1d9bf0; }
+  .muxlist .hi{ color:var(--ink); background:var(--tint); border-radius:6px; padding:2px 8px; display:inline-block; }
+  .muxlist .hi b{ font-weight:700; }
+  .tweet .time{ color:var(--ink3); font-size:14px; padding-bottom:14px; border-bottom:1px solid var(--bd); }
+  .tweet .time b{ color:var(--ink); font-weight:600; }
+  .tweet .stats{ display:flex; gap:20px; margin-top:13px; color:var(--ink3); font-size:13px; }
+  .tweet .stats span{ display:inline-flex; align-items:center; gap:7px; }
+  .tweet .stats svg{ opacity:.85; }
+  @media (max-width:880px){ .tweet .stats{ gap:18px; } }
 
-  /* COMPARISON */
-  .cmp{ padding:96px 0; }
-  .ctable{ max-width:900px; margin:46px auto 0; border:1px solid var(--bd); border-radius:18px; overflow:hidden; background:var(--surf); }
+  /* ============ COMPARISON ============ */
+  .cmp{ padding:104px 0; }
+  .ctable{ max-width:900px; margin:50px auto 0; border:1px solid var(--bd); border-radius:16px; overflow:hidden; background:var(--card); box-shadow:var(--shadow-sm); }
   .ctable table{ width:100%; border-collapse:collapse; font-size:14px; }
-  .ctable th,.ctable td{ padding:14px 18px; text-align:center; border-bottom:1px solid var(--bd); }
+  .ctable th,.ctable td{ padding:15px 18px; text-align:center; border-bottom:1px solid var(--bd); }
   .ctable tr:last-child td{ border-bottom:0; }
   .ctable th:first-child,.ctable td:first-child{ text-align:left; color:var(--ink2); width:40%; }
-  .ctable thead th{ color:var(--ink3); font-weight:500; }
-  .ctable .jcol{ background:rgba(52,211,153,.06); color:var(--ac); font-weight:600; }
-  .ctable thead .jcol{ color:var(--ac); font-weight:700; }
-  .yes{ color:var(--ac); } .no{ color:var(--ink3); } .meh{ color:var(--ink3); font-size:12.5px; }
-  .cmp .foot{ text-align:center; color:var(--ink3); font-size:12.5px; margin-top:18px; }
+  .ctable thead th{ color:var(--ink3); font-weight:500; font-family:'JetBrains Mono'; font-size:12px; letter-spacing:.04em; text-transform:uppercase; }
+  .ctable .jcol{ background:var(--tint); color:var(--ink); font-weight:600; }
+  .ctable thead .jcol{ color:var(--ink); font-weight:700; }
+  .yes{ color:var(--ink); } .no{ color:var(--ink3); } .meh{ color:var(--ink3); font-size:12.5px; }
+  .cmp .foot{ text-align:center; color:var(--ink3); font-size:12.5px; margin-top:20px; }
 
-  /* CLI band */
-  .cliband{ padding:96px 0; }
-  .term{ max-width:920px; margin:46px auto 0; background:#070b0e; border:1px solid var(--bd2); border-radius:14px; overflow:hidden; box-shadow:0 40px 90px rgba(0,0,0,.6); text-align:left; }
-  .term .bar{ display:flex; align-items:center; gap:7px; padding:11px 15px; border-bottom:1px solid var(--bd); }
+  /* ============ CLI BAND (navy panel) ============ */
+  .cliband{ padding:104px 0; }
+  .term{ max-width:920px; margin:50px auto 0; background:#0d0f16; border:1px solid rgba(255,247,232,.14); border-radius:14px; overflow:hidden; box-shadow:0 40px 90px rgba(0,0,0,.5); text-align:left; }
+  .term .bar{ display:flex; align-items:center; gap:7px; padding:12px 15px; border-bottom:1px solid rgba(255,247,232,.09); }
   .term .bar .d{ width:11px; height:11px; border-radius:50%; }
-  .term .bar small{ margin-left:8px; color:var(--ink3); font-family:'JetBrains Mono'; font-size:11px; }
-  .term .body{ padding:22px 24px; font-family:'JetBrains Mono',monospace; font-size:12.5px; line-height:1.9; }
-  .term .c{ color:var(--ink3); } .term .w{ color:#cdd2db; } .term .a{ color:var(--ac); } .term .am{ color:var(--amber); }
-  .term .o{ color:#8a93a0; }
+  .term .bar small{ margin-left:8px; color:#7b7360; font-family:'JetBrains Mono'; font-size:11px; }
+  .term .body{ padding:24px 26px; font-family:'JetBrains Mono',monospace; font-size:12.5px; line-height:1.95; color:#d7cfbf; }
+  .term .c{ color:#7b7360; } .term .w{ color:#e7dfce; } .term .a{ color:var(--ac); } .term .am{ color:var(--amber); }
+  .term .o{ color:#948a76; }
+  .new{ font-size:9px; color:var(--ink2); background:var(--tint); border:1px solid var(--bd); padding:2px 7px; border-radius:4px; margin-left:8px; vertical-align:middle; letter-spacing:.06em; font-family:'JetBrains Mono'; font-weight:600; }
 
-  /* ECOSYSTEM */
-  .eco{ padding:96px 0; }
-  .ecogrid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:46px; text-align:left; }
-  .ecocard{ background:var(--surf); border:1px solid var(--bd); border-radius:14px; padding:20px; transition:border-color .25s, transform .25s; }
-  .ecocard:hover{ border-color:rgba(52,211,153,.35); transform:translateY(-3px); }
-  .ecocard .nm{ font-family:'JetBrains Mono'; font-weight:700; font-size:16px; margin-bottom:5px; }
-  .ecocard .tg{ color:var(--ink3); font-size:11.5px; margin-bottom:8px; }
-  .ecocard p{ color:var(--ink2); font-size:12px; line-height:1.5; }
-  .ecocard.dashed{ border-style:dashed; } .ecocard.dashed .nm{ color:var(--ac); }
-  .new{ font-size:9px; color:var(--ac); background:rgba(52,211,153,.12); padding:1px 6px; border-radius:4px; margin-left:7px; vertical-align:middle; letter-spacing:.05em; }
+  /* ============ ECOSYSTEM ============ */
+  .eco{ padding:104px 0; }
+  .ecogrid{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:50px; text-align:left; }
+  .ecocard{ background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:22px; transition:border-color .25s, transform .25s; }
+  .ecocard:hover{ border-color:var(--ac-line); transform:translateY(-3px); }
+  .ecocard .nm{ font-family:'Fraunces',serif; font-weight:600; font-size:18px; margin-bottom:6px; }
+  .ecocard .nm a:hover{ color:var(--ac-strong); }
+  .ecocard .tg{ color:var(--ink3); font-size:11.5px; margin-bottom:9px; font-family:'JetBrains Mono'; letter-spacing:.02em; }
+  .ecocard p{ color:var(--ink2); font-size:12.5px; line-height:1.55; }
+  .ecocard.dashed{ border-style:dashed; } .ecocard.dashed .nm{ color:var(--ink2); }
 
-  /* CTA */
-  .cta{ padding:120px 0; text-align:center; position:relative; }
-  .cta .glow{ width:720px; height:520px; top:0; left:50%; transform:translateX(-50%); background:radial-gradient(circle,rgba(52,211,153,.14),transparent 60%); }
-  .cta h2{ font-size:48px; font-weight:900; letter-spacing:-.045em; position:relative; z-index:2; }
-  .cta .sub{ color:var(--ink3); margin:14px 0 34px; position:relative; z-index:2; font-size:14px; }
-  .cmd{ position:relative; z-index:2; max-width:430px; margin:0 auto; background:var(--surf); border:1px solid var(--bd2); border-radius:14px; padding:22px 24px; text-align:left; font-family:'JetBrains Mono'; font-size:14px; }
-  .cmd div{ margin:6px 0; } .cmd .d{ color:var(--ac); }
-  .cta .note{ color:var(--ink3); font-size:12.5px; margin-top:20px; position:relative; z-index:2; }
+  /* ============ CTA (navy panel) ============ */
+  .cta{ padding:128px 0; text-align:center; position:relative; overflow:hidden; }
+  .cta h2{ font-size:56px; font-weight:400; letter-spacing:-.02em; position:relative; z-index:2; }
+  .cta .sub{ color:var(--ink2); margin:18px 0 36px; position:relative; z-index:2; font-size:15px; }
+  .cmd{ position:relative; z-index:2; max-width:440px; margin:0 auto; background:var(--card); border:1px solid var(--bd2); border-radius:14px; padding:24px 26px; text-align:left; font-family:'JetBrains Mono'; font-size:14px; }
+  .cmd div{ margin:6px 0; color:var(--ink); } .cmd .d{ color:var(--ac); }
+  .cta .note{ color:var(--ink3); font-size:12.5px; margin-top:22px; position:relative; z-index:2; }
 
-  /* FOOTER */
-  footer{ border-top:1px solid var(--bd); padding:30px 0; }
+  /* ============ FOOTER ============ */
+  footer{ border-top:1px solid var(--bd); padding:34px 0; }
   footer .row{ display:flex; align-items:center; justify-content:space-between; color:var(--ink3); font-size:13px; }
+  footer .brand{ font-size:17px; }
   footer .links{ display:flex; gap:22px; } footer .links a:hover{ color:var(--ink); }
 
   @media (max-width:880px){
-    .hero .grid,.showrow,.showrow.flip{ grid-template-columns:1fr; }
+    .wrap{ padding:0 22px; }
+    .hero{ padding:64px 0 60px; }
+    .hero .grid,.showrow,.showrow.flip{ grid-template-columns:1fr; gap:44px; }
     .showrow.flip .txt{ order:0; }
+    .hero h1{ font-size:46px; }
+    h2,.showrow h2{ font-size:34px; } .cta h2{ font-size:38px; }
     .bento{ grid-template-columns:1fr; grid-auto-rows:auto; } .tile.big,.tile.wide{ grid-column:span 1; grid-row:auto; }
     .tile.big h3,.tile.big p{ max-width:none; }
-    .tile.big .bigshot{ position:static; width:100%; height:190px; object-fit:cover; object-position:left top; margin-top:18px; border-left:0; border:1px solid var(--bd2); border-radius:10px; }
+    .tile.big .bigshot{ position:static; width:100%; height:190px; margin-top:18px; border-left:0; border:1px solid var(--bd2); border-radius:10px; }
     .ecogrid,.tgrid{ grid-template-columns:1fr; }
-    .hero h1{ font-size:40px; } .cta h2{ font-size:34px; }
+    .tgrid{ grid-auto-rows:auto; }
+    .tweet, .tcard.c-a, .tcard.c-b, .tcard.c-wide{ grid-column:auto; grid-row:auto; }
+    .navlinks .hide-sm{ display:none; }
   }
-  .animate-in{ opacity:0; transform:translateY(18px); }
-  .animate-in.visible{ opacity:1; transform:none; transition:opacity .5s ease, transform .5s ease; }
 
-  /* hero entrance + ambient motion */
+  /* ============ MOTION ============ */
+  .animate-in{ opacity:0; transform:translateY(18px); }
+  .animate-in.visible{ opacity:1; transform:none; transition:opacity .6s ease, transform .6s ease; }
   @keyframes riseIn{ from{ opacity:0; transform:translateY(18px); } to{ opacity:1; transform:none; } }
   .hero-copy > *{ opacity:0; animation:riseIn .7s cubic-bezier(.2,.7,.2,1) forwards; }
   .hero-copy > *:nth-child(1){ animation-delay:.05s; }
-  .hero-copy > *:nth-child(2){ animation-delay:.13s; }
-  .hero-copy > *:nth-child(3){ animation-delay:.21s; }
-  .hero-copy > *:nth-child(4){ animation-delay:.29s; }
-  .hero-copy > *:nth-child(5){ animation-delay:.37s; }
-  .hero-copy > *:nth-child(6){ animation-delay:.45s; }
-  .heroshot{ opacity:0; animation:riseIn .8s cubic-bezier(.2,.7,.2,1) .3s forwards; }
-  @keyframes floaty{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-8px); } }
-  .heroshot img{ animation:floaty 7s ease-in-out 1.2s infinite; }
-  @keyframes breathe{ 0%,100%{ opacity:.7; transform:scale(1); } 50%{ opacity:1; transform:scale(1.08); } }
-  .hero .glow{ animation:breathe 9s ease-in-out infinite; }
-
-  /* orchestration diagram: pulses flowing into the hub + hub glow */
-  @keyframes dashflow{ to{ stroke-dashoffset:-11.4; } }
-  .diagram .flow line{ animation:dashflow 1.9s linear infinite; }
-  @keyframes hubpulse{ 0%,100%{ box-shadow:0 0 0 1px rgba(52,211,153,.3),0 0 38px rgba(52,211,153,.18); } 50%{ box-shadow:0 0 0 1px rgba(52,211,153,.55),0 0 60px rgba(52,211,153,.4); } }
-  .diagram .hub{ animation:hubpulse 3.6s ease-in-out infinite; }
-
-  /* live RUNNING indicator */
+  .hero-copy > *:nth-child(2){ animation-delay:.12s; }
+  .hero-copy > *:nth-child(3){ animation-delay:.19s; }
+  .hero-copy > *:nth-child(4){ animation-delay:.26s; }
+  .hero-copy > *:nth-child(5){ animation-delay:.33s; }
+  .hero-copy > *:nth-child(6){ animation-delay:.40s; }
+  .heroshot{ opacity:0; animation:riseIn .8s cubic-bezier(.2,.7,.2,1) .28s forwards; }
+  @keyframes floaty{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-7px); } }
+  .herostack{ animation:floaty 8s ease-in-out 1.2s infinite; }
   @keyframes runpulse{ 0%,100%{ opacity:.45; } 50%{ opacity:1; } }
   .runpulse{ animation:runpulse 1.4s ease-in-out infinite; }
 
   @media (prefers-reduced-motion: reduce){
     .animate-in{ opacity:1; transform:none; transition:none; }
     .hero-copy > *, .heroshot{ opacity:1 !important; transform:none !important; animation:none !important; }
-    .heroshot img, .hero .glow, .diagram .flow line, .diagram .hub, .runpulse{ animation:none !important; }
+    .herostack, .runpulse{ animation:none !important; }
     *{ scroll-behavior:auto !important; }
   }
   </style>
@@ -279,24 +410,36 @@
 
 <!-- NAV -->
 <nav><div class="wrap row">
-  <div class="brand"><img src="assets/logo.svg" alt="" width="26" height="26"> jmux <span class="v">v0.21.0</span></div>
+  <a href="#top" class="brand"><img src="assets/logo.svg" alt="" width="30" height="30"> jmux <span class="v">v0.21.0</span></a>
   <div class="navlinks">
-    <a href="#features">Features</a><a href="#ecosystem">Ecosystem</a><a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener">Docs</a>
-    <a href="https://github.com/jarredkenny/jmux" target="_blank" rel="noopener" class="btn ghost">GitHub</a><a href="#install" class="btn">Install</a>
+    <a href="#features" class="hide-sm">Features</a>
+    <a href="#ecosystem" class="hide-sm">Ecosystem</a>
+    <a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener" class="hide-sm">Docs</a>
+    <button class="tt" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle light / dark">
+      <svg class="moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 1v3M12 20v3M4.2 4.2l2 2M17.8 17.8l2 2M1 12h3M20 12h3M4.2 19.8l2-2M17.8 6.2l2-2"/></svg>
+    </button>
+    <a href="https://github.com/jarredkenny/jmux" target="_blank" rel="noopener" class="btn ghost">GitHub</a>
+    <a href="#install" class="btn">Install</a>
   </div>
 </div></nav>
 
 <!-- 1 · HERO -->
-<header class="hero">
-  <div class="glow"></div>
-  <div class="fx" aria-hidden="true"><div class="glowspot"></div></div>
+<header class="hero" id="top">
   <div class="wrap grid">
     <div class="hero-copy">
-      <a href="#command-center" style="display:inline-flex;align-items:center;gap:.5em;align-self:flex-start;margin-bottom:16px;padding:5px 13px;border:1px solid var(--ac);border-radius:999px;color:var(--ac);font-size:13px;font-weight:600;text-decoration:none;background:rgba(52,211,153,.08)">▦ New&nbsp;·&nbsp;The Command Center&nbsp;→</a>
+      <a href="#command-center" class="badge">▦&nbsp;New · The Command Center&nbsp;→</a>
       <div class="eyebrow">Terminal Agent Orchestrator</div>
-      <h1>Replace nothing.<br><span class="m">Orchestrate everything.</span></h1>
+      <h1>Replace nothing.<span class="m serif"><em>Orchestrate</em> everything.</span></h1>
       <p class="lead">Agent IDEs ship their own terminal, diff viewer, and worktree manager — then lock you in. jmux conducts the tools you already run.</p>
-      <div class="pill"><span class="d">$</span> bun install -g @jx0/jmux <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux');var s=this.innerHTML;this.innerHTML='<svg width=\'15\' height=\'15\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#34d399\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'/></svg>';setTimeout(()=>this.innerHTML=s,1500)" class="cp" title="Copy" style="background:none;border:none;cursor:pointer;color:var(--ink3)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+      <div class="cta-row">
+        <div class="pill"><span class="d">$</span> bun install -g @jx0/jmux
+          <button class="cp" title="Copy" onclick="copyCmd(this,'bun install -g @jx0/jmux')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+        <a href="#features" class="link-u">See what it does →</a>
+      </div>
       <div class="proof">
         <span class="stars">★★★★★</span><span>loved by terminal-native devs</span>
       </div>
@@ -317,53 +460,22 @@
   </div>
 </header>
 
-<!-- 2 · THESIS / ORCHESTRATION DIAGRAM -->
-<section class="sec thesis center">
-  <div class="glow"></div>
-  <div class="wrap">
-    <div class="animate-in"><div class="eyebrow">The whole idea</div>
-    <h2>One orchestrator.<br>Your tools stay your tools.</h2>
-    <p class="lead" style="margin-top:18px;">jmux doesn't reinvent your diff viewer, your branching model, or your terminal. It conducts the best-in-class tools you already trust — and if you stop using jmux, they're all still there.</p></div>
-    <div class="diagram">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-        <g stroke="rgba(52,211,153,.28)" stroke-width=".4" fill="none">
-          <line x1="50" y1="50" x2="50" y2="9"/><line x1="50" y1="50" x2="90" y2="29"/>
-          <line x1="50" y1="50" x2="90" y2="71"/><line x1="50" y1="50" x2="50" y2="91"/>
-          <line x1="50" y1="50" x2="10" y2="71"/><line x1="50" y1="50" x2="10" y2="29"/>
-        </g>
-        <g class="flow" stroke="#34d399" stroke-width=".5" fill="none" stroke-linecap="round" stroke-dasharray="1.4 10">
-          <line x1="50" y1="50" x2="50" y2="9"/><line x1="50" y1="50" x2="90" y2="29"/>
-          <line x1="50" y1="50" x2="90" y2="71"/><line x1="50" y1="50" x2="50" y2="91"/>
-          <line x1="50" y1="50" x2="10" y2="71"/><line x1="50" y1="50" x2="10" y2="29"/>
-        </g>
-      </svg>
-      <div class="node hub" style="left:50%;top:50%;"><b>jmux</b></div>
-      <div class="node" style="left:50%;top:9%;">tmux<small>your multiplexer</small></div>
-      <div class="node" style="left:90%;top:29%;">hunk<small>your diff viewer</small></div>
-      <div class="node" style="left:90%;top:71%;">wtm<small>your worktrees</small></div>
-      <div class="node" style="left:50%;top:91%;">Claude · Codex · aider<small>your agent</small></div>
-      <div class="node" style="left:10%;top:71%;">neovim<small>your editor</small></div>
-      <div class="node" style="left:10%;top:29%;">Linear · GitHub · GitLab<small>your tracker</small></div>
-    </div>
-  </div>
-</section>
-
-<!-- 3 · BENTO FEATURES -->
-<section class="sec surf showcase" id="features">
+<!-- FEATURE GRID -->
+<section class="sec base showcase" id="features">
   <div class="wrap center">
     <div class="animate-in"><div class="eyebrow">Built for the workflow</div>
-    <h2>Everything visible. Nothing in your way.</h2></div>
+    <h2>Everything visible. <em>Nothing</em> in your way.</h2></div>
   </div>
   <div class="wrap">
     <div class="bento">
       <div class="tile big animate-in">
-        <div class="ico">▤</div>
+        <div class="ico" aria-hidden="true">▤</div>
         <h3>Session Sidebar</h3>
         <p>Every session at a glance — project group, git branch, agent state, pipeline status, linked issue or PR, and live context tokens. Replaces tmux's status bar with a real workspace map.</p>
         <img class="bigshot" src="assets/sidebar.webp" alt="jmux session sidebar showing grouped sessions, activity dots, and agent-state flags">
       </div>
       <div class="tile animate-in">
-        <div class="ico">⏵</div>
+        <div class="ico" aria-hidden="true">⏵</div>
         <h3>Agent State</h3>
         <p>Three live states, driven by Claude Code hooks + telemetry:</p>
         <div class="states">
@@ -373,24 +485,29 @@
         </div>
       </div>
       <div class="tile animate-in">
-        <div class="ico">⇋</div>
+        <div class="ico" aria-hidden="true">⇋</div>
         <h3>Instant Switching</h3>
         <p><span class="kbd">Ctrl-Shift-↑/↓</span> — no prefix, no menu, no mode. Or click the sidebar.</p>
       </div>
       <div class="tile wide animate-in">
-        <div class="ico">◷</div>
+        <div class="ico" aria-hidden="true">◷</div>
         <h3>Context &amp; cache visibility</h3>
         <p>Live context-token occupancy per session (<span class="mono" style="color:var(--ink)">42k</span>, <span class="mono" style="color:var(--ink)">1.5M</span>) plus a cache-warm countdown — read straight from Claude Code's OpenTelemetry. Send while warm, save up to 90% on input tokens. No setup.</p>
       </div>
       <div class="tile animate-in">
-        <div class="ico">⌘</div>
+        <div class="ico" aria-hidden="true">⌘</div>
         <h3>Command Palette</h3>
         <p><span class="kbd">Ctrl-a p</span> — fuzzy-search sessions, windows, pane actions, settings.</p>
       </div>
       <div class="tile wide animate-in">
-        <div class="ico">▦</div>
+        <div class="ico" aria-hidden="true">▦</div>
         <h3>Command Center</h3>
         <p>Pin the agent pane from every session and drive them all at once in one live grid, organized into named tabs. Tile borders glow by state — type into any tile to steer that agent. Pin by hand or auto-pin every Claude &amp; Codex pane. Fully non-destructive: panes never leave their session.</p>
+      </div>
+      <div class="tile animate-in">
+        <div class="ico" aria-hidden="true">⚑</div>
+        <h3>Attention Flags</h3>
+        <p>When an agent finishes or needs you, its session raises an orange <span style="color:var(--amber)">!</span> in the sidebar — from a Claude Code Stop hook.</p>
       </div>
     </div>
   </div>
@@ -402,16 +519,22 @@
     <div class="txt animate-in">
       <div class="eyebrow">Single pane of glass</div>
       <h2>The Command Center</h2>
-      <p class="lead">Pin the Claude or Codex pane from every session and they all surface as live, drivable tiles in one grid — your whole fleet on a single screen. Type into any tile to steer that agent for real.</p>
-      <p class="lead">Tile borders match the sidebar's state colors, so you see who's <span style="color:var(--green)">running</span>, <span style="color:var(--amber)">waiting</span>, or <span style="color:var(--blue)">complete</span> at a glance. Auto-pin every agent pane, or pin by hand with <span class="kbd">Pin to Command Center</span> — and it's fully non-destructive: panes never leave their own session.</p>
-      <p class="lead">Running a lot at once? Group pinned panes from different sessions into <strong>named tabs</strong> — <span class="kbd">Backend</span>, <span class="kbd">Review</span>, whatever fits — and flip between them with <span class="kbd">Ctrl-a [</span> / <span class="kbd">]</span> or a number. Create, rename, and move panes between tabs entirely from the command palette.</p>
+      <p class="lead">Pin the Claude or Codex pane from every session and drive your whole fleet from one live grid — type into any tile to steer that agent for real.</p>
+      <ul class="points">
+        <li><strong>Borders glow by state</strong> — see who's <span style="color:var(--green)">running</span>, <span style="color:var(--amber)">waiting</span>, or <span style="color:var(--blue)">complete</span> at a glance.</li>
+        <li><strong>Pin by hand or auto-pin</strong> every Claude &amp; Codex pane — fully non-destructive, panes never leave their session.</li>
+        <li><strong>Group into named tabs</strong> and flip between them with <span class="kbd">Ctrl-a [</span> / <span class="kbd">]</span> or a number.</li>
+      </ul>
     </div>
-    <img src="assets/command-center.webp" alt="jmux Command Center showing a grid of live Claude agent panes, borders colored by agent state">
+    <div class="shot animate-in">
+      <figure class="main"><img src="assets/command-center.webp" alt="jmux Command Center showing a grid of live Claude agent panes, borders colored by agent state"></figure>
+      <figure class="detail dl"><img src="assets/detail-command-center.webp" alt="A single live agent tile, its title colored by run state"></figure>
+    </div>
   </div>
 </section>
 
 <!-- 4 · SHOWCASE ·1 -->
-<section class="sec showcase">
+<section class="sec base showcase">
   <div class="wrap showrow">
     <div class="txt animate-in">
       <div class="eyebrow">Keyboard-first</div>
@@ -419,77 +542,116 @@
       <p class="lead"><span class="kbd">Ctrl-a p</span> to open. Type to fuzzy-search sessions, windows, pane actions, and settings. Hit Enter to execute.</p>
       <p class="lead">Switch sessions by name, split panes, zoom, change settings — without memorizing keybindings.</p>
     </div>
-    <img src="assets/command-palette.webp" alt="jmux command palette floating over a workspace">
+    <div class="shot animate-in">
+      <figure class="main"><img src="assets/command-palette.webp" alt="jmux command palette floating over a workspace"></figure>
+      <figure class="detail dr"><img src="assets/detail-palette.webp" alt="The fuzzy command palette listing Switch to session results"></figure>
+    </div>
   </div>
 </section>
 
 <!-- 4 · SHOWCASE ·2 -->
-<section class="sec surf showcase">
+<section class="sec showcase">
   <div class="wrap showrow flip">
     <div class="txt animate-in">
       <div class="eyebrow">Code review</div>
       <h2>Info Panel &amp; Diff</h2>
-      <p class="lead"><span class="kbd">Ctrl-a g</span> to toggle. A tabbed side panel with diffs, issues, and PRs/MRs — the Diff tab powered by <a href="https://github.com/modem-dev/hunk" target="_blank" rel="noopener" style="color:var(--ac)">hunk</a>: syntax highlighting, word-level diffs, split and full-screen views.</p>
+      <p class="lead"><span class="kbd">Ctrl-a g</span> to toggle. A tabbed side panel with diffs, issues, and PRs/MRs — the Diff tab powered by <a href="https://github.com/modem-dev/hunk" target="_blank" rel="noopener" class="link-u">hunk</a>: syntax highlighting, word-level diffs, split and full-screen views.</p>
       <p class="lead">Split mode to monitor while agents work, full-screen for review. <span class="kbd">[</span> <span class="kbd">]</span> cycle tabs.</p>
     </div>
-    <div><img src="assets/diff-panel-split.webp" alt="jmux diff panel split mode"><img src="assets/diff-panel-full.webp" alt="jmux diff panel full screen"></div>
+    <div class="shot animate-in">
+      <figure class="main"><img src="assets/diff-panel-split.webp" alt="jmux diff panel split mode"></figure>
+      <figure class="detail dl"><img src="assets/detail-diff.webp" alt="A syntax-highlighted hunk diff with added lines"></figure>
+    </div>
   </div>
 </section>
 
 <!-- 4 · SHOWCASE ·3 -->
-<section class="sec showcase">
+<section class="sec base showcase">
   <div class="wrap showrow">
     <div class="txt animate-in">
       <div class="eyebrow">Issue &amp; PR tracking</div>
-      <h2>Linear, GitHub &amp; GitLab<br><span style="color:var(--ink3)">in the terminal.</span></h2>
+      <h2>Linear, GitHub &amp; GitLab<br><em>in the terminal.</em></h2>
       <p class="lead">The info panel shows your Linear issues and your GitHub/GitLab PRs/MRs in tabbed views, with pipeline status glyphs in the sidebar. Sessions auto-link to their branch's PR and issue.</p>
       <p class="lead">Select an issue, press <span class="kbd">n</span> — jmux creates a worktree, opens a session, and launches your agent with the issue context. <span class="kbd">o</span> open · <span class="kbd">s</span> status · <span class="kbd">a</span> approve.</p>
     </div>
-    <img src="assets/linear-issues.webp" alt="jmux info panel showing Linear issues alongside a session">
+    <div class="shot animate-in">
+      <figure class="main"><img src="assets/linear-issues.webp" alt="jmux info panel showing Linear issues alongside a session"></figure>
+      <figure class="detail dr"><img src="assets/detail-linear.webp" alt="The Issues panel: Backlog and To do lists of tracker issues"></figure>
+    </div>
   </div>
 </section>
 
 <!-- 4 · SHOWCASE ·4 — Themes & chrome -->
-<section class="sec surf showcase">
+<section class="sec showcase">
   <div class="wrap showrow flip">
     <div class="txt animate-in">
       <div class="eyebrow">Make it yours</div>
-      <h2>Themes &amp; chrome<br><span style="color:var(--ink3)">that match your terminal.</span></h2>
+      <h2>Themes &amp; chrome<br><em>that match your terminal.</em></h2>
       <p class="lead">jmux paints its own sidebar, toolbar, and rounded window chrome — and it <strong>fully adapts to your terminal's color scheme</strong>. Every glyph and surface is drawn from your terminal's own palette, so jmux inherits whatever theme you already run and looks native in <strong>light or dark</strong>, without a line of config. Change your terminal colors and the whole chrome follows.</p>
       <p class="lead">Tune the details from the settings modal (<span class="kbd">Ctrl-a i</span>): pick the <span style="color:var(--green)">running</span>, <span style="color:var(--amber)">waiting</span>, and <span style="color:var(--blue)">complete</span> state colors, set your code host and issue tracker, and dial in the sidebar and panel widths — no config file to hand-edit.</p>
     </div>
-    <div><img src="assets/theme-dark.webp" alt="jmux in a dark terminal theme: sidebar, window tabs, and a Claude Code session"><img src="assets/theme-light.webp" alt="jmux in a light terminal theme showing the same session, chrome adapting to the palette"></div>
+    <div class="stackpair">
+      <figure class="back"><img src="assets/command-center.webp" alt="jmux chrome peeking behind the theme stack"></figure>
+      <figure class="mid"><img src="assets/theme-light.webp" alt="jmux in a light terminal theme showing the same session, chrome adapting to the palette"></figure>
+      <figure class="front"><img src="assets/theme-dark.webp" alt="jmux in a dark terminal theme: sidebar, window tabs, and a Claude Code session"></figure>
+    </div>
   </div>
 </section>
 
 <!-- 5 · TESTIMONIALS -->
-<section class="sec surf tst center">
+<section class="sec base tst center">
   <div class="wrap">
-    <div class="animate-in"><div class="eyebrow">From the terminal</div>
-    <h2>Loved by terminal-native devs.</h2></div>
+    <div class="animate-in"><div class="eyebrow">From the timeline</div>
+    <h2>Word of <em>mouth.</em></h2></div>
     <div class="tgrid">
-      <div class="tcard animate-in" style="text-align:left">
-        <p>"I've used tmux for 5 years — jmux makes me 5× more efficient."</p>
+      <article class="tweet animate-in">
+        <div class="th">
+          <img src="assets/testimonial-stolinski.jpg" alt="Scott Tolinski" width="44" height="44">
+          <div>
+            <div class="nm">Scott Tolinski
+              <svg class="verified" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-label="Verified"><path d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.68.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.27 2.52-.81 3.91c-1.31.66-2.19 1.91-2.19 3.34s.88 2.67 2.19 3.34c-.46 1.39-.2 2.91.81 3.91s2.52 1.27 3.91.81c.66 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.46 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.66 2.19-1.91 2.19-3.34zm-11.71 4.2L6.8 12.46l1.41-1.42 2.26 2.26 4.8-5.23 1.47 1.36-6.2 6.77z"/></svg>
+            </div>
+            <div class="hd">@stolinski</div>
+          </div>
+          <svg class="xlogo" width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+        </div>
+        <div class="body">if you don't have a single-letter mux yet, you're ngmi</div>
+        <div class="muxlist">
+          <div class="dots">⋮</div>
+          <div>imux — github.com/hkparker/imux</div>
+          <div class="hi"><b>jmux — <a href="https://github.com/jarredkenny/jmux" target="_blank" rel="noopener">github.com/jarredkenny/jmux</a></b></div>
+          <div>kmux — github.com/kamalshkeir/km…</div>
+          <div class="dots">⋮</div>
+        </div>
+        <div class="time">2:28 PM · Jun 30, 2026 · <b>38.9K</b> Views</div>
+        <div class="stats">
+          <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>31</span>
+          <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>24</span>
+          <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>180</span>
+          <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>113</span>
+        </div>
+      </article>
+      <div class="tcard c-a animate-in">
+        <p>“I've used tmux for 5 years — jmux makes me 5× more efficient.”</p>
         <div class="who"><span class="av">M</span><span><div class="nm">Mouad</div></span></div>
       </div>
-      <a href="https://x.com/ravinwashere" target="_blank" rel="noopener" class="tcard animate-in" style="text-align:left">
-        <p>"The attention flags, clean sidebar, and quick session switching have genuinely made my workflow much smoother and less chaotic."</p>
+      <a href="https://x.com/ravinwashere" target="_blank" rel="noopener" class="tcard c-wide animate-in">
+        <p>“The attention flags, clean sidebar, and quick session switching have genuinely made my workflow much smoother and less chaotic.”</p>
         <div class="who"><span class="av"><img src="assets/testimonial-ravinwashere.jpg" alt=""></span><span><div class="nm">Ravin</div><div class="hd">@ravinwashere</div></span></div>
       </a>
-      <div class="tcard animate-in" style="text-align:left">
-        <p>"Wow."</p>
+      <div class="tcard c-b animate-in">
+        <p>“Wow.”</p>
         <div class="who"><span class="av">A</span><span><div class="nm">Azzeddine</div></span></div>
       </div>
     </div>
   </div>
 </section>
 
-
 <!-- 6 · COMPARISON -->
 <section class="sec cmp center">
   <div class="wrap">
     <div class="animate-in"><div class="eyebrow">How it compares</div>
-    <h2>What you give up with a bundled agent IDE.</h2></div>
+    <h2>What you give up with a <em>bundled</em> agent IDE.</h2></div>
     <div class="ctable">
       <table>
         <thead><tr><th></th><th class="jcol">jmux</th><th>Bundled IDEs</th><th>Raw tmux</th></tr></thead>
@@ -512,11 +674,11 @@
 </section>
 
 <!-- 7 · CLI BAND -->
-<section class="sec surf cliband center">
+<section class="sec panel cliband center">
   <div class="wrap">
     <div class="animate-in"><div class="eyebrow">Agent orchestration <span class="new">NEW</span></div>
-    <h2>Agents that orchestrate agents.</h2>
-    <p class="lead" style="margin-top:16px">A structured JSON control surface for agents and scripts. Read every session's live state, start work from an issue, stream lifecycle events, and flag what needs a human — <strong style="color:var(--ink)">without scraping a single pane</strong>. Context auto-resolves from <span class="kbd">$TMUX</span>, so it works headless too.</p></div>
+    <h2>Agents that <em>orchestrate</em> agents.</h2>
+    <p class="lead" style="margin-top:18px">A structured JSON control surface for agents and scripts. Read every session's live state, start work from an issue, stream lifecycle events, and flag what needs a human — <strong style="color:var(--ink)">without scraping a single pane</strong>. Context auto-resolves from <span class="kbd">$TMUX</span>, so it works headless too.</p></div>
     <div class="term">
       <div class="bar"><span class="d" style="background:#ff5f56"></span><span class="d" style="background:#ffbd2e"></span><span class="d" style="background:#27c93f"></span><small>work-radar</small></div>
       <div class="body">
@@ -541,7 +703,7 @@
 <section class="sec eco center" id="ecosystem">
   <div class="wrap">
     <div class="animate-in"><div class="eyebrow">Ecosystem</div>
-    <h2>Best-in-class tools. Deeply integrated.</h2></div>
+    <h2>Best-in-class tools. <em>Deeply</em> integrated.</h2></div>
     <div class="ecogrid">
       <div class="ecocard animate-in"><div class="nm"><a href="https://github.com/modem-dev/hunk" target="_blank" rel="noopener">hunk</a></div><div class="tg">Best terminal diff viewer</div><p>Powers the integrated diff panel — word-level, split &amp; full-screen.</p></div>
       <div class="ecocard animate-in"><div class="nm"><a href="https://github.com/jarredkenny/worktree-manager" target="_blank" rel="noopener">wtm</a></div><div class="tg">Git worktree manager</div><p>One worktree per agent, one session per branch.</p></div>
@@ -556,12 +718,19 @@
 </section>
 
 <!-- 9 · CTA -->
-<section class="sec cta" id="install">
-  <div class="glow"></div>
-  <h2>Two commands. You're in.</h2>
+<section class="sec panel cta" id="install">
+  <svg class="filigree" viewBox="0 0 1200 500" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <g stroke="var(--ac-line)" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M90 110 l26 -26 26 26 26 -26"/><path d="M1020 90 l26 26 26 -26 26 26"/>
+      <path d="M140 410 l30 30 30 -30"/><path d="M1060 400 l-26 26 -26 -26 -26 26"/>
+    </g>
+  </svg>
+  <h2>Two commands. <em>You're in.</em></h2>
   <p class="sub">Requires Bun 1.3.8+ and tmux 3.2+.</p>
   <div class="cmd">
-    <button onclick="navigator.clipboard.writeText('bun install -g @jx0/jmux\njmux');var s=this.innerHTML;this.innerHTML='<svg width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#34d399\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'/></svg>';setTimeout(()=>this.innerHTML=s,1500)" title="Copy" style="position:absolute;top:16px;right:16px;background:none;border:none;cursor:pointer;color:var(--ink3)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+    <button class="cp" title="Copy" onclick="copyCmd(this,'bun install -g @jx0/jmux\njmux')" style="position:absolute;top:16px;right:16px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    </button>
     <div><span class="d">$</span> bun install -g @jx0/jmux</div>
     <div><span class="d">$</span> jmux</div>
   </div>
@@ -570,11 +739,31 @@
 
 <!-- FOOTER -->
 <footer><div class="wrap row">
-  <div class="brand" style="font-size:15px"><img src="assets/logo.svg" alt="" width="22" height="22"> jmux <span style="color:var(--ink3);font-size:12px;font-weight:400">MIT License</span></div>
+  <a href="#top" class="brand"><img src="assets/logo.svg" alt="" width="24" height="24"> jmux <span style="color:var(--ink3);font-size:12px;font-weight:400;font-family:'Inter'">MIT License</span></a>
   <div class="links"><a href="https://github.com/jarredkenny/jmux" target="_blank" rel="noopener">GitHub</a><a href="https://www.npmjs.com/package/@jx0/jmux" target="_blank" rel="noopener">npm</a><a href="https://github.com/jarredkenny/jmux#readme" target="_blank" rel="noopener">Docs</a></div>
 </div></footer>
 
 <script>
+  // ---- theme toggle ----
+  function toggleTheme(){
+    var r = document.documentElement;
+    var next = r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    r.setAttribute('data-theme', next);
+    try { localStorage.setItem('jmux-theme', next); } catch (e) {}
+  }
+
+  // ---- copy-to-clipboard ----
+  var CHECK_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  function copyCmd(btn, text){
+    try { navigator.clipboard.writeText(text); } catch (e) {}
+    if (btn._t) clearTimeout(btn._t);
+    if (!btn._orig) btn._orig = btn.innerHTML;
+    btn.innerHTML = CHECK_SVG;
+    btn.classList.add('ok');
+    btn._t = setTimeout(function(){ btn.innerHTML = btn._orig; btn.classList.remove('ok'); }, 1500);
+  }
+
+  // ---- scroll reveal ----
   (function () {
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
@@ -593,24 +782,7 @@
     document.querySelectorAll('.animate-in').forEach(function (el) { io.observe(el); });
   })();
 
-  // hero cursor spotlight
-  (function () {
-    var hero = document.querySelector('.hero');
-    if (!hero) return;
-    var raf = null, x = 0, y = 0;
-    function apply() {
-      raf = null;
-      hero.style.setProperty('--mx', x + 'px');
-      hero.style.setProperty('--my', y + 'px');
-    }
-    hero.addEventListener('pointermove', function (e) {
-      var r = hero.getBoundingClientRect();
-      x = e.clientX - r.left; y = e.clientY - r.top;
-      if (!raf) raf = requestAnimationFrame(apply);
-    });
-  })();
-
-  // hero screenshot deck: auto-cycle the foreground, and let clicks drive it
+  // ---- hero screenshot deck ----
   (function () {
     var stack = document.querySelector('.herostack');
     if (!stack) return;
@@ -630,10 +802,9 @@
     function start() { stop(); if (!reduce) timer = setInterval(advance, 3800); }
     cards.forEach(function (c, i) {
       c.addEventListener('click', function () {
-        // click a back card to bring it forward; click the front to advance
         front = (i === front) ? (front + 1) % n : i;
         apply();
-        start(); // reset the auto-cycle timer after a manual pick
+        start();
       });
     });
     apply();
