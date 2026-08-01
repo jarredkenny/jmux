@@ -196,7 +196,7 @@
 
   /* ============ HERO ============ */
   .hero{ position:relative; padding:96px 0 84px; overflow:hidden; }
-  .hero .grid{ position:relative; z-index:2; display:grid; grid-template-columns:1.02fr 1.1fr; gap:56px; align-items:center; }
+  .hero .grid{ position:relative; z-index:2; display:grid; grid-template-columns:.96fr 1.2fr; gap:50px; align-items:start; }
   .badge{ display:inline-flex; align-items:center; gap:.5em; align-self:flex-start; margin-bottom:22px; padding:6px 14px; border:1px solid var(--bd2); border-radius:999px; color:var(--ink2); font-size:12.5px; font-weight:600; background:var(--tint); }
   .badge:hover{ border-color:var(--ink3); color:var(--ink); }
   .hero h1{ font-family:'Fraunces',serif; font-weight:400; letter-spacing:-.02em; line-height:1.04; font-size:56px; margin-bottom:26px; color:var(--ink); text-wrap:balance; }
@@ -205,24 +205,67 @@
   .hero h1 .m{ display:block; color:var(--ink); }
   .hero .lead{ font-size:18px; max-width:44ch; margin-bottom:32px; }
   .cta-row{ display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+  /* The demo route used to be a paragraph of its own below the install block,
+     which gave it the same weight as the command above it. It is an alternative
+     path, not a second headline — so it sits beside the primary link, quieter. */
+  .link-u.subtle{ color:var(--ink2); font-weight:500; border-bottom-color:transparent; font-size:14px; }
+  .link-u.subtle:hover{ border-bottom-color:color-mix(in srgb, var(--ink3) 50%, transparent); }
+  .link-u.subtle .mono{ color:var(--ink); }
   .pill{ display:inline-flex; align-items:center; gap:11px; padding:12px 16px; border-radius:12px; background:var(--card); border:1px solid var(--bd2); box-shadow:var(--shadow-sm); font-family:'JetBrains Mono',monospace; font-size:14px; color:var(--ink); }
   .pill .d{ color:var(--ac); font-weight:700; }
   .cp{ background:none; border:none; cursor:pointer; color:var(--ink3); display:inline-flex; padding:2px; }
   .cp:hover{ color:var(--ac); }
   .cp.ok{ color:var(--ac); }
-  .proof{ display:flex; align-items:center; gap:12px; margin-top:30px; color:var(--ink2); font-size:13.5px; }
   .stars{ color:var(--ink2); letter-spacing:1px; }
-  .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
-  .chip{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ink2); background:var(--card); border:1px solid var(--bd); border-radius:999px; padding:5px 12px; }
 
+  /* The walkthrough. `preload="none"` on purpose: the poster carries the frame
+     and a ~3MB autoload would be the heaviest thing on a page that otherwise
+     ships text and a handful of stills. */
   .heroshot{ position:relative; }
-  .herostack{ position:relative; aspect-ratio:16/10; }
-  .herostack .card{ position:absolute; inset:0; margin:0; border-radius:14px; overflow:hidden; border:1px solid var(--bd2); box-shadow:var(--shadow); transition:transform .9s cubic-bezier(.2,.7,.2,1), opacity .9s ease, filter .9s ease; will-change:transform,opacity; cursor:pointer; background:var(--card); }
-  .herostack .card img{ width:100%; height:100%; object-fit:cover; object-position:top left; display:block; }
-  .herostack .card[data-pos="0"]{ transform:none; opacity:1; z-index:40; filter:none; }
-  .herostack .card[data-pos="1"]{ transform:translate(8%,9%) scale(.93); opacity:.96; z-index:30; filter:brightness(.9); }
-  .herostack .card[data-pos="2"]{ transform:translate(16%,18%) scale(.86); opacity:.82; z-index:20; filter:brightness(.78); }
-  .herostack .card[data-pos="3"]{ transform:translate(24%,27%) scale(.79); opacity:.62; z-index:10; filter:brightness(.66); }
+  /* Sits level with the headline rather than the badge above it — the badge is a
+     lead-in, and aligning a large object to it leaves the shot floating high.
+     Scoped to the two-column layout: once the grid collapses to one column this
+     is not an alignment at all, just 64px stacked on top of the grid's own gap. */
+  @media (min-width:881px){
+    .heroshot{ margin-top:64px; }
+  }
+  /* On wide screens let the hero shot run past the container into the outer
+     gutter, the same move the feature rows make — the hero is the one place the
+     product should be biggest, and the wrap's 1180px is a measure for prose, not
+     for a screenshot. A larger fraction of the gutter than `.showrow` takes
+     (0.9 vs 0.5) because nothing sits to its right to collide with, and capped so
+     it never reaches the viewport edge. `.hero` is `overflow:hidden`, which
+     clips at the viewport rather than at the wrap, so this is safe by
+     construction.
+
+     `justify-self:start` is load-bearing. An over-wide grid item aligned to
+     `end` pins its right edge to the track and spills the extra width
+     *leftward*, underneath the headline; `start` pins the left edge and spills
+     it into the gutter, which is the point. */
+  @media (min-width:1081px){
+    .heroshot{ --bleed:clamp(0px, calc((100vw - 1180px) / 2 * 0.55), 140px);
+               width:calc(100% + var(--bleed)); justify-self:start; }
+  }
+
+  /* The hero's product shot is the film itself.
+     `.herostage` gives the 3D something to read against; `.herofloat` holds the
+     standing tilt and the drift; `.heroscreen` is the surface the camera script
+     writes to. Keeping them apart means the script only ever owns one transform
+     and never has to reproduce the other two. */
+  .herostage{ perspective:1700px; }
+  .herofloat{ transform:rotateY(-9deg) rotateX(3deg); transform-style:preserve-3d; }
+  .heroscreen{ position:relative; border-radius:12px; overflow:hidden;
+               border:1px solid rgba(255,255,255,.10);
+               background:#0d0d0f; transform-origin:center center; will-change:transform;
+               box-shadow:0 50px 90px rgba(20,16,10,.30), 0 16px 34px rgba(20,16,10,.20); }
+  .heroscreen video{ width:100%; height:auto; display:block; aspect-ratio:16/9; }
+  /* A glass edge, so the window reads as an object rather than a pasted rectangle. */
+  .heroscreen::after{ content:""; position:absolute; inset:0; pointer-events:none; border-radius:12px;
+                      background:linear-gradient(150deg, rgba(255,255,255,.10), rgba(255,255,255,0) 38%); }
+  :root[data-theme="dark"] .heroscreen{ box-shadow:0 50px 100px rgba(0,0,0,.62), 0 16px 34px rgba(0,0,0,.45); }
+  @media (prefers-color-scheme: dark){
+    .heroscreen{ box-shadow:0 50px 100px rgba(0,0,0,.62), 0 16px 34px rgba(0,0,0,.45); }
+  }
 
   /* subtle filigree (CTA panel) */
   .filigree{ position:absolute; inset:0; z-index:0; pointer-events:none; opacity:.5; }
@@ -390,7 +433,13 @@
   /* Block-level so the command always starts on its own line: as an inline
      element the short `bun`/`brew` commands sat beside the tabs while the long
      curl one wrapped below, so the layout jumped when switching tabs. */
-  .ipick{ display:flex; width:max-content; max-width:100%; gap:2px; padding:3px; border-radius:11px; background:var(--tint); border:1px solid var(--bd); margin-bottom:11px; }
+  /* `inline-flex`, not `flex`, and for the same reason `.pill` is: it lets the
+     picker follow its section's `text-align` instead of ignoring it. As a block
+     box it stayed pinned to the left padding edge of the centred install
+     section while every one of its siblings — heading, sub, command pill, cards
+     — sat centred, which read as a layout bug because it was one. In the hero,
+     where the column is left-aligned, this changes nothing. */
+  .ipick{ display:inline-flex; width:max-content; max-width:100%; gap:2px; padding:3px; border-radius:11px; background:var(--tint); border:1px solid var(--bd); margin-bottom:11px; vertical-align:top; }
   .ipick button{ appearance:none; background:none; border:0; cursor:pointer; font:inherit; font-size:12.5px; color:var(--ink2); padding:6px 13px; border-radius:8px; transition:background .15s,color .15s; white-space:nowrap; }
   .ipick button:hover{ color:var(--ink); }
   .ipick button[aria-selected="true"]{ background:var(--card); color:var(--ink); box-shadow:var(--shadow-sm); }
@@ -510,13 +559,13 @@
     .brand{ font-size:20px; gap:9px; }
     .btn{ padding:10px 16px; font-size:13.5px; }
 
-    /* screenshot decks: the desktop offsets are a fraction of a much wider
-       card, so at phone width they push the deck off the right (hero) or
-       left (themes) edge. Pull the offsets in and reserve room for them. */
-    .heroshot{ padding:0 16% 12% 0; }
-    .herostack .card[data-pos="1"]{ transform:translate(6%,7%) scale(.94); }
-    .herostack .card[data-pos="2"]{ transform:translate(12%,14%) scale(.88); }
-    .herostack .card[data-pos="3"]{ transform:translate(18%,21%) scale(.82); }
+    /* The themes deck's desktop offsets are a fraction of a much wider card, so
+       at phone width they push it off the left edge. Pull them in and reserve
+       room. (The hero used to need the same treatment; it holds a single window
+       now, with no offsets to reserve for.) */
+    /* Straighten up as the column narrows — a 9° tilt on a small window just
+       throws away width that the terminal needs. */
+    .herofloat{ transform:rotateY(-5deg) rotateX(2deg); }
     .stackpair{ margin:0 0 12% 16%; }
     .stackpair .mid{ transform:translate(-9%,10%) scale(.93); }
     .stackpair .back{ transform:translate(-18%,20%) scale(.86); }
@@ -584,14 +633,17 @@
   .hero-copy > *:nth-child(6){ animation-delay:.40s; }
   .heroshot{ opacity:0; animation:riseIn .8s cubic-bezier(.2,.7,.2,1) .28s forwards; }
   @keyframes floaty{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-7px); } }
-  .herostack{ animation:floaty 8s ease-in-out 1.2s infinite; }
+  .herofloat{ animation:floaty 9s ease-in-out 1.2s infinite; }
+  /* `floaty` animates `translateY` only, so it composes with the standing tilt
+     rather than overwriting it. */
+  @keyframes floaty{ 0%,100%{ translate:0 0; } 50%{ translate:0 -8px; } }
   @keyframes runpulse{ 0%,100%{ opacity:.45; } 50%{ opacity:1; } }
   .runpulse{ animation:runpulse 1.4s ease-in-out infinite; }
 
   @media (prefers-reduced-motion: reduce){
     .animate-in{ opacity:1; transform:none; transition:none; }
     .hero-copy > *, .heroshot{ opacity:1 !important; transform:none !important; animation:none !important; }
-    .herostack, .runpulse{ animation:none !important; }
+    .herofloat, .runpulse{ animation:none !important; }
     *{ scroll-behavior:auto !important; }
   }
   </style>
@@ -632,7 +684,6 @@
   <div class="wrap grid">
     <div class="hero-copy">
       <a href="#workflow" class="badge">&#x23F8;&#xFE0E;&nbsp;New · Work that parks itself&nbsp;→</a>
-      <div class="eyebrow">Agent fleet · work pipeline</div>
       <h1>Everyone else stops at the pane.<span class="m serif"><em>Ticket in.</em> Merge out.</span></h1>
       <p class="lead">Run a fleet of coding agents in the terminal you already use — then run your actual backlog through them. Stages you define, work that parks itself once it leaves your hands, and issue-to-merged without opening a browser.</p>
       <div class="installer">
@@ -653,23 +704,43 @@
           </button>
         </div>
         <p class="icap">No runtime needed — installs a self-contained binary.</p>
-        <div class="cta-row" style="margin-top:16px"><a href="#workflow" class="link-u">See the pipeline →</a></div>
-      </div>
-      <div class="proof">
-        <span>Or look around first — <span class="mono" style="color:var(--ink)">jmux --demo</span> runs the whole thing on mock data. Every feature, no credentials, nothing to configure.</span>
-      </div>
-      <div class="chips">
-        <span class="chip">Open source · AGPL-3.0</span>
-        <span class="chip">nothing to migrate</span>
-        <span class="chip">Linear · GitHub · GitLab</span>
+        <div class="cta-row" style="margin-top:16px">
+          <a href="#workflow" class="link-u">See the pipeline →</a>
+          <a href="#install" class="link-u subtle">Or try it on mock data — <span class="mono">jmux --demo</span></a>
+        </div>
       </div>
     </div>
     <div class="heroshot">
-      <div class="herostack">
-        <figure class="card" data-pos="0"><img src="assets/command-center.webp" alt="jmux Command Center: a grid of live Claude agent panes, borders colored by state"></figure>
-        <figure class="card" data-pos="1"><img src="assets/theme-dark.webp" alt="jmux in a dark terminal theme: sidebar, window tabs, and a Claude Code session"></figure>
-        <figure class="card" data-pos="2"><img src="assets/linear-issues.webp" alt="jmux info panel showing Linear issues alongside a session"></figure>
-        <figure class="card" data-pos="3"><img src="assets/theme-light.webp" alt="jmux in a light terminal theme showing the same session, chrome adapting to the palette"></figure>
+      <!--
+        The product, running, rather than a slideshow of stills of it.
+
+        Three nested elements because three different things move it, and
+        composing them in one `transform` would mean one of them fighting the
+        others: `.herostage` holds the perspective, `.herofloat` carries the
+        standing tilt and the slow drift (CSS, never touched by script), and
+        `.heroscreen` is what the camera writes to (JS, from the film's own
+        timeline). Same split as the video itself — the recording is flat and
+        everything else is layered on here.
+      -->
+      <div class="herostage">
+        <div class="herofloat">
+          <div class="heroscreen" id="demo-screen">
+            <video
+              id="demo-video"
+              autoplay
+              muted
+              loop
+              playsinline
+              preload="auto"
+              poster="assets/hero-poster.jpg"
+              aria-label="jmux running: a grid of live coding agents, one agent's diff beside the sidebar's run and wait states, the issue panel, and the workflow screen taking handed-off work out of the sidebar.">
+              <!-- H.264 only. A VP9 webm listed first here failed to decode in
+                   Chrome, which meant a dead player for most visitors; it was
+                   also the larger file both times it was tried. -->
+              <source src="assets/hero.mp4" type="video/mp4">
+            </video>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1223,31 +1294,134 @@
 
   // ---- hero screenshot deck ----
   (function () {
-    var stack = document.querySelector('.herostack');
-    if (!stack) return;
-    var cards = Array.prototype.slice.call(stack.querySelectorAll('.card'));
-    if (cards.length < 2) return;
-    var n = cards.length;
-    var front = 0, timer = null;
-    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    function apply() {
-      cards.forEach(function (c, i) {
-        var pos = (i - front + n) % n;
-        c.setAttribute('data-pos', String(Math.min(pos, 3)));
-      });
-    }
-    function advance() { front = (front + 1) % n; apply(); }
-    function stop() { if (timer) { clearInterval(timer); timer = null; } }
-    function start() { stop(); if (!reduce) timer = setInterval(advance, 3800); }
-    cards.forEach(function (c, i) {
-      c.addEventListener('click', function () {
-        front = (i === front) ? (front + 1) % n : i;
-        apply();
-        start();
-      });
-    });
-    apply();
-    start();
+    // ---- The walkthrough's camera -------------------------------------------
+    //
+    // The video is flat: six shots joined by a slide, with no tilts baked in.
+    // Every push and lean happens here, as a CSS transform on the frame around
+    // it. That keeps the terminal text pixel-sharp at any push, keeps the file
+    // small (a baked camera changes every pixel of every frame), and makes the
+    // whole camera tunable without a re-render.
+    //
+    // The plan is generated from render/src/shots.ts — the same file Remotion
+    // cuts from — so the two cannot drift. It is driven from `currentTime`
+    // rather than a CSS animation of matching length: an animation starts in
+    // sync and loses it the moment the video stalls, and a camera pointing at
+    // the wrong half of the screen is worse than no camera.
+    (function () {
+      var video = document.getElementById('demo-video');
+      var screen = document.getElementById('demo-screen');
+      if (!video || !screen) return;
+
+      var quiet = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+      if (quiet && quiet.matches) {
+        // Stopped on its poster, with controls, so playing it is their choice.
+        video.autoplay = false;
+        video.loop = false;
+        video.controls = true;
+        video.pause();
+        return;
+      }
+
+      var plan = null;
+      fetch('assets/hero-camera.json')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { plan = j; if (j) requestAnimationFrame(tick); })
+        .catch(function () { /* no plan, no camera — the film still plays */ });
+
+      function ease(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2; }
+      // Springs overshoot a little; that is what makes an arrival feel physical.
+      function overshoot(t) { var c = 1.70158 + 1; return 1 + c*Math.pow(t-1,3) + 1.70158*Math.pow(t-1,2); }
+      function lerp(a, b, t) { return a + (b - a) * t; }
+      function at(pair, t, fallback) { return pair ? lerp(pair[0], pair[1], t) : fallback; }
+
+      function originOf(shot) {
+        if (!shot.origin) return [50, 50];
+        var parts = String(shot.origin).split(/\s+/);
+        var axis = function (v, d) {
+          if (v === 'center') return 50;
+          if (v === 'left' || v === 'top') return 0;
+          if (v === 'right' || v === 'bottom') return 100;
+          var n = parseFloat(v);
+          return isFinite(n) ? n : d;
+        };
+        return [axis(parts[0], 50), axis(parts[1], 50)];
+      }
+
+      // Rotation only — deliberately no scale. A tilt is something happening to
+      // an object in space; a scale is something happening to your viewport, and
+      // on a page it reads as the page zooming rather than as a camera moving.
+      function poseOf(shot, time) {
+        var span = Math.max(shot.end - shot.start, 0.0001);
+        var raw = Math.min(Math.max((time - shot.start) / span, 0), 1);
+        var arrival = shot.spring ? overshoot(raw) : ease(raw);
+
+        var o = originOf(shot);
+        return {
+          rotateY: at(shot.rotateY, arrival, 0),
+          rotateX: at(shot.rotateX, arrival, 0),
+          y: at(shot.y, arrival, 0),
+          ox: o[0],
+          oy: o[1]
+        };
+      }
+
+      function blend(a, b, t) {
+        return {
+          rotateY: lerp(a.rotateY, b.rotateY, t),
+          rotateX: lerp(a.rotateX, b.rotateX, t),
+          y: lerp(a.y, b.y, t),
+          ox: lerp(a.ox, b.ox, t),
+          oy: lerp(a.oy, b.oy, t)
+        };
+      }
+
+      // Stop decoding when it scrolls away. It is the first thing on the page and
+      // it autoplays, so it is also the thing most likely to be left running in a
+      // background tab burning battery on a loop nobody is watching.
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) { video.play().catch(function () {}); }
+            else { video.pause(); }
+          });
+        }, { threshold: 0.05 }).observe(video);
+      }
+
+      function tick() {
+        if (!plan) return;
+        var t = video.currentTime % plan.duration;
+
+        // Shots overlap by exactly the slide, so two can be live at once. Blend
+        // across the overlap or the camera snaps on every cut.
+        var live = [];
+        for (var i = 0; i < plan.shots.length; i++) {
+          var sh = plan.shots[i];
+          if (t >= sh.start && t <= sh.end) live.push(sh);
+        }
+
+        var pose;
+        if (live.length === 0) {
+          pose = poseOf(plan.shots[0], plan.shots[0].start);
+        } else if (live.length === 1) {
+          pose = poseOf(live[0], t);
+        } else {
+          var a = live[0], b = live[live.length - 1];
+          var overlap = Math.max(a.end - b.start, 0.0001);
+          pose = blend(poseOf(a, t), poseOf(b, t), ease(Math.min((t - b.start) / overlap, 1)));
+        }
+
+        screen.style.transformOrigin = pose.ox.toFixed(2) + '% ' + pose.oy.toFixed(2) + '%';
+        screen.style.transform =
+          'translateY(' + pose.y.toFixed(2) + 'px) ' +
+          'rotateX(' + pose.rotateX.toFixed(3) + 'deg) ' +
+          'rotateY(' + pose.rotateY.toFixed(3) + 'deg)';
+
+        requestAnimationFrame(tick);
+      }
+    })();
+
+    // The hero's card-cycler is gone: the stack of stills it rotated has been
+    // replaced by the film itself.
   })();
 </script>
 </body>

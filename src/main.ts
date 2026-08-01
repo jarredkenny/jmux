@@ -197,6 +197,8 @@ Usage:
 Options:
   -L, --socket <name>      Use a separate tmux server socket
   --demo                   Run in demo mode with mock data
+  --live                   With --demo: run real agents in the demo sessions
+                           (needs the claude CLI; spends real tokens)
   --install-agent-hooks    Install agent state hooks (Claude Code, Codex, pi)
   --install-skill          Install the jmux-control skill for Claude Code
   --uninstall-integrations Remove everything the two commands above installed
@@ -338,8 +340,33 @@ let demoCleanup: ((ctx: DemoContext) => void) | null = null;
 
 if (demoMode) {
   const mod = await import("./demo/setup");
-  demoCtx = mod.setupDemo();
+  // `configFile` is resolved above (line ~268) — demo mode *starts* the tmux
+  // server itself, and `-f` is only honored by the process that does, so this
+  // is jmux's one chance to apply its config to the demo socket.
+  demoCtx = mod.setupDemo({ configFile });
   demoCleanup = mod.cleanupDemo;
+
+  // `--live` runs real agents in the demo's sessions instead of seeding their
+  // state. Opt-in because it spends real tokens against the user's own agent
+  // credentials — demo mode's promise is "no credentials needed", and this is
+  // the one flag that breaks it, so it must never be reachable by accident.
+  if (process.argv.includes("--live")) {
+    const live = await import("./demo/live-agents");
+    if (!live.agentAvailable()) {
+      console.error("--live needs the `claude` CLI on PATH; running with seeded state instead.");
+    } else {
+      const ctx = demoCtx;
+      live.startLiveAgents(ctx);
+      // Deliberately not awaited: the trust dialog takes seconds to appear and
+      // blocking here would hold the first frame behind it. jmux boots, the
+      // panes settle in the background, and the sidebar picks up the state as
+      // the emitters write it. The watcher then stays up for the life of the
+      // demo so sessions created later — by `Ctrl-a u`, or `n` in the issue
+      // panel — don't strand their agent on the same dialog.
+      void live.acceptWorkspaceTrust(ctx);
+      live.watchWorkspaceTrust(ctx);
+    }
+  }
 }
 
 const configStore = new ConfigStore(demoCtx?.configPath);
@@ -417,6 +444,15 @@ for (let i = 2; i < process.argv.length; i++) {
   const arg = process.argv[i];
   if (arg === "--demo") {
     continue; // already handled above
+  } else if (arg === "--live") {
+    // Handled above, but only meaningful alongside --demo. Silently ignoring it
+    // would leave someone watching a sidebar of seeded state believing they
+    // were looking at real agents.
+    if (!demoMode) {
+      console.error("--live requires --demo");
+      process.exit(1);
+    }
+    continue;
   } else if (arg === "--socket" || arg === "-L") {
     if (demoMode) {
       console.error("--socket cannot be used with --demo");

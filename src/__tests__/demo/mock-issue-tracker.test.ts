@@ -87,14 +87,33 @@ describe("DemoIssueTrackerAdapter", () => {
     expect(found!.status).toBe("Done");
   });
 
-  test("getAvailableStatuses returns 5 statuses", async () => {
+  test("getAvailableStatuses offers every status an issue can be moved to", async () => {
     const statuses = await adapter.getAvailableStatuses("issue-1234");
-    expect(statuses).toHaveLength(5);
-    expect(statuses).toContain("Backlog");
-    expect(statuses).toContain("Todo");
-    expect(statuses).toContain("In Progress");
-    expect(statuses).toContain("In Review");
-    expect(statuses).toContain("Done");
+
+    // The statuses demo issues actually sit in must all be offered, or the
+    // status picker can't put an issue back where it came from.
+    for (const inUse of ["Backlog", "Todo", "In Progress", "In Code Review", "Done"]) {
+      expect(statuses).toContain(inUse);
+    }
+
+    // And the list is deliberately wider than what's in use. The workflow
+    // screen's argument is that a real tracker carries statuses named for other
+    // people's processes; a tracker offering only the tidy few has nothing to
+    // collapse and makes the feature look like ceremony.
+    expect(statuses.length).toBeGreaterThan(12);
+    expect(statuses).toContain("Awaiting QA Sign-off");
+    expect(statuses).toContain("Pending Release Approval");
+  });
+
+  test("every offered status is classified", async () => {
+    const statuses = await adapter.getAvailableStatuses("issue-1234");
+    const states = await adapter.listWorkflowStates();
+
+    // An unclassified status falls through to "active", which reads as correct
+    // until something keys off `done` — the sidebar's ghost rows do, and a
+    // completed issue then shows as unstarted work forever.
+    expect(states.map((s) => s.name).sort()).toEqual([...statuses].sort());
+    expect(states.every((s) => typeof s.type === "string" && s.type.length > 0)).toBe(true);
   });
 
   test("searchIssues matches by title (case-insensitive)", async () => {

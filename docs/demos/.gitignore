@@ -1,0 +1,16 @@
+# Recorded footage and build intermediates.
+#
+# The tapes, the Remotion cut and build.sh are the sources and are tracked; the
+# footage they produce is not. Acts are re-recordable (`./build.sh --record`) and
+# live agents make every take different anyway, so committing one would freeze an
+# arbitrary take as if it were canonical. The *published* assets do get
+# committed — they live in site/assets and docs/screenshots.
+act1.mp4
+act2.mp4
+act3.mp4
+act1.gif
+act2.gif
+act3.gif
+dist/
+render/node_modules/
+render/public/*.mp4

@@ -2,16 +2,63 @@ import type { IssueTrackerAdapter, Issue, AdapterAuthState, IssueStateType, Work
 import { buildLinearPrompt } from "../adapters/linear-prompt";
 import { DEMO_ISSUES, DEMO_TEAMS } from "./seed-data";
 
-const AVAILABLE_STATUSES = ["Backlog", "Todo", "In Progress", "In Review", "Done"];
+/**
+ * The statuses this demo tracker offers.
+ *
+ * Deliberately long, and deliberately longer than the set the demo's issues
+ * actually sit in. The workflow screen's whole argument is that a real tracker
+ * accumulates statuses named for other people's processes — QA sign-off,
+ * release approval, escalation paths — and that you shouldn't have to think in
+ * all of them. A demo offering five tidy statuses quietly refutes that: there is
+ * nothing to collapse, so the feature looks like ceremony.
+ *
+ * Several of these intentionally map to no stage, so the screen has real
+ * unmapped rows to show rather than a table where everything is already tidy.
+ */
+const AVAILABLE_STATUSES = [
+  "Backlog",
+  "Triaged",
+  "Todo",
+  "Ready for Development",
+  "In Progress",
+  "Reopened",
+  "Blocked",
+  "In Review",
+  "In Code Review",
+  "Awaiting QA Sign-off",
+  "Failed QA",
+  "Customer Escalation",
+  "Pending Release Approval",
+  "Ready to Deploy",
+  "Released",
+  "Done",
+  "On Hold",
+  "Won't Do",
+  "Duplicate",
+];
 
 // Category per demo state, so demo mode exercises the same stateType-based
 // stage fallback the real adapters do.
 const DEMO_STATE_TYPES: Record<string, IssueStateType> = {
   Backlog: "backlog",
+  Triaged: "backlog",
+  "On Hold": "backlog",
   Todo: "unstarted",
+  "Ready for Development": "unstarted",
   "In Progress": "started",
+  Reopened: "started",
+  Blocked: "started",
   "In Review": "started",
+  "In Code Review": "started",
+  "Awaiting QA Sign-off": "started",
+  "Failed QA": "started",
+  "Customer Escalation": "started",
+  "Pending Release Approval": "started",
+  "Ready to Deploy": "started",
+  Released: "completed",
   Done: "completed",
+  "Won't Do": "canceled",
+  Duplicate: "canceled",
 };
 
 export class DemoIssueTrackerAdapter implements IssueTrackerAdapter {

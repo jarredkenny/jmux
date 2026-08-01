@@ -1,0 +1,26 @@
+{
+  "name": "jmux-demo-render",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Renders the jmux walkthrough from the recorded acts. See ../README.md.",
+  "scripts": {
+    "render": "remotion render film ../dist/hero-render.mp4 --log=error",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.503",
+    "@remotion/transitions": "4.0.503",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.503"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3"
+  }
+}

@@ -17,6 +17,8 @@ Claude Code, Codex, or any agent — each in its own isolated session. jmux is t
 curl -fsSL https://jmux.build/install | sh && jmux
 ```
 
+**[▶ Watch the walkthrough](https://jmux.build/#demo)** — real agents, nothing staged.
+
 </div>
 
 ## Get running
@@ -39,7 +41,7 @@ Kicking off five agents is easy. Keeping track of them is the hard part — whic
 
 jmux answers that at a glance. The **sidebar** lists every session with live indicators, and the **Command Center** gives you a single grid of every agent you care about — each tile a live, drivable mirror of a pinned pane, its border colored by state so you see who needs you without hunting.
 
-![jmux Command Center: a grid of live Claude agent panes, borders colored by state](docs/screenshots/command-center.webp)
+![jmux Command Center: a grid of live Claude agent panes, borders colored by state](docs/screenshots/fleet.gif)
 
 - **Green `●`** — new output.  **Orange `!`** — an agent finished and needs your review.
 - **Pipeline glyphs** — `✓` passed, `⟳` running, `✗` failed, `◆` merged, right in the sidebar.
@@ -58,7 +60,7 @@ Connect [Linear](https://linear.app) and [GitLab](https://about.gitlab.com) or [
 
 **Pick an issue → press `n` → jmux creates a worktree, opens a session, and launches your agent with the issue context.** One keystroke from ticket to working code.
 
-![jmux info panel showing Linear issues grouped by team and status](docs/screenshots/linear-issues.webp)
+![jmux info panel showing Linear issues beside a live agent](docs/screenshots/ticket.gif)
 
 While it works, watch the sidebar. When it finishes, toggle the **integrated diff panel** to review the changes side-by-side with the agent's output.
 
@@ -88,6 +90,9 @@ That second one is what keeps a fleet manageable:
 
 - **Park what you've handed off.** A teammate has it in review, QA has it, it's blocked on someone else — that session collapses into a single `Parked (n)` row at the bottom of the sidebar. Nothing is killed: the session, its worktree and its scrollback are untouched.
 - **Parking reverses itself.** The issue moves, someone comments, the MR is touched, a pipeline goes red, or the agent wants you — it comes straight back out, flagged. That's what makes it safe to trust.
+
+![Marking a status as parked in the workflow screen; its sessions collapse into a Parked row in the sidebar](docs/screenshots/flow.gif)
+
 - **See what you haven't started.** Each stage can show the work sitting in it that nobody has picked up — issues with no session — as dimmed rows right under the sessions that do. Click one and it becomes real: worktree, session, agent, issue linked. The sidebar stops being a list of what's running and becomes the whole board.
 - **Pull the next thing** with `Ctrl-a u`. It takes the top item from your first non-empty stage and does the whole ticket-to-worktree-to-agent dance. The daily ritual is one keystroke.
 - **Capture without losing your place** — `Ctrl-a a` files a Linear issue from wherever you are. `Enter` files it and returns you; `Ctrl-S` files it *and* starts work on it.
