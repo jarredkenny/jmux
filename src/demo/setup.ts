@@ -319,7 +319,23 @@ export function setupDemo(opts: DemoOptions = {}): DemoContext {
         ...(opts.configFile ? ["-f", opts.configFile] : []),
         "new-session", "-d", "-s", session.name, "-c", dir,
       ],
-      { stdout: "pipe", stderr: "pipe" },
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+        // `Bun.spawnSync` inherits the environment as it was when *this process*
+        // started, not as it is now — a runtime `process.env.X = ...` does not
+        // reach the child. `main.ts` sets `JMUX_DIR` at runtime, and
+        // `config/tmux.conf` expands `$JMUX_DIR/config/defaults.conf`, so
+        // without this the path resolves to `/config/defaults.conf`, tmux
+        // silently sources nothing (exit code 0, no stderr), `core.conf` never
+        // runs, and `status off` never applies — the green tmux status bar comes
+        // straight back.
+        //
+        // Spreading `process.env` here reads it live, which is the fix. This
+        // hides well: anyone whose shell already exports `JMUX_DIR` — which is
+        // to say anyone running jmux from inside jmux — cannot reproduce it.
+        env: { ...process.env },
+      },
     );
   }
 

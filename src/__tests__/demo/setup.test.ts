@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -15,6 +15,33 @@ import { cleanupDemo, reapStaleDemoServers, setupDemo, type DemoContext } from "
  */
 
 const contexts: DemoContext[] = [];
+
+/**
+ * `$JMUX_DIR` has to be set, and setting it here is the point.
+ *
+ * `config/tmux.conf` expands `$JMUX_DIR/config/defaults.conf`, and `main.ts`
+ * exports it before spawning tmux. These tests call `setupDemo` directly, so
+ * nothing exports it for them — without this, the path resolves to
+ * `/config/defaults.conf`, tmux fails to source it, `core.conf` never runs, and
+ * `status off` never applies.
+ *
+ * It passed locally anyway, which is the trap: a developer running the suite
+ * from inside jmux already has `JMUX_DIR` in their environment, so the test was
+ * quietly reading the ambient value instead of arranging its own. CI has no such
+ * environment and caught it. A test that depends on the shell it is run from is
+ * not testing what it claims to.
+ */
+let previousJmuxDir: string | undefined;
+
+beforeAll(() => {
+  previousJmuxDir = process.env.JMUX_DIR;
+  process.env.JMUX_DIR = materializeAssets();
+});
+
+afterAll(() => {
+  if (previousJmuxDir === undefined) delete process.env.JMUX_DIR;
+  else process.env.JMUX_DIR = previousJmuxDir;
+});
 
 function boot(configFile?: string): DemoContext {
   const ctx = setupDemo({ configFile });
